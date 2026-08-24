@@ -1,0 +1,14 @@
+{
+  "id": "h3-prompt-writing",
+  "name": "H3 Prompt Writing",
+  "version": "1.0.0",
+  "description": "Generate structured MiniMax H3 video generation prompts (T2VA / I2VA / FL2VA / L2VA / Ref2VA).",
+  "runtime": "prompt",
+  "entry": "SKILL.md",
+  "permissions": [],
+  "tags": [
+    "prompt",
+    "video",
+    "h3"
+  ]
+}

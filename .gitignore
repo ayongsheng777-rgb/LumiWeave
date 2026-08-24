@@ -1,0 +1,27 @@
+# 依赖
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+
+# 构建产物
+frontend/dist/
+backend/dist/
+
+# 数据与密钥（绝不提交）
+backend/data/
+backend/.env
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 日志
+*.log
