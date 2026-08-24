@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import { Bot, Send } from 'lucide-react'
 import { agentChatStream, getAgentHealth, getAgents, getSkills } from '../api'
 import { useCanvasStore } from '../store/canvasStore'
 import { useLayoutStore } from '../store/layoutStore'
@@ -7,13 +9,11 @@ interface Agent {
   id: string
   name: string
 }
-
 interface Skill {
   id: string
   name: string
   description: string
 }
-
 interface Msg {
   role: 'user' | 'assistant'
   content: string
@@ -31,6 +31,7 @@ export default function ChatPanel() {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const load = async () => {
     const [aRes, sRes] = await Promise.all([getAgents(), getSkills()])
@@ -57,10 +58,10 @@ export default function ChatPanel() {
     return { x: 80 + (n % 5) * 40, y: 80 + (n % 6) * 40 }
   }
 
-  const dropToCanvas = (text: string, kind: 'text' | 'image' = 'text') => {
+  const dropToCanvas = (text: string) => {
     const store = useCanvasStore.getState()
     const node = store.addObject('ai_result', nextCanvasPos())
-    store.updateObject(node.id, { text, kind })
+    store.updateObject(node.id, { text, kind: 'text' })
   }
 
   const ejectToCanvas = (text: string) => {
@@ -74,6 +75,7 @@ export default function ChatPanel() {
     const text = input.trim()
     if (!text || streaming) return
     setInput('')
+    if (inputRef.current) inputRef.current.style.height = 'auto'
     setStreaming(true)
     setMessages((prev) => [...prev, { role: 'user', content: text }])
 
@@ -123,94 +125,142 @@ export default function ChatPanel() {
   }
 
   return (
-    <div className="chat-layout">
-      <aside className="chat-side">
-        <h3>智能体</h3>
-        <button
-          className={`agent-item ${selected === 'auto' ? 'active' : ''}`}
-          onClick={() => setSelected('auto')}
-        >
-          <span className="agent-dot auto" />
-          <span className="agent-name">自动路由</span>
-        </button>
-        {agents.map((a) => (
-          <button
-            key={a.id}
-            className={`agent-item ${selected === a.id ? 'active' : ''}`}
-            onClick={() => setSelected(a.id)}
+    <div className="flex h-full min-h-0 flex-col">
+      {/* 顶部：智能体 + 技能 + 知识库（紧凑横条，不占对话宽度） */}
+      <div className="shrink-0 space-y-2 border-b border-edge bg-panel-2 p-3">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] uppercase tracking-wide text-ink-3">智能体</span>
+          <div className="flex flex-1 flex-wrap gap-1">
+            <button
+              onClick={() => setSelected('auto')}
+              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition ${
+                selected === 'auto' ? 'bg-brand-500/20 text-brand-200' : 'text-ink-2 hover:bg-soft'
+              }`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-brand-400" />
+              自动路由
+            </button>
+            {agents.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setSelected(a.id)}
+                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition ${
+                  selected === a.id ? 'bg-brand-500/20 text-brand-200' : 'text-ink-2 hover:bg-soft'
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${health[a.id] ? 'bg-status-completed' : 'bg-status-failed'}`} />
+                {a.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] uppercase tracking-wide text-ink-3">技能</span>
+          <select
+            value={skillId}
+            onChange={(e) => setSkillId(e.target.value)}
+            className="flex-1 rounded-lg border border-edge bg-input px-2 py-1 text-xs text-ink outline-none focus:border-brand-500"
           >
-            <span className={`agent-dot ${health[a.id] ? 'ok' : 'bad'}`} />
-            <span className="agent-name">{a.name}</span>
-            <span className="agent-id">{a.id}</span>
-          </button>
-        ))}
-        <div className="chat-options">
-          <label>挂载技能</label>
-          <select value={skillId} onChange={(e) => setSkillId(e.target.value)}>
-            <option value="">（不挂载）</option>
+            <option value="">（不挂载技能）</option>
             {skills.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
             ))}
           </select>
-          <label className="checkbox-row">
+          <label className="flex shrink-0 items-center gap-1.5 text-[11px] text-ink-2">
             <input
               type="checkbox"
               checked={learnPrompt}
               onChange={(e) => setLearnPrompt(e.target.checked)}
+              className="accent-brand-500"
             />
-            启用知识库注入
+            知识库
           </label>
         </div>
-      </aside>
+      </div>
 
-      <section className="chat-main">
-        <div className="chat-log">
+      {/* 对话主区 */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex-1 space-y-3 overflow-y-auto p-3">
           {messages.length === 0 && (
-            <div className="chat-empty">
-              <p>向智能体提问，开始你的创作</p>
-              <p className="chat-empty-hint">
+            <div className="mt-10 text-center text-sm text-ink-3">
+              <Bot size={28} className="mx-auto mb-2 text-ink-3" />
+              <p>向智能体提问，开启你的创作</p>
+              <p className="mt-1 text-[11px] text-ink-3">
                 已接入 {agents.length} 个智能体{skills.length > 0 ? `、${skills.length} 个技能` : ''}
               </p>
             </div>
           )}
           {messages.map((m, i) => (
-            <div key={i} className={`chat-msg ${m.role}`}>
-              <div className="chat-bubble">
+            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
+                  m.role === 'user'
+                    ? 'bg-brand-600 text-white'
+                    : 'border border-edge bg-soft text-ink'
+                }`}
+              >
                 {m.role === 'assistant' && m.agent && (
-                  <div className="chat-agent-tag">{m.agent}</div>
+                  <div className="mb-1 text-[11px] text-brand-300">@{m.agent}</div>
                 )}
-                <pre className="chat-text">{m.content}</pre>
+                {m.role === 'assistant' ? (
+                  <div className="md-body leading-relaxed">
+                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <pre className="whitespace-pre-wrap break-words font-sans">{m.content}</pre>
+                )}
                 {m.role === 'user' && (
-                  <button className="eject-btn" onClick={() => ejectToCanvas(m.content)}>
+                  <button onClick={() => ejectToCanvas(m.content)} className="mt-1 text-[11px] text-brand-200 underline">
                     → 展开到画布
                   </button>
                 )}
               </div>
             </div>
           ))}
-          {streaming && <div className="chat-msg assistant"><div className="chat-bubble"><span className="typing">…</span></div></div>}
+          {streaming && (
+            <div className="flex justify-start">
+              <div className="rounded-2xl border border-edge bg-soft px-3 py-2 text-sm text-ink-2">
+                生成中…
+              </div>
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
-        <div className="chat-input-bar">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                send()
-              }
-            }}
-            placeholder="输入消息，Enter 发送，Shift+Enter 换行"
-            rows={3}
-          />
-          <button onClick={send} disabled={streaming || !input.trim()}>
-            {streaming ? '生成中…' : '发送'}
-          </button>
+        <div className="border-t border-edge p-3">
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value)
+                // 多行自动撑开：先归位再按内容高度重设（封顶 ~220px）
+                const el = e.currentTarget
+                el.style.height = 'auto'
+                el.style.height = Math.min(el.scrollHeight, 220) + 'px'
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  send()
+                  if (inputRef.current) inputRef.current.style.height = 'auto'
+                }
+              }}
+              placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+              rows={4}
+              className="flex-1 resize-none overflow-y-auto rounded-xl border border-edge bg-input px-3 py-2.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500"
+            />
+            <button
+              onClick={send}
+              disabled={streaming || !input.trim()}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white transition hover:bg-brand-500 disabled:opacity-40"
+            >
+              <Send size={16} />
+            </button>
+          </div>
         </div>
-      </section>
+      </div>
     </div>
   )
 }

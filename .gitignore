@@ -12,6 +12,10 @@ __pycache__/
 frontend/dist/
 backend/dist/
 
+# 误装/临时目录（node_modules 挪走时的临时垃圾）
+frontend/_trash_*/
+frontend/.npm-cache/
+
 # 数据与密钥（绝不提交）
 backend/data/
 backend/.env

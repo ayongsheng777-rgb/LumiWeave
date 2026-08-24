@@ -134,6 +134,21 @@ class WorkflowEngine:
                 text = self._render(data.get("text", ""), outputs)
             return {"content": text}
 
+        if ntype == "render":
+            # 出图/算力节点：经 dispatcher 智能路由到本地或云端 ComfyUI
+            prompt = self._render(data.get("prompt", ""), outputs) or self._pick_str(upstream)
+            workflow = data.get("workflow")
+            if not isinstance(workflow, dict) or not workflow:
+                if not prompt:
+                    raise ValueError("出图节点缺少 prompt 或 workflow")
+                # 极简文生图工作流：把 prompt 包成 ComfyUI 可识别的最小结构
+                workflow = {"prompt": prompt, "model": data.get("model", "")}
+            from app.renderers.dispatcher import dispatch_render_task
+            result = await dispatch_render_task(node_id, workflow, wait=True)
+            if isinstance(result, dict) and result.get("ok") is False:
+                raise RuntimeError(result.get("error") or "渲染失败")
+            return {"render": result}
+
         raise ValueError(f"未知节点类型: {ntype}")
 
     def _upstream_outputs(self, node_id: str, outputs: dict[str, Any]) -> dict[str, Any]:

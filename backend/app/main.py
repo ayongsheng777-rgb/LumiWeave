@@ -19,6 +19,7 @@ from app.layout.routes import router as layout_router
 from app.prompt_learning.routes import router as prompt_kb_router
 from app.providers.routes import router as provider_router
 from app.renderers import init_renderers
+from app.renderers.dispatcher import start_local_worker, stop_local_worker
 from app.renderers.routes import router as renderer_router
 from app.scheduler import start_scheduler, stop_scheduler
 from app.skills import init_skills
@@ -40,8 +41,10 @@ async def lifespan(app: FastAPI):
     await init_renderers()
     register_canvas_tools()
     start_scheduler()
+    start_local_worker()  # 异构算力：本地 ComfyUI 队列常驻消费者
     yield
     stop_scheduler()
+    await stop_local_worker()
     await db.close_pool()
 
 

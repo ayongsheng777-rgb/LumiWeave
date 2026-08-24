@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.renderers import init_renderers, renderer_registry
+from app.renderers.dispatcher import dispatch_render_task, queue_status
 from app.task_service import add_event, create_task, set_result, set_status
 
 router = APIRouter()
@@ -14,6 +15,25 @@ router = APIRouter()
 @router.get("")
 async def list_renderers():
     return {"renderers": renderer_registry.list()}
+
+
+@router.get("/dispatch/status")
+async def dispatch_status():
+    """异构算力路由状态：本地队列长度 / worker 存活 / 本地与云端地址。"""
+    return queue_status()
+
+
+@router.post("/dispatch")
+async def dispatch(request: Request):
+    """智能算力路由入口：按工作流内容自动派发本地队列或云端实例。"""
+    data = await request.json()
+    workflow = data.get("workflow")
+    if not isinstance(workflow, dict):
+        return JSONResponse(status_code=400, content={"error": "workflow 必须是对象"})
+    wait = bool(data.get("wait", True))
+    task_id = str(data.get("task_id") or f"dispatch_{id(workflow)}")
+    result = await dispatch_render_task(task_id, workflow, wait=wait)
+    return result
 
 
 @router.get("/{renderer_id}/health")

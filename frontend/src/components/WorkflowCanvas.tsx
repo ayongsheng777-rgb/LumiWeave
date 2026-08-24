@@ -1,143 +1,112 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import {
   Background,
+  BackgroundVariant,
   Controls,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
+  useReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { runWorkflow } from '../api'
-import { makeNode, useWorkflowStore, type NodeStatus } from '../store/workflowStore'
-import { useLayoutStore } from '../store/layoutStore'
-import { nodeTypes } from './workflowNodes'
+import { defaultDataFor, useWorkflowStore } from '../store/workflowStore'
+import { useUiStore } from '../store/uiStore'
+import { nodeTypes } from './nodes'
 
-const NODE_LIBRARY: { type: string; label: string; desc: string }[] = [
-  { type: 'input', label: '输入', desc: '放原始需求，流程起点' },
-  { type: 'llm', label: 'LLM 推理', desc: '调用大模型生成内容' },
-  { type: 'prompt_template', label: '提示词模板', desc: '检索知识库并注入提示词' },
-  { type: 'skill', label: '技能调用', desc: '执行平台已安装的技能' },
-  { type: 'output', label: '输出', desc: '汇总上游结果' },
-]
+const DND_KEY = 'application/lumiweave-node'
 
 function WorkflowCanvasInner() {
-  const {
-    nodes, edges, running,
-    onNodesChange, onEdgesChange, onConnect,
-    addNode, clearAll, setNodeStatus, resetStatus, setRunning,
-  } = useWorkflowStore()
-  const setCanvasOpen = useLayoutStore((s) => s.setCanvasOpen)
-  const [result, setResult] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { nodes, edges, running, runError, onNodesChange, onEdgesChange, onConnect, addNode, clearAll, setRunError } =
+    useWorkflowStore()
+  const theme = useUiStore((s) => s.theme)
+  const { screenToFlowPosition } = useReactFlow()
+  const [dragOver, setDragOver] = useState(false)
+  const dotColor = theme === 'dark' ? '#333333' : '#d3d6dd'
 
-  const addLibraryNode = (type: string) => {
-    const defaults: Record<string, Record<string, unknown>> = {
-      input: { text: '' },
-      llm: { prompt: '', temperature: 0.3 },
-      prompt_template: { template: '', query: '' },
-      skill: { skill_id: '', args: {} },
-      output: { text: '' },
-    }
-    addNode(makeNode(type, defaults[type] || {}))
-  }
-
-  const prettyResult = (final: Record<string, unknown>): string => {
-    for (const n of nodes) {
-      if (n.type === 'output') {
-        const o = final[n.id]
-        if (o && typeof o === 'object' && (o as Record<string, unknown>).content) {
-          return String((o as Record<string, unknown>).content)
-        }
-      }
-    }
-    return JSON.stringify(final, null, 2)
-  }
-
-  const run = async () => {
-    if (running || nodes.length === 0) return
-    setResult(null)
-    setError(null)
-    resetStatus()
-    setRunning(true)
-    const graph = {
-      nodes: nodes.map((n) => ({
-        id: n.id,
-        type: (n.type || 'input') as string,
-        data: (n.data || {}) as Record<string, unknown>,
-      })),
-      edges: edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        sourceHandle: e.sourceHandle ?? null,
-        targetHandle: e.targetHandle ?? null,
-      })),
-    }
-    try {
-      const final = await runWorkflow(graph, (nodeId, status, _r) => {
-        setNodeStatus(nodeId, status as NodeStatus)
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setDragOver(false)
+      const type = e.dataTransfer.getData(DND_KEY)
+      if (!type) return
+      const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+      addNode({
+        id: `${type}_${Date.now()}`,
+        type,
+        data: defaultDataFor(type),
+        position,
       })
-      setResult(prettyResult(final))
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setRunning(false)
-    }
-  }
-
-  const clear = () => {
-    clearAll()
-    setResult(null)
-    setError(null)
-  }
+    },
+    [screenToFlowPosition, addNode],
+  )
 
   return (
-    <div className="canvas-wrap">
-      <div className="canvas-toolbar">
-        <div className="canvas-lib">
-          {NODE_LIBRARY.map((n) => (
-            <button key={n.type} className="lib-btn" onClick={() => addLibraryNode(n.type)} title={n.desc}>
-              + {n.label}
-            </button>
-          ))}
-        </div>
-        <div className="canvas-actions">
-          <button className="run-btn" onClick={run} disabled={running || nodes.length === 0}>
-            {running ? '执行中…' : '▶ 执行'}
+    <div
+      className={`relative h-full w-full bg-canvas ${dragOver ? 'ring-2 ring-inset ring-brand-500/60' : ''}`}
+      onDrop={onDrop}
+      onDragOver={(e) => {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+        setDragOver(true)
+      }}
+      onDragLeave={() => setDragOver(false)}
+    >
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        nodeTypes={nodeTypes}
+        fitView
+        deleteKeyCode={['Backspace', 'Delete']}
+        proOptions={{ hideAttribution: true }}
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+          animated: true,
+          style: { stroke: '#8b5cf6', strokeWidth: 1.8 },
+        }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1.6} color={dotColor} />
+        <Controls className="!shadow-node-dark !border !border-edge !bg-panel-2" showInteractive={false} />
+        <Panel position="top-left">
+          <button
+            className="rounded-lg border border-edge bg-soft px-3 py-1.5 text-xs text-ink-2 transition hover:bg-soft disabled:opacity-40"
+            onClick={() => {
+              clearAll()
+              setRunError(null)
+            }}
+            disabled={running}
+          >
+            清空画布
           </button>
-          <button className="ghost" onClick={clear} disabled={running}>
-            清空
-          </button>
-          <button className="ghost" onClick={() => setCanvasOpen(false)}>
-            收起画布
-          </button>
-        </div>
-      </div>
+        </Panel>
+      </ReactFlow>
 
-      <div className="canvas-flow">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          nodeTypes={nodeTypes}
-          fitView
-          deleteKeyCode={['Backspace', 'Delete']}
-        >
-          <Background gap={20} size={1} />
-          <Controls />
-        </ReactFlow>
-      </div>
-
-      {(result || error) && (
-        <div className={`canvas-result ${error ? 'err' : ''}`}>
-          <div className="canvas-result-head">
-            <b>{error ? '执行出错' : '执行结果'}</b>
-            <button className="ghost" onClick={() => { setResult(null); setError(null) }}>
-              关闭
-            </button>
+      {nodes.length === 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center text-center">
+          <div className="rounded-2xl border border-edge bg-panel/70 px-8 py-6 shadow-node-dark backdrop-blur-sm">
+            <p className="text-sm font-medium text-ink-2">画布还是空的</p>
+            <p className="mt-2 max-w-[20rem] text-xs leading-relaxed text-ink-3">
+              从左侧工具条拖入节点开始搭建，或点击图标直接添加；
+              也可以先和右侧 AI 助手聊聊，让它帮你出主意。
+            </p>
           </div>
-          <pre>{error || result}</pre>
+        </div>
+      )}
+
+      {runError && (
+        <div className="absolute bottom-5 left-1/2 z-10 w-[min(92%,28rem)] -translate-x-1/2 animate-fade-in rounded-xl border border-status-failed/40 bg-status-failed/10 px-4 py-3 text-sm text-red-200 shadow-node-dark">
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5">⚠️</span>
+            <div>
+              <p className="font-medium">运行提示</p>
+              <p className="mt-1 text-red-200/90">{runError}</p>
+              <button className="mt-2 text-xs text-red-300 underline" onClick={() => setRunError(null)}>
+                知道了
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

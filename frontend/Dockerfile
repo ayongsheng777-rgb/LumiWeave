@@ -13,7 +13,7 @@ ENV HTTP_PROXY=${HTTP_PROXY} \
 RUN npm config set registry https://registry.npmmirror.com
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps --no-audit --no-fund
 
 COPY . .
 RUN npm run build
