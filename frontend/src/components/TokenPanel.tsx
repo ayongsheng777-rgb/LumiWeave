@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
-import { deletePricing, getPricing, getTokenSummary, getTokenToday, refreshOfficialPricing, upsertPricing } from '../api'
+import { deletePricing, getPricing, getProjectUsage, getTokenSummary, getTokenToday, refreshOfficialPricing, upsertPricing } from '../api'
 
 interface SummaryRow {
   day: string
@@ -27,6 +27,7 @@ export default function TokenPanel() {
   const [days, setDays] = useState(7)
   const [summary, setSummary] = useState<SummaryRow[]>([])
   const [today, setToday] = useState<Record<string, any>>({})
+  const [usage, setUsage] = useState<Record<string, any>>({})
   const [pricing, setPricing] = useState<PricingRow[]>([])
   const [syncInfo, setSyncInfo] = useState<any>(null)
   const [message, setMessage] = useState('')
@@ -34,10 +35,11 @@ export default function TokenPanel() {
   const chartInstance = useRef<echarts.ECharts | null>(null)
 
   const load = async () => {
-    const [sRes, tRes, pRes] = await Promise.all([
+    const [sRes, tRes, pRes, uRes] = await Promise.all([
       getTokenSummary(days),
       getTokenToday(),
       getPricing(),
+      getProjectUsage(days),
     ])
     if (sRes.ok) setSummary(sRes.data.data)
     if (tRes.ok) setToday(tRes.data)
@@ -45,6 +47,7 @@ export default function TokenPanel() {
       setPricing(pRes.data.pricing)
       setSyncInfo(pRes.data.sync)
     }
+    if (uRes.ok) setUsage(uRes.data)
   }
 
   useEffect(() => {
@@ -136,16 +139,16 @@ export default function TokenPanel() {
 
   return (
     <div className="panel">
-      <h2>Token 统计与费用</h2>
+      <h2>项目用量 Project Usage</h2>
       {message && <div className="message">{message}</div>}
 
       <div className="stats-row">
-        <div className="stat-card"><b>今日调用</b><span>{today.calls ?? 0}</span></div>
-        <div className="stat-card"><b>今日失败</b><span>{today.fails ?? 0}</span></div>
-        <div className="stat-card"><b>输入 Token</b><span>{today.prompt_tokens ?? 0}</span></div>
-        <div className="stat-card"><b>输出 Token</b><span>{today.completion_tokens ?? 0}</span></div>
-        <div className="stat-card"><b>区间费用</b><span>¥{totalCost.toFixed(4)}</span></div>
-        <div className="stat-card"><b>区间调用</b><span>{totalCalls}</span></div>
+        <div className="stat-card"><b>AI 调用</b><span>{usage.ai_calls ?? 0}</span></div>
+        <div className="stat-card"><b>图片</b><span>{usage.images ?? 0}</span></div>
+        <div className="stat-card"><b>视频</b><span>{usage.videos ?? 0}</span></div>
+        <div className="stat-card"><b>任务</b><span>{usage.tasks ?? 0}</span></div>
+        <div className="stat-card"><b>Token</b><span>{((usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0)).toLocaleString()}</span></div>
+        <div className="stat-card"><b>成本</b><span>¥{Number(usage.cost_yuan ?? 0).toFixed(4)}</span></div>
       </div>
 
       <div className="range-tabs">
@@ -154,6 +157,10 @@ export default function TokenPanel() {
             近 {d} 天
           </button>
         ))}
+      </div>
+
+      <div className="usage-sub">
+        近 {days} 天 Token 费用 <b>¥{totalCost.toFixed(4)}</b> · 调用 <b>{totalCalls}</b> 次 · 今日调用 {today.calls ?? 0} 次（失败 {today.fails ?? 0}）
       </div>
 
       <div ref={chartRef} className="chart" />

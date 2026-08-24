@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { agentChatStream, getAgentHealth, getAgents, getSkills } from '../api'
-import { makeNode, useWorkflowStore } from '../store/workflowStore'
+import { useCanvasStore } from '../store/canvasStore'
 import { useLayoutStore } from '../store/layoutStore'
 
 interface Agent {
@@ -52,8 +52,21 @@ export default function ChatPanel() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  const nextCanvasPos = () => {
+    const n = useCanvasStore.getState().objects.length
+    return { x: 80 + (n % 5) * 40, y: 80 + (n % 6) * 40 }
+  }
+
+  const dropToCanvas = (text: string, kind: 'text' | 'image' = 'text') => {
+    const store = useCanvasStore.getState()
+    const node = store.addObject('ai_result', nextCanvasPos())
+    store.updateObject(node.id, { text, kind })
+  }
+
   const ejectToCanvas = (text: string) => {
-    useWorkflowStore.getState().addNode(makeNode('input', { text }))
+    const store = useCanvasStore.getState()
+    const node = store.addObject('prompt', nextCanvasPos())
+    store.updateObject(node.id, { text })
     useLayoutStore.getState().setCanvasOpen(true)
   }
 
@@ -87,7 +100,11 @@ export default function ChatPanel() {
             acc += String(data.text ?? '')
             pushAssistant(acc)
           } else if (type === 'done') {
-            if (data.content && !acc) pushAssistant(String(data.content))
+            const finalContent = String(data.content ?? '')
+            if (finalContent) {
+              acc = finalContent
+              pushAssistant(acc)
+            }
           } else if (type === 'error') {
             const err = String(data.message || '出错了')
             pushAssistant(acc ? `${acc}\n\n⚠️ ${err}` : `⚠️ ${err}`)
@@ -96,6 +113,8 @@ export default function ChatPanel() {
           }
         },
       )
+      const finalText = acc.trim()
+      if (finalText) dropToCanvas(finalText)
     } catch (e) {
       pushAssistant(acc ? acc : `请求失败：${(e as Error).message}`)
     } finally {

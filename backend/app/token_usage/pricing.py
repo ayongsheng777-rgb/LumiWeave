@@ -178,8 +178,8 @@ async def summary(days: int = 30) -> list[dict[str, Any]]:
                      (mp.model='*') DESC
             LIMIT 1
         ) p ON TRUE
-        WHERE l.ts >= now() - ($1 || ' days')::interval
-        GROUP BY 1,2,3 ORDER BY 1 DESC, cost_yuan DESC
+        WHERE l.ts >= now() - make_interval(days => $1)
+        GROUP BY 1,2,3,p.input_per_million,p.output_per_million ORDER BY 1 DESC, cost_yuan DESC
         """,
         days,
     )
@@ -195,7 +195,7 @@ async def by_scenario(days: int = 30) -> list[dict[str, Any]]:
             SUM(l.completion_tokens) AS completion_tokens,
             COUNT(*) AS calls
         FROM token_usage_log l
-        WHERE l.ts >= now() - ($1 || ' days')::interval
+        WHERE l.ts >= now() - make_interval(days => $1)
         GROUP BY 1,2 ORDER BY 1 DESC, calls DESC
         """,
         days,

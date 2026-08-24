@@ -125,3 +125,50 @@ CREATE INDEX IF NOT EXISTS idx_prompt_knowledge_src ON prompt_knowledge (source)
 INSERT INTO renderers (id, name, type, endpoint, enabled, timeout)
 SELECT 'comfy-local', '本地 ComfyUI', 'comfyui', '', FALSE, 600
 WHERE NOT EXISTS (SELECT 1 FROM renderers WHERE id='comfy-local');
+
+-- ============ V2 起死回生重构新增 ============
+
+-- Canvas 对象（V2 Issue #002：画布上的文字/图片/视频/提示词等对象）
+CREATE TABLE IF NOT EXISTS canvas_objects (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL DEFAULT '',
+    type        TEXT NOT NULL DEFAULT 'text',
+    content     JSONB NOT NULL DEFAULT '{}',
+    position    JSONB NOT NULL DEFAULT '{"x":0,"y":0}',
+    size        JSONB NOT NULL DEFAULT '{}',
+    layer       INTEGER NOT NULL DEFAULT 0,
+    metadata    JSONB NOT NULL DEFAULT '{}',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_canvas_objects_project ON canvas_objects (project_id);
+
+-- Provider 商业接口（V2 Issue #006：LLM/Image/Video/TTS 等统一抽象）
+CREATE TABLE IF NOT EXISTS providers (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    type        TEXT NOT NULL DEFAULT 'llm',
+    endpoint    TEXT NOT NULL DEFAULT '',
+    api_key     TEXT NOT NULL DEFAULT '',
+    models      JSONB NOT NULL DEFAULT '[]',
+    status      TEXT NOT NULL DEFAULT 'disabled',
+    health      JSONB NOT NULL DEFAULT '{}',
+    cost_rate   NUMERIC(12,6) NOT NULL DEFAULT 0,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 素材库（V2 Issue #009：AI 生成结果与历史素材）
+CREATE TABLE IF NOT EXISTS assets (
+    id          TEXT PRIMARY KEY,
+    task_id     TEXT NOT NULL DEFAULT '',
+    type        TEXT NOT NULL DEFAULT 'image',
+    url         TEXT NOT NULL DEFAULT '',
+    metadata    JSONB NOT NULL DEFAULT '{}',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_assets_task ON assets (task_id);
+
+-- tasks 表补 V2 字段（project_id / type / cost）
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cost NUMERIC(12,6) NOT NULL DEFAULT 0;

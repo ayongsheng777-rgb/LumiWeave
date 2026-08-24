@@ -92,6 +92,10 @@ export async function getTokenSummary(days = 30) {
   return request('GET', `/token-usage/summary?days=${days}`)
 }
 
+export async function getProjectUsage(days = 30) {
+  return request('GET', `/token-usage/project-usage?days=${days}`)
+}
+
 export async function getTokenToday() {
   return request('GET', '/token-usage/today')
 }
@@ -320,4 +324,62 @@ export async function runWorkflow(
     Object.keys(outputs).forEach((id) => onNode(id, 'completed', outputs[id]))
     return outputs
   }
+}
+
+// ==================== 画布对象（V2） ====================
+
+export interface CanvasObject {
+  id: string
+  project_id?: string
+  type: string
+  content: Record<string, unknown>
+  position: { x: number; y: number }
+  size?: { width: number; height: number }
+  layer?: number
+  metadata?: Record<string, unknown>
+  created_at?: string
+}
+
+export async function canvasListObjects(projectId: string) {
+  return request('GET', `/canvas/${encodeURIComponent(projectId)}`)
+}
+
+export async function canvasCreateObject(payload: Record<string, unknown>) {
+  return request('POST', '/canvas/object', payload)
+}
+
+export async function canvasBatchCreate(payload: { project_id: string; objects: Record<string, unknown>[] }) {
+  return request('POST', '/canvas/object/batch', payload)
+}
+
+export async function canvasUpdateObject(id: string, fields: Record<string, unknown>) {
+  return request('PUT', `/canvas/object/${id}`, fields)
+}
+
+export async function canvasDeleteObject(id: string) {
+  return request('DELETE', `/canvas/object/${id}`)
+}
+
+export async function canvasApplyLayout(projectId: string, template: string) {
+  return request('POST', '/layout/apply', { canvas_id: projectId, template })
+}
+
+export async function getProviders() {
+  return request('GET', '/providers')
+}
+
+export async function upsertProvider(payload: Record<string, unknown>) {
+  return request('POST', '/providers', payload)
+}
+
+export async function deleteProvider(pid: string) {
+  return request('DELETE', `/providers/${encodeURIComponent(pid)}`)
+}
+
+export async function routeProviders(payload: Record<string, unknown>) {
+  return request('POST', '/providers/route', payload)
+}
+
+export async function getAssets(type?: string) {
+  return request('GET', `/assets${type ? `?type=${encodeURIComponent(type)}` : ''}`)
 }

@@ -5,9 +5,31 @@
 
 ## 一、项目定位
 
-把 infinite-canvas 升级成**多智能体 AI 创作平台**（Canvas → Task → Agent → Skill → Prompt → Renderer → Result → Usage → History 全链路闭环）。
+V2 目标：**AI 原生无限画布创作平台**——画布是主产品，AI 是画布的操作系统（Canvas → Chat → Agent → Skill → Provider → Renderer → Result → Asset 全链路闭环）。
+
+> 🔴 当前在 `feature/v2-rebirth` 分支做 V2 重构（见「V2 重构进度」章节）。master 还是上一版「多智能体 + 工作流节点编辑器」形态。
 
 ⚠️ 真实项目是 **Python FastAPI 后端**（`backend/`），不是 Node/TS 的 `infinite-canvas`。旧 TS 参考方案见 `绵绣LumiWeave项目文档.md`（仅供参考，已不适用）。
+
+## 一·五、V2 重构进度（2026-08-24，进行中）
+
+V2 按《LumiWeave V2 起死回生重构实施总规格书》10 个 Issue 推进，分支 `feature/v2-rebirth`。
+
+**已完成 ✅**
+- 数据库：`canvas_objects` / `providers` / `assets` 三张新表；`tasks` 补 `project_id`/`type`/`cost` 字段（`init_db.sql` 幂等，已落库）。
+- 后端新模块：`app/canvas/`（画布对象 CRUD）、`app/providers/`（Provider 抽象 + 评分路由）、`app/assets/`（素材库）、`app/layout/`（排版引擎）、`app/tools/canvas_tools.py`（AI 画布工具，register_tool 接入 skill 运行时）。
+- 新路由：`/api/canvas`、`/api/providers`、`/api/assets`、`/api/layout`。
+- 前端：`src/canvas/`（CanvasCore/CanvasToolbar/LayerPanel/objectNodes）+ `store/canvasStore.ts`（对象 + 撤销重做 + 图层）；`ChatWorkspace` 改成「画布为主 + AI 助手侧栏」。
+- 前端画布对象 CSS + 构建验证（tsc + vite build 通过，v2-workspace/obj-node/layer-panel 样式齐全）。
+- Chat↔Canvas 双向联动（AI 回复自动落 ai_result 对象；用户消息「展开到画布」落 prompt 对象）。
+- Provider / Asset 管理面板接入 Dashboard（新增「接口」「素材」两个 tab）。
+- Layout 引擎前端接入（CanvasToolbar「一键排版」下拉已接 /api/layout/apply）。
+- 后端 V2 模块已 build 进镜像，/api/canvas /providers /assets /layout 回归全部通过。
+- Token Dashboard 降级为 Project Usage（新增 `/api/token-usage/project-usage` 聚合 AI 调用/图片/视频/任务/Token/成本；前端「计费」tab 改「项目用量」总览卡片，Token 明细降级到下方）。
+
+**待办（外部条件）**：真实出图需配 Image/Video Provider（api_key），ComfyUI 实例等。
+
+> 重构原则：**保留 FastAPI/React/PG/Redis/Agent/Skill/Provider/Renderer/Knowledge，不推倒重写**；Workflow 不删，降级为「高级模式」；旧 `WorkflowCanvas.tsx`（节点连线）不再是主画布。
 
 ## 二、服务拓扑与端口
 
@@ -19,6 +41,8 @@
 | frontend | nginx | 3010 → 80 | 静态 + `/api` 反代 |
 
 数据库：`postgresql://lumiweave:lumiweave2026@postgres:5432/lumiweave`（容器内），宿主连 `localhost:5435`。
+
+数据表：`agents` / `skills` / `renderers` / `tasks` / `task_events` / `task_results` / `token_usage_log` / `model_pricing` / `app_kv` / `prompt_sources` / `prompt_knowledge`；【V2 新增】`canvas_objects` / `providers` / `assets`。
 
 ## 三、启动 / 重启 SOP
 
@@ -66,11 +90,16 @@ backend/
 │   ├── auth.py          OTP/TOTP + 会话 token
 │   ├── task_service.py  统一 taskId：create_task/add_event/set_status/set_result
 │   ├── ai/              AI 模型层（client/registry/auto_best/persist/routes）
-│   ├── agent/           Phase2 Agent Core（adapter/registry/router/provider/routes）
-│   ├── skills/          Phase3 Skill Core（manifest/loader/manager/runtime/permissions/routes）
-│   ├── renderers/       Phase5 ComfyUI（registry/comfyui/routes）
-│   ├── prompt_learning/ Phase7 RAG（embedder/store/source/extractor/retriever/routes）
-│   └── token_usage/     Token 统计计费
+│   ├── agent/           Agent Core（adapter/registry/router/provider/routes + engine/workflow_routes）
+│   ├── skills/          Skill Core（manifest/loader/manager/runtime/permissions/routes）
+│   ├── renderers/       ComfyUI（registry/comfyui/routes）
+│   ├── prompt_learning/ RAG（embedder/store/source/extractor/retriever/routes）
+│   ├── canvas/          【V2】画布对象 CRUD（service/routes）
+│   ├── providers/       【V2】Provider 抽象 + 质量/速度/成本评分路由（service/routes）
+│   ├── assets/          【V2】素材库（service/routes）
+│   ├── layout/          【V2】专业排版引擎：对齐/分布/网格 + 海报/小红书/PPT/电商/杂志模板（engine/routes）
+│   ├── tools/           【V2】AI 画布工具 canvas.create/list/update/delete/move/resize/layout（canvas_tools）
+│   └── token_usage/     Token 统计计费（V2 将降级为 Project Usage）
 ├── skills/              平台技能目录（builtin/external/learned）
 ├── init_db.sql          建表（幂等）
 └── Dockerfile           多阶段；COPY app + skills + init_db.sql
@@ -92,6 +121,9 @@ backend/
 3. **单例放错模块**：`skill_manager` 在 `app.skills.__init__`（不是 `app.skills.manager`）；`embedder` 单例在 `app.prompt_learning.embedder`。
 4. **Windows 下别把 `/d/...` 路径传给 python**：Git Bash 的 `/d/` 映射 python 不认，要用盘符 `D:/...`。
 5. **改代码必须 build**：backend 无 bind mount，改 `.py` 或 skills 只 restart 不生效，必须 `build backend`。
+6. **nginx 反代走 IPv6 导致页面加载失败**：Docker Desktop 会给容器分配 IPv6（`fd7c:...`），nginx `proxy_pass http://backend:8000` 优先解析 IPv6，但 backend 的 uvicorn 只监听 IPv4 → `connect() failed (111: Connection refused)`，间歇性导致前端卡在「加载中」。修法（frontend/nginx.conf）：`resolver 127.0.0.11 ipv6=off valid=30s; set $backend_upstream http://backend:8000; proxy_pass $backend_upstream;` 强制 IPv4。
+7. **asyncpg 的 `($1 || ' days')::interval` 传 int 报错**：`DataError: expected str, got int`，改 `make_interval(days => $1)` 传整型；`pricing.summary` 里 LATERAL join 的 `p.input_per_million/p.output_per_million` 必须加进 `GROUP BY`，否则报 `GroupingError`。
+8. **React Flow 死循环（React error #185）**：`CanvasCore` 里 `useCanvasStore()` 无参订阅整个 store，`onSelectionChange` 里 `setSelected` 改 `selectedIds` → 组件重渲染 → ReactFlow 又回调 `onSelectionChange` → 无限循环，主界面白屏。修法：① 用 selector 精确订阅（`useCanvasStore((s)=>s.objects)` 等），**不订阅 selectedIds**；② 不要把 `selected` 塞进受控 node（选区由 ReactFlow 内部管理，仅经 onSelectionChange 同步回 store）。排查手段：用 puppeteer-core + 系统 Chrome headless 登录抓 `pageerror`（Minified React error #185 = 死循环）。
 
 ## 八、常用命令速查
 
