@@ -241,3 +241,83 @@ export async function kbSearch(q: string, k = 5) {
 export async function kbSync() {
   return request('POST', '/prompt-kb/sync')
 }
+
+// ==================== 画布工作流 ====================
+
+export interface WorkflowGraphPayload {
+  nodes: { id: string; type: string; data: Record<string, unknown> }[]
+  edges: {
+    id: string
+    source: string
+    target: string
+    sourceHandle?: string | null
+    targetHandle?: string | null
+  }[]
+}
+
+export async function workflowExecute(graph: WorkflowGraphPayload) {
+  return request('POST', '/workflow/execute', graph)
+}
+
+function wsUrl(path: string): string {
+  const base = import.meta.env.VITE_API_BASE_URL || '/api'
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}${base}${path}?token=${encodeURIComponent(getToken() || '')}`
+}
+
+export function workflowExecuteWs(
+  graph: WorkflowGraphPayload,
+  onNode: (nodeId: string, status: string, result?: unknown) => void,
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(wsUrl('/workflow/ws/execute'))
+    let settled = false
+    ws.onopen = () => ws.send(JSON.stringify(graph))
+    ws.onmessage = (ev) => {
+      let msg: { type: string; node_id?: string; status?: string; result?: unknown; final_output?: Record<string, unknown>; message?: string }
+      try {
+        msg = JSON.parse(ev.data)
+      } catch {
+        return
+      }
+      if (msg.type === 'node_status') {
+        onNode(msg.node_id || '', msg.status || 'idle', msg.result)
+      } else if (msg.type === 'workflow_finished') {
+        settled = true
+        ws.close()
+        resolve(msg.final_output || {})
+      } else if (msg.type === 'error') {
+        settled = true
+        ws.close()
+        reject(new Error(msg.message || '执行失败'))
+      }
+    }
+    ws.onerror = () => {
+      if (!settled) {
+        settled = true
+        reject(new Error('WebSocket 连接失败'))
+      }
+    }
+    ws.onclose = () => {
+      if (!settled) {
+        settled = true
+        reject(new Error('WebSocket 连接已关闭'))
+      }
+    }
+  })
+}
+
+export async function runWorkflow(
+  graph: WorkflowGraphPayload,
+  onNode: (nodeId: string, status: string, result?: unknown) => void,
+): Promise<Record<string, unknown>> {
+  try {
+    return await workflowExecuteWs(graph, onNode)
+  } catch {
+    const res = await workflowExecute(graph)
+    if (!res.ok) throw new Error(res.data.error || '执行失败')
+    const outputs: Record<string, unknown> = res.data.node_outputs || {}
+    Object.keys(outputs).forEach((id) => onNode(id, 'completed', outputs[id]))
+    return outputs
+  }
+}

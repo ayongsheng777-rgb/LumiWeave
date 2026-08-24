@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { agentChatStream, getAgentHealth, getAgents, getSkills } from '../api'
+import { makeNode, useWorkflowStore } from '../store/workflowStore'
+import { useLayoutStore } from '../store/layoutStore'
 
 interface Agent {
   id: string
@@ -49,6 +51,11 @@ export default function ChatPanel() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  const ejectToCanvas = (text: string) => {
+    useWorkflowStore.getState().addNode(makeNode('input', { text }))
+    useLayoutStore.getState().setCanvasOpen(true)
+  }
 
   const send = async () => {
     const text = input.trim()
@@ -156,6 +163,11 @@ export default function ChatPanel() {
                   <div className="chat-agent-tag">{m.agent}</div>
                 )}
                 <pre className="chat-text">{m.content}</pre>
+                {m.role === 'user' && (
+                  <button className="eject-btn" onClick={() => ejectToCanvas(m.content)}>
+                    → 展开到画布
+                  </button>
+                )}
               </div>
             </div>
           ))}

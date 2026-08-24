@@ -1,7 +1,31 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
+
+from pydantic import BaseModel, Field
+
+
+class WorkflowEdge(BaseModel):
+    """画布连线：source -> target 的有向边。"""
+    id: str
+    source: str
+    target: str
+    sourceHandle: Optional[str] = None
+    targetHandle: Optional[str] = None
+
+
+class WorkflowNode(BaseModel):
+    """画布节点：id + 类型 + 配置数据。"""
+    id: str
+    type: str
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowGraph(BaseModel):
+    """整张画布：节点 + 连线，构成一个 DAG。"""
+    nodes: list[WorkflowNode]
+    edges: list[WorkflowEdge]
 
 
 @dataclass

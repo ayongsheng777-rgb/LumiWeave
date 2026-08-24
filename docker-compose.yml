@@ -75,6 +75,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:1080}
+        HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:1080}
     container_name: lumiweave-frontend
     restart: unless-stopped
     depends_on:

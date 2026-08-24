@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { logout } from '../api'
-import ChatPanel from './ChatPanel'
+import ChatWorkspace from './ChatWorkspace'
 import KnowledgePanel from './KnowledgePanel'
 import ModelPanel from './ModelPanel'
 import RendererPanel from './RendererPanel'
@@ -52,8 +52,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           </button>
         </nav>
       </header>
-      <main className="content">
-        {tab === 'chat' && <ChatPanel />}
+      <main className={tab === 'chat' ? 'content content-full' : 'content'}>
+        {tab === 'chat' && <ChatWorkspace />}
         {tab === 'skills' && <SkillPanel />}
         {tab === 'renderers' && <RendererPanel />}
         {tab === 'kb' && <KnowledgePanel />}

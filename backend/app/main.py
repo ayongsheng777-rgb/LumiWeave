@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from app import auth, db
 from app.agent import init_agents
 from app.agent.routes import router as agent_router
+from app.agent.workflow_routes import router as workflow_router
 from app.ai.persist import load_overrides
 from app.ai.routes import router as ai_router
 from app.config import settings
@@ -142,6 +143,7 @@ async def websocket_endpoint(websocket: WebSocket):
 app.include_router(ai_router, prefix="/api/ai")
 app.include_router(token_router, prefix="/api/token-usage")
 app.include_router(agent_router, prefix="/api/agents")
+app.include_router(workflow_router, prefix="/api/workflow")
 app.include_router(skill_router, prefix="/api/skills")
 app.include_router(renderer_router, prefix="/api/renderers")
 app.include_router(prompt_kb_router, prefix="/api/prompt-kb")
