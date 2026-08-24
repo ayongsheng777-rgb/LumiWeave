@@ -1,0 +1,243 @@
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+
+function getToken(): string | null {
+  return localStorage.getItem('lumiweave_token')
+}
+
+function setToken(token: string) {
+  localStorage.setItem('lumiweave_token', token)
+}
+
+function clearToken() {
+  localStorage.removeItem('lumiweave_token')
+}
+
+async function request(method: string, path: string, body?: unknown) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  const token = getToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  if (res.status === 401) {
+    clearToken()
+    window.location.reload()
+    throw new Error('未授权')
+  }
+  const data = await res.json().catch(() => ({}))
+  return { ok: res.ok, status: res.status, data }
+}
+
+export { clearToken, setToken }
+
+export async function getSetup() {
+  return request('GET', '/auth/setup')
+}
+
+export async function login(otp: string) {
+  const res = await request('POST', '/auth/login', { otp })
+  if (res.ok && res.data.token) {
+    setToken(res.data.token)
+  }
+  return res
+}
+
+export async function checkAuth() {
+  const res = await request('GET', '/auth/check')
+  return res.data as { authed: boolean }
+}
+
+export async function logout() {
+  await request('POST', '/auth/logout')
+  clearToken()
+}
+
+export async function resetOtp(otp: string) {
+  return request('POST', '/auth/otp-reset', { otp })
+}
+
+export async function getProfiles() {
+  return request('GET', '/ai/profiles')
+}
+
+export async function probe(profileId?: string) {
+  return request('POST', '/ai/probe', { profile_id: profileId })
+}
+
+export async function autoBest(profileId?: string) {
+  return request('POST', '/ai/auto-best', { profile_id: profileId })
+}
+
+export async function aiChat(payload: {
+  system: string
+  user: string
+  profile_id?: string
+  json_mode?: boolean
+  scenario?: string
+}) {
+  return request('POST', '/ai/chat', payload)
+}
+
+export async function getAiStats() {
+  return request('GET', '/ai/stats')
+}
+
+export async function getTokenSummary(days = 30) {
+  return request('GET', `/token-usage/summary?days=${days}`)
+}
+
+export async function getTokenToday() {
+  return request('GET', '/token-usage/today')
+}
+
+export async function getPricing() {
+  return request('GET', '/token-usage/pricing')
+}
+
+export async function upsertPricing(payload: Record<string, unknown>) {
+  return request('POST', '/token-usage/pricing', payload)
+}
+
+export async function refreshOfficialPricing() {
+  return request('POST', '/token-usage/pricing/refresh-official')
+}
+
+export async function deletePricing(id: number) {
+  return request('DELETE', `/token-usage/pricing/${id}`)
+}
+
+// ==================== Agent 多智能体 ====================
+
+export async function getAgents() {
+  return request('GET', '/agents')
+}
+
+export async function getAgentHealth(agentId: string) {
+  return request('GET', `/agents/${agentId}/health`)
+}
+
+export async function reloadAgents() {
+  return request('POST', '/agents/reload')
+}
+
+export async function agentChat(payload: {
+  message: string
+  agent_id?: string
+  skill_id?: string
+  system_prompt?: string
+  learn_prompt?: boolean
+}) {
+  return request('POST', '/agents/chat', payload)
+}
+
+export async function agentChatStream(
+  payload: { message: string; agent_id?: string; skill_id?: string; learn_prompt?: boolean },
+  onEvent: (type: string, data: Record<string, unknown>) => void,
+) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const token = getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(`${API_BASE}/agents/chat/stream`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    let err = '对话失败'
+    try {
+      const d = await res.json()
+      err = d.error || err
+    } catch {
+      /* ignore */
+    }
+    throw new Error(err)
+  }
+  const reader = res.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const parts = buffer.split('\n\n')
+    buffer = parts.pop() || ''
+    for (const part of parts) {
+      const line = part.trim()
+      if (!line.startsWith('data: ')) continue
+      try {
+        const msg = JSON.parse(line.slice(6))
+        onEvent(msg.type, msg.data)
+      } catch {
+        /* ignore malformed */
+      }
+    }
+  }
+}
+
+// ==================== 技能库 Skills ====================
+
+export async function getSkills() {
+  return request('GET', '/skills')
+}
+
+export async function getSkillDetail(skillId: string) {
+  return request('GET', `/skills/${skillId}`)
+}
+
+export async function reloadSkills() {
+  return request('POST', '/skills/reload')
+}
+
+export async function executeSkill(payload: { skill_id: string; args?: unknown; context?: unknown }) {
+  return request('POST', '/skills/execute', payload)
+}
+
+export async function setRiskySkills(permissions: string[]) {
+  return request('POST', '/skills/risky', { permissions })
+}
+
+// ==================== 渲染器 Renderers ====================
+
+export async function getRenderers() {
+  return request('GET', '/renderers')
+}
+
+export async function getRendererHealth(rendererId: string) {
+  return request('GET', `/renderers/${rendererId}/health`)
+}
+
+export async function rendererGenerate(rendererId: string, workflow: Record<string, unknown>) {
+  return request('POST', `/renderers/${rendererId}/generate`, { workflow })
+}
+
+export async function rendererCancel(rendererId: string, promptId: string) {
+  return request('POST', `/renderers/${rendererId}/cancel`, { prompt_id: promptId })
+}
+
+// ==================== 知识库 Prompt KB ====================
+
+export async function getKbList() {
+  return request('GET', '/prompt-kb/list')
+}
+
+export async function kbAdd(title: string, content: string) {
+  return request('POST', '/prompt-kb/add', { title, content })
+}
+
+export async function kbAddSource(kind: string, uri: string) {
+  return request('POST', '/prompt-kb/sources', { kind, uri })
+}
+
+export async function kbSearch(q: string, k = 5) {
+  return request('GET', `/prompt-kb/search?q=${encodeURIComponent(q)}&k=${k}`)
+}
+
+export async function kbSync() {
+  return request('POST', '/prompt-kb/sync')
+}

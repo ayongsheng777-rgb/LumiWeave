@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    container_name: lumiweave-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lumiweave}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lumiweave2026}
+      POSTGRES_DB: ${POSTGRES_DB:-lumiweave}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init_db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5435}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lumiweave} -d ${POSTGRES_DB:-lumiweave}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: lumiweave-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6385}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lumiweave-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://lumiweave:lumiweave2026@postgres:5432/lumiweave}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - DATA_DIR=/app/data
+      - OTP_ISSUER=${OTP_ISSUER:-绵绣LumiWeave}
+      - OTP_ACCOUNT=${OTP_ACCOUNT:-admin@lumiweave}
+      - OTP_SECRET=${OTP_SECRET:-}
+      - SESSION_TTL=${SESSION_TTL:-43200}
+      - SESSION_SECRET=${SESSION_SECRET:-}
+      - AI_ENABLED=${AI_ENABLED:-true}
+      - AI_BASE_URL=${AI_BASE_URL:-https://api.deepseek.com/v1}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_MODEL=${AI_MODEL:-deepseek-chat}
+      - AI_PROXY=${AI_PROXY:-}
+      - AI_USER_AGENT=${AI_USER_AGENT:-}
+      - AI_MODELS_JSON=${AI_MODELS_JSON:-[]}
+      - AI_ACTIVE=${AI_ACTIVE:-default}
+      - FEISHU_WEBHOOK_URL=${FEISHU_WEBHOOK_URL:-}
+    volumes:
+      - backend_data:/app/data
+    ports:
+      - "${BACKEND_PORT:-8900}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lumiweave-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-/api}
+    ports:
+      - "${FRONTEND_PORT:-3010}:80"
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_data:
