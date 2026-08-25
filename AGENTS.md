@@ -175,6 +175,62 @@ V2 按《LumiWeave V2 起死回生重构实施总规格书》10 个 Issue 推进
 
 **踩坑**：①mcp 2.x 的 `streamable_http_app()` 挂载到 FastAPI 报 `Task group is not initialized`（需 anyio task group 上下文）→ 改独立进程 `run_streamable_http_async`；②mcp 2.1.0 依赖 `pydantic>=2.12` / `uvicorn>=0.31.1`，需升级。
 
+## 一·十三、V2 影视节点系统重构（2026-08-25 完成）
+
+按《LumiWeave V2 AI影视创作节点系统完整规格书》重构画布节点体系，从通用节点升级为 **13 个影视专项节点 + 6 个影视 MCP 工具**，覆盖故事输入→角色→场景→道具→分镜→图片→视频→音频→字幕→排版→导出全链路。
+
+**前端节点（13 个）**
+
+| 节点 | 组件 | 功能 |
+|---|---|---|
+| story | StoryNode | 故事输入 + AI 导演解析（调用 film.story_parse） |
+| character | CharacterNode | 角色生成（名称/描述/参考图/一致性种子） |
+| scene | SceneNode | 场景生成（地点/时间/天气/镜头） |
+| prop | PropNode | 关键道具生成 |
+| storyboard | StoryboardNode | 分镜表（Shot-by-Shot：镜头/时长/运镜/描述） |
+| image | ImageNode | 图片生成（复用 objectNodes） |
+| film_video | FilmVideoNode | 视频生成（时长/比例/运镜/风格/渲染器） |
+| audio | AudioNode | 旁白/BGM/音效 |
+| subtitle | SubtitleNode | 字幕生成（输入视频/音频） |
+| layout | LayoutNode | 排版节点 |
+| export | ExportNode | 导出（MP4/MOV/PDF/分镜包） |
+| prompt | PromptNode | 提示词管理（复用） |
+| asset | AssetNode | 素材节点（复用） |
+
+**前端改动**
+- `workflowStore.ts`：`NODE_DEFAULTS` 替换为 13 节点体系。
+- `canvasStore.ts`：`OBJECT_LIBRARY` 替换为 13 节点。
+- `FloatingToolbar.tsx`：13 节点工具条，带图标+中文标签。
+- `canvas/nodeRegistry.ts`：重建为 13 节点注册表。
+- `components/nodes/index.ts`：导出新 13 节点。
+- `api.ts`：新增 `filmStoryParse()` 前端封装（调用 MCP film.story_parse）。
+
+**后端 MCP 工具（新增 6 个，HTTP 模式已测）**
+
+| 工具 | 功能 |
+|---|---|
+| `film.story_parse` | 故事 → characters/scenes/props/storyboard 结构 |
+| `film.character_generate` | 角色生成 + seed 一致性 |
+| `film.scene_generate` | 场景生成 |
+| `film.storyboard_generate` | Shot-by-Shot 分镜生成 |
+| `film.subtitle_generate` | 字幕生成（SRT/ASS） |
+| `film.export` | 项目导出（MP4/PDF/分镜） |
+
+MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
+
+**后端改动**
+- `app/mcp/schemas/film.py`：Pydantic 模型（FilmStoryParse/Character/Scene 等）。
+- `app/mcp/tools/film_tools.py`：6 个 `@server.tool()` 工具函数。
+- `app/mcp/tools/__init__.py`：注册 `register_film_tools`。
+- `app/mcp/server.py`：注册 film_tools + 修复重复注册。
+- `app/workflow/engine.py`：新增 13 节点执行逻辑（story/character/scene/prop/storyboard/film_video/audio/subtitle/layout/export/image/video）。
+- `app/workflow/node_registry.py`：13 节点注册（icon/category/description/schema）。
+- `app/schemas/workflow.py`：Node.type 注释更新。
+
+**验证**：py_compile/tsc 全过；前端 vite build 通过；后端镜像构建成功；MCP 工具 27 个（原 21 + 新 6）全部注册；backend `/api/health` 200；MCP HTTP initialize 200。
+
+**StoryNode AI 解析流程**：用户在 StoryNode 填故事→选类型/风格/比例→点「AI 解析」→前端调用 `filmStoryParse()`（POST `/api/v2/mcp/call`）→MCP film.story_parse 工具执行→返回 characters/scenes/props/storyboard JSON→StoryNode 渲染解析结果展示。
+
 ## 二、服务拓扑与端口
 
 | 服务 | 镜像 | 宿主端口 → 容器 | 说明 |
@@ -183,6 +239,7 @@ V2 按《LumiWeave V2 起死回生重构实施总规格书》10 个 Issue 推进
 | redis | redis:7.4-alpine | 6385 → 6379 | 缓存 |
 | backend | python:3.12.5-slim | 8900 → 8000 | FastAPI 主服务 |
 | frontend | nginx | 3010 → 80 | 静态 + `/api` 反代 |
+| mcp | python:3.12.5-slim | 8901 → 8901 | MCP HTTP（Bearer token） |
 
 数据库：`postgresql://lumiweave:lumiweave2026@postgres:5432/lumiweave`（容器内），宿主连 `localhost:5435`。
 
