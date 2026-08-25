@@ -71,6 +71,26 @@ services:
       timeout: 5s
       retries: 10
 
+  mcp:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lumiweave-mcp
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://lumiweave:lumiweave2026@postgres:5432/lumiweave}
+    command: python -m app.mcp --http --port 8901
+    ports:
+      - "${MCP_PORT:-8901}:8901"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(3); s.connect(('localhost', 8901)); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   frontend:
     build:
       context: ./frontend

@@ -164,8 +164,10 @@ V2 按《LumiWeave V2 起死回生重构实施总规格书》10 个 Issue 推进
 - `.mcp/codex.json` / `claude.json` / `workbuddy.json` 客户端配置；`tests/mcp/` 五测试。
 
 **MCP 双模式**
-- stdio：`python -m app.mcp`（Codex/Claude Code 本地直连）。
-- streamable-http：`python -m app.mcp --http --port 8901`（独立进程，远程客户端）。
+- stdio：`python -m app.mcp`（Codex/Claude Code 本地直连，本地信任无 token）。
+- streamable-http：独立 `mcp` service（compose 已配，端口 8901），带 Bearer token 认证（`Authorization: Bearer lw-mcp-xxx` 查 mcp_clients 表，无效/缺失 401）。外部客户端配 `http://localhost:8901/mcp` + headers 带 token 即可接入。
+
+**MCP 客户端接入**：前端「设置 → MCP」注册客户端拿 token；WorkBuddy 配 `~/.workbuddy/mcp.json`（mcpServers.lumiweave.url=http://localhost:8901/mcp + headers.Authorization=Bearer <token>）。
 
 **依赖**：`requirements.txt` 加 `mcp==2.1.0`；升级 `pydantic 2.8.2→2.12.0`、`pydantic-settings 2.4.0→2.5.2`、`uvicorn 0.30.6→0.31.1`。
 

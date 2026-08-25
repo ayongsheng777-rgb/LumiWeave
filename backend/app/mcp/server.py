@@ -1,7 +1,7 @@
 """LumiWeave MCP Server 实例 + 工具注册（stdio + streamable-http 双模式）。
 
-- stdio 模式：`python -m app.mcp`（命令行，Codex/Claude Code 直接连）
-- HTTP 模式：main.py 挂载 `server.streamable_http_app()`（浏览器/远程可连）
+- stdio 模式：`python -m app.mcp`（命令行，Codex/Claude Code 直接连，本地信任无 token）
+- HTTP 模式：`python -m app.mcp --http --port 8901`（独立进程，带 Bearer token 认证）
 """
 from __future__ import annotations
 
@@ -32,3 +32,34 @@ register_workflow_tools(server)
 register_asset_tools(server)
 register_provider_tools(server)
 register_project_tools(server)
+
+
+def http_app():
+    """带 Bearer token 认证的 streamable-http ASGI app（供独立 HTTP 进程使用）。
+
+    每个请求校验 `Authorization: Bearer lw-mcp-xxx`（查 mcp_clients 表），
+    无效或缺失返回 401。stdio 模式走本地信任，不经此层。
+    """
+    from starlette.responses import JSONResponse
+
+    base = server.streamable_http_app(streamable_http_path="/mcp")
+
+    async def wrapped(scope, receive, send):
+        if scope["type"] == "http":
+            headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+            auth = headers.get("authorization", "")
+            token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+            if not token:
+                resp = JSONResponse({"error": "缺少 MCP token", "code": "AUTH_REQUIRED"}, status_code=401)
+                await resp(scope, receive, send)
+                return
+            from app.mcp.auth.token import verify_client_token
+            client = await verify_client_token(token)
+            if not client:
+                resp = JSONResponse({"error": "MCP token 无效", "code": "AUTH_REQUIRED"}, status_code=401)
+                await resp(scope, receive, send)
+                return
+        await base(scope, receive, send)
+
+    return wrapped
+
