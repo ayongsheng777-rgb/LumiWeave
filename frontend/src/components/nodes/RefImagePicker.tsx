@@ -1,7 +1,9 @@
 import { useWorkflowStore } from '../../store/workflowStore'
+import { useCanvasStore } from '../../store/canvasStore'
 
 // RefImagePicker — 从画布节点里挑「参考图」（角色图/场景图/道具图/图片/分镜结果），
 // 供视频节点的「首帧生视频」单选、「多参考生视频」多选使用。
+// 同时读「工作流画布」和「无限画布」两个 store 的节点，两套画布都能选。
 // 只列出已经生成出结果（有 url / video_url）的节点。
 export function RefImagePicker({
   value,
@@ -14,14 +16,16 @@ export function RefImagePicker({
   multiple?: boolean
   excludeId?: string
 }) {
-  const nodes = useWorkflowStore((s) => s.nodes)
+  const wfNodes = useWorkflowStore((s) => s.nodes)
+  const canvasObjects = useCanvasStore((s) => s.objects)
 
-  const candidates = nodes
+  const allNodes = [...wfNodes, ...canvasObjects]
+  const candidates = allNodes
     .filter((n) => n.id !== excludeId)
     .map((n) => {
       const d = (n.data || {}) as Record<string, unknown>
       const url = String((d.result as Record<string, unknown> | undefined)?.url ?? d.url ?? d.video_url ?? '')
-      const label = String(d.name ?? d.label ?? n.type ?? n.id)
+      const label = String(d.name ?? d.label ?? d.assetType ?? n.type ?? n.id)
       return { id: n.id, type: String(n.type ?? ''), label, url }
     })
     .filter((c) => c.url)

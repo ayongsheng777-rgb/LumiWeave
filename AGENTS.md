@@ -272,6 +272,19 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 **约定**：硅基流动图生图 `Qwen/Qwen-Image-Edit-2509`（¥0.3/张，多图最佳 1-3 张）、图生视频 `Wan-AI/Wan2.2-I2V-A14B`（¥2/视频）；无背景=纯白背景（非真透明 PNG）；多视角=turnaround sheet 一张图多视角。
 
+## 一·十七、无限画布 asset/video 节点升级（2026-08-26 完成）
+
+**根因**：阿勇报"前端没变化"——前端代码已更新，但他看的是「无限画布」模式（顶栏「无限画布」按钮），前几轮改的全是「工作流」模式（顶栏「工作流」按钮），两套独立画布。他的数据（story + char_1~4 asset 角色 + scene_1 asset 场景 + storyboard）在无限画布，那边 asset 卡片只有 prompt 输入框 + url 展示，**无生成按钮**。
+
+**改动**（阿勇选"两套都要"）：
+- `canvas/objectNodes.tsx`：重写 `AssetNode`（生成按钮 + assetType 下拉 + 无背景/多视角 + 场景参考角色图 + 生成方式 + 提示词优化/翻译 + 结果自适应）；重写 `VideoNode`（生视频模式文生/首帧/多参考 + 参考图多选 + 生成方式，走 renderMedia）
+- `RefImagePicker.tsx`：同时读 workflowStore + canvasStore，两套画布都能挑参考图
+
+**关键架构约定**：
+- 两套画布 = 两套 store：工作流画布 `workflowStore` + `components/nodes/*.tsx`；无限画布 `canvasStore` + `canvas/objectNodes.tsx`，节点组件**不通用**（各自 NodeShell），改功能要两边都改
+- 无限画布 `OBJECT_LIBRARY` 声明了 character/scene/prop 类型，但 `objectNodeTypes` **没注册**对应渲染组件（历史遗留不一致）；用户实际用 `asset` 类型（`assetType` 字段标记 角色/场景/道具），故升级的是 AssetNode
+- 前端 hash：`index-DubDqtx2.js`
+
 ## 二、服务拓扑与端口
 
 | 服务 | 镜像 | 宿主端口 → 容器 | 说明 |
