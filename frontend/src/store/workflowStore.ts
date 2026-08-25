@@ -9,7 +9,7 @@ import {
   type Node,
   type NodeChange,
 } from '@xyflow/react'
-import { runWorkflow, workflowLoad, workflowSave } from '../api'
+import { runWorkflow, workflowList, workflowLoad, workflowSave } from '../api'
 
 export type NodeStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
 
@@ -387,10 +387,17 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   loadLastWorkflow: async () => {
-    // 刷新后恢复上次打开的工作流（真正的数据在 PG，localStorage 只记「上次打开哪个」）
+    // 刷新后恢复上次打开的工作流（真正的数据在 PG，localStorage 只记「上次打开哪个」）。
+    // 兜底：没记过「上次」时，自动加载项目里最新一条工作流（否则画布永远空白）。
     try {
       const last = localStorage.getItem('lumiweave_last_wf')
-      if (last) await get().loadWorkflow(last)
+      if (last) {
+        await get().loadWorkflow(last)
+        return
+      }
+      const res = await workflowList(get().projectId)
+      const list = (res.data?.workflows as { id: string }[]) || []
+      if (list.length > 0) await get().loadWorkflow(list[0].id)
     } catch {
       /* ignore */
     }
