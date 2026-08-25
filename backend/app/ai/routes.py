@@ -52,6 +52,19 @@ async def ai_chat(request: Request):
     return {"result": result}
 
 
+@router.post("/prompt-optimize")
+async def ai_prompt_optimize(request: Request):
+    """提示词优化：先检索知识库+技能库，命中则参考优化，无匹配再 AI 自行理解生成。"""
+    data = await request.json() or {}
+    prompt = str(data.get("prompt") or "")
+    kind = str(data.get("kind") or "image")
+    model = str(data.get("model") or "")
+    if not prompt:
+        return JSONResponse(status_code=400, content={"error": "prompt 必填"})
+    from app.ai.prompt_optimizer import optimize_prompt
+    return await optimize_prompt(prompt, kind=kind, model=model)
+
+
 @router.get("/stats")
 async def ai_stats():
     return dict(client.stats)

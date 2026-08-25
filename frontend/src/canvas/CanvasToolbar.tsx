@@ -4,6 +4,7 @@ import { useCanvasStore } from '../store/canvasStore'
 import { canvasToWorkflow as toWfGraph } from './workflowAdapter'
 import { dagLayout } from './layout'
 import { Play, Save, Undo2, Redo2, Trash2, Wand2, Workflow } from 'lucide-react'
+import { emitLog } from '../components/LogPanel'
 
 export default function CanvasToolbar() {
   const { undo, redo, clear, projectId, objects, edges, updateNodeStatus, load } = useCanvasStore()
@@ -16,11 +17,34 @@ export default function CanvasToolbar() {
   const run = async () => {
     if (!objects.length || running) return
     setRunning(true)
-    objects.forEach((o) => updateNodeStatus(o.id, 'queued'))
+    const startTime = Date.now()
+    objects.forEach((o) => {
+      updateNodeStatus(o.id, 'queued')
+      emitLog({
+        nodeId: o.id,
+        nodeLabel: String(o.type || o.id),
+        nodeType: String(o.type || 'unknown'),
+        status: 'queued',
+        message: '节点已排队',
+      })
+    })
     try {
       const graph = toWfGraph(objects, edges)
       await runWorkflow(graph, (nodeId, status, result) => {
         updateNodeStatus(nodeId, status, result)
+        const obj = objects.find((o) => o.id === nodeId)
+        const elapsed = Date.now() - startTime
+        const label = obj ? String(obj.type || nodeId) : nodeId
+        const duration = elapsed > 0 ? elapsed : undefined
+        if (status === 'running') {
+          emitLog({ nodeId, nodeLabel: label, nodeType: String(obj?.type || 'unknown'), status: 'running', message: '执行中…' })
+        } else if (status === 'completed') {
+          const summary = typeof result === 'string' ? result.slice(0, 80) : JSON.stringify(result || {}).slice(0, 80)
+          emitLog({ nodeId, nodeLabel: label, nodeType: String(obj?.type || 'unknown'), status: 'completed', message: `完成 · ${summary}`, detail: typeof result === 'object' ? JSON.stringify(result, null, 2) : undefined, duration })
+        } else if (status === 'failed') {
+          const err = typeof result === 'object' && result !== null ? String((result as Record<string, unknown>).error || result) : String(result)
+          emitLog({ nodeId, nodeLabel: label, nodeType: String(obj?.type || 'unknown'), status: 'failed', message: `失败 · ${err.slice(0, 60)}`, detail: err })
+        }
       })
     } catch (e) {
       console.warn('工作流执行失败', e)

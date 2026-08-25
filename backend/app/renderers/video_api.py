@@ -22,12 +22,14 @@ from app.renderers.registry import BaseRenderer, RendererConfig
 
 def detect_provider(endpoint: str, client_id: str = "") -> str:
     hint = ((endpoint or "") + " " + (client_id or "")).lower()
-    if "minimax" in hint or "hailuo" in hint:
-        return "minimax"
+    if "minimax" in hint or "hailuo" in hint or "h3" in hint:
+        return "minimax_h3"
     if "kling" in hint or "kuaishou" in hint or "lingmou" in hint:
         return "kling"
     if "siliconflow" in hint:
         return "siliconflow"
+    if "ltx" in hint:
+        return "ltx_video"
     return "openai"
 
 
@@ -158,9 +160,14 @@ class VideoApiConnector(BaseRenderer):
         ratio = str(p.get("ratio") or "16:9")
         image_url = str(p.get("image_url") or "")
         negative = str(p.get("negative_prompt") or "")
-        mode = str(p.get("mode") or ("image2video" if image_url else "text2video"))
+        # 多参考图：角色图/场景图/道具图等，全部作为参考（MiniMax subject_reference 支持多图）
+        raw_refs = p.get("reference_images") or p.get("reference") or []
+        if isinstance(raw_refs, str):
+            raw_refs = [raw_refs]
+        reference_images = [str(u).strip() for u in raw_refs if u and str(u).strip()] if isinstance(raw_refs, (list, tuple)) else []
+        mode = str(p.get("mode") or ("image2video" if (image_url or reference_images) else "text2video"))
 
-        if self.provider == "minimax":
+        if self.provider in ("minimax", "minimax_h3"):
             payload: dict[str, Any] = {
                 "model": model or "Hailuo-02",
                 "prompt": prompt,
@@ -168,8 +175,12 @@ class VideoApiConnector(BaseRenderer):
             }
             if negative:
                 payload["negative_prompt"] = negative
-            if image_url:
-                payload["subject_reference"] = [{"type": "image", "url": image_url}]
+            # subject_reference 支持多图：多个角色/场景/道具参考图合并
+            refs = [{"type": "image", "url": u} for u in reference_images]
+            if image_url and not refs:
+                refs = [{"type": "image", "url": image_url}]
+            if refs:
+                payload["subject_reference"] = refs
             return "/v1/video_generation", payload
 
         if self.provider == "kling":
@@ -219,7 +230,7 @@ class VideoApiConnector(BaseRenderer):
         return mapping.get(ratio, "1280x720")
 
     def _extract_task_id(self, data: dict[str, Any]) -> str:
-        if self.provider == "minimax":
+        if self.provider in ("minimax", "minimax_h3"):
             return str(data.get("task_id") or data.get("id") or "")
         if self.provider == "kling":
             d = data.get("data") or {}
@@ -229,7 +240,7 @@ class VideoApiConnector(BaseRenderer):
         return str(data.get("id") or data.get("task_id") or "")
 
     def _status_path(self, rid: str) -> str:
-        if self.provider == "minimax":
+        if self.provider in ("minimax", "minimax_h3"):
             return f"/v1/query/video_generation?task_id={rid}"
         if self.provider == "kling":
             return f"/v1/videos/text2video/{rid}"
@@ -241,7 +252,7 @@ class VideoApiConnector(BaseRenderer):
         return self._status_path(rid)
 
     def _parse_status(self, data: dict[str, Any]) -> str:
-        if self.provider == "minimax":
+        if self.provider in ("minimax", "minimax_h3"):
             st = str(data.get("status", "")).lower()
             if st in ("success", "succeed", "completed", "complete"):
                 return "completed"
@@ -271,7 +282,7 @@ class VideoApiConnector(BaseRenderer):
 
     def _extract_videos(self, data: dict[str, Any]) -> list[dict[str, str]]:
         out: list[dict[str, str]] = []
-        if self.provider == "minimax":
+        if self.provider in ("minimax", "minimax_h3"):
             url = data.get("file") or data.get("video_url") or ""
             if url:
                 out.append({"url": url, "type": "video/mp4"})

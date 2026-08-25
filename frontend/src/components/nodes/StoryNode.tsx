@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useWorkflowStore } from '../../store/workflowStore'
 import { NodeShell, Field, inputCls } from './NodeShell'
 import { filmStoryParse } from '../../api'
+import { emitLog } from '../LogPanel'
 
 const GENRES = ['科幻', '奇幻', '爱情', '战争', '悬疑', '喜剧', '动作', '动画', '惊悚', '纪录片']
 const STYLES = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋克', '蒸汽朋克', '古风']
@@ -31,6 +32,8 @@ export function StoryNode({ id, data, selected }: NodeProps) {
     if (!story.trim()) { setError('请先输入故事内容'); return }
     setBusy(true); setError('')
     update(id, { status: 'running' })
+    emitLog({ nodeId: id, nodeLabel: '故事输入', nodeType: 'story', status: 'running', message: 'AI 解析故事中…' })
+    const t0 = Date.now()
     try {
       const res = await filmStoryParse({ text: story, genre, style, ratio, duration })
       if (res.ok !== false && res.data) {
@@ -41,14 +44,18 @@ export function StoryNode({ id, data, selected }: NodeProps) {
           scenes:    parsed.scenes    || [],
           props:     parsed.props     || [],
           storyboard: parsed.shots    || [],
+          shots:     parsed.shots    || [],   // 兼容：同时写 shots 字段，供 StoryboardNode 读取
         })
+        emitLog({ nodeId: id, nodeLabel: '故事输入', nodeType: 'story', status: 'completed', message: `解析完成 · ${(parsed.characters || []).length}角色/${(parsed.scenes || []).length}场景/${(parsed.shots || []).length}分镜`, duration: Date.now() - t0 })
       } else {
         setError((res.error || '解析失败') as string)
         update(id, { status: 'failed' })
+        emitLog({ nodeId: id, nodeLabel: '故事输入', nodeType: 'story', status: 'failed', message: `解析失败 · ${String(res.error || '').slice(0, 60)}` })
       }
     } catch (e) {
       setError(String(e))
       update(id, { status: 'failed' })
+      emitLog({ nodeId: id, nodeLabel: '故事输入', nodeType: 'story', status: 'failed', message: `解析失败 · ${String(e).slice(0, 60)}` })
     } finally {
       setBusy(false)
     }

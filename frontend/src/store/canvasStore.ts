@@ -22,7 +22,7 @@ export const OBJECT_LIBRARY: { type: string; label: string; defaultData: Record<
   { type: 'scene',       label: '场景',       defaultData: { name: '', location: '', time: '白天', weather: '晴', camera: 'wide shot', description: '' }, size: { width: 280, height: 340 } },
   { type: 'prop',        label: '道具',       defaultData: { name: '', prompt: '', bind_type: '', bind_id: '' }, size: { width: 260, height: 260 } },
   // ── 分镜 ─────────────────────────────────────────────────
-  { type: 'storyboard',  label: '分镜',       defaultData: { shots: [], ratio: '16:9', total_duration: 0 }, size: { width: 320, height: 300 } },
+  { type: 'storyboard',  label: '分镜',       defaultData: { shots: [], ratio: '16:9', total_duration: 0, status: 'idle' }, size: { width: 340, height: 480 } },
   // ── 媒体生成 ──────────────────────────────────────────────
   { type: 'image',       label: '图片',       defaultData: { prompt: '', ratio: '16:9', style: '电影感', url: '' }, size: { width: 300, height: 280 } },
   { type: 'video',       label: '视频',       defaultData: { prompt: '', images: [], camera: 'static', duration: 10, fps: 24, ratio: '16:9', video_url: '' }, size: { width: 320, height: 340 } },

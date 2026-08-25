@@ -202,8 +202,30 @@ export async function getRendererHealth(rendererId: string) {
   return request('GET', `/renderers/${rendererId}/health`)
 }
 
-export async function rendererGenerate(rendererId: string, workflow: Record<string, unknown>) {
-  return request('POST', `/renderers/${rendererId}/generate`, { workflow })
+// params 形如 {prompt, negative, seed, steps, width, height, ratio}
+// mode: 'text2image' | 'text2video'
+export async function rendererGenerate(
+  rendererId: string,
+  payload: { params: Record<string, unknown>; mode?: string },
+) {
+  return request('POST', `/renderers/${rendererId}/generate`, payload)
+}
+
+// 统一媒体生成入口（节点「生成」按钮）：kind image|video
+export async function renderMedia(payload: {
+  kind: string
+  render_mode: string
+  provider_id?: string
+  model?: string
+  renderer_id?: string
+  params: Record<string, unknown>
+}) {
+  return request('POST', '/renderers/media/generate', payload)
+}
+
+// 提示词优化：知识库+技能库优先，AI 兜底
+export async function promptOptimize(payload: { prompt: string; kind?: string; model?: string }) {
+  return request('POST', '/ai/prompt-optimize', payload)
 }
 
 export async function rendererCancel(rendererId: string, promptId: string) {
@@ -448,11 +470,16 @@ async function mcpCall(toolName: string, params: Record<string, unknown>) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const t = getToken()
   if (t) headers['Authorization'] = `Bearer ${t}`
-  const res = await fetch(`/mcp/call/${toolName}`, {
+  const res = await fetch(`${API_BASE}/mcp/call/${toolName}`, {
     method: 'POST',
     headers,
     body: JSON.stringify(params),
   })
+  if (res.status === 401) {
+    clearToken()
+    window.location.reload()
+    throw new Error('未授权')
+  }
   return res.json().catch(() => ({ error: '网络错误' }))
 }
 
@@ -464,6 +491,7 @@ export async function filmStoryParse(params: {
 
 export async function filmStoryboardGenerate(params: {
   characters_json?: string; scenes_json?: string;
+  story_text?: string;
   genre?: string; style?: string; ratio?: string; total_duration?: number
 }) {
   return mcpCall('film.storyboard_generate', params)
@@ -472,14 +500,16 @@ export async function filmStoryboardGenerate(params: {
 export async function filmCharacterGenerate(params: {
   name: string; description: string; prompt: string;
   style?: string; pose?: string; expression?: string;
-  reference_urls?: string[]; seed?: string
+  reference_urls?: string[]; seed?: string;
+  render_mode?: string; provider_id?: string; model?: string; renderer_id?: string
 }) {
   return mcpCall('film.character_generate', params)
 }
 
 export async function filmSceneGenerate(params: {
   name: string; location: string; time?: string; weather?: string;
-  camera?: string; description: string; style?: string; reference_urls?: string[]
+  camera?: string; description: string; style?: string; reference_urls?: string[];
+  render_mode?: string; provider_id?: string; model?: string; renderer_id?: string
 }) {
   return mcpCall('film.scene_generate', params)
 }

@@ -141,11 +141,16 @@ export default function RendererPanel() {
             </label>
             <label className="col-span-2 block">
               <span className="mb-1 block text-[11px] text-ink-2">{form.type === 'video-api' ? '视频 API 端点 URL' : 'ComfyUI 端点 URL'}</span>
-              <input className={inputCls} value={form.endpoint} onChange={(e) => setForm({ ...form, endpoint: e.target.value })} placeholder={form.type === 'video-api' ? '如 https://api.minimax.chat 或 https://api.klingai.com 或 https://api.siliconflow.cn' : 'http://127.0.0.1:8188 或 http://comfyui:8188'} />
+              <input className={inputCls} value={form.endpoint} onChange={(e) => setForm({ ...form, endpoint: e.target.value })} placeholder={form.type === 'video-api' ? '如 https://api.minimax.chat 或 https://api.klingai.com 或 https://api.siliconflow.cn' : 'http://127.0.0.1:8188 或局域网 http://192.168.x.x:8188'} />
             </label>
             {form.type === 'video-api' && (
               <div className="col-span-2 rounded-lg border border-edge bg-soft px-3 py-2 text-[11px] text-ink-2">
                 视频 API 会自动识别服务商：MiniMax H3（api.minimax.chat）、可灵（api.klingai.com）、硅基流动（api.siliconflow.cn）、其它走 OpenAI 兼容。填对应 endpoint + API Key 即可。
+              </div>
+            )}
+            {form.type === 'comfyui' && (
+              <div className="col-span-2 rounded-lg border border-edge bg-soft px-3 py-2 text-[11px] text-ink-2">
+                ComfyUI 端点支持本机（127.0.0.1:8188）或局域网地址（如 http://192.168.1.100:8188），后端容器需能访问到该地址即可。节点里「生成方式」选 ComfyUI 后会优先用这里配置的端点，不再写死本机。
               </div>
             )}
             <label className="block">

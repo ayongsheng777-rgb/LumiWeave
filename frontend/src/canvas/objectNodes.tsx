@@ -4,6 +4,7 @@ import { useCanvasStore } from '../store/canvasStore'
 import { aiChat, getRenderers, getSkills, rendererGenerate } from '../api'
 import { cameraLabel } from '../cameraLabels'
 import NodeShell from './NodeShell'
+import { StoryboardNodeCanvas } from '../components/nodes/StoryboardNodeCanvas'
 
 type ObjData = Record<string, unknown>
 
@@ -273,4 +274,5 @@ export const objectNodeTypes = {
   image: ImageNode,
   video: VideoNode,
   ai_result: AiResultNode,
+  storyboard: StoryboardNodeCanvas,
 }

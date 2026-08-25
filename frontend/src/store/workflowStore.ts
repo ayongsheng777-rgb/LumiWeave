@@ -10,6 +10,7 @@ import {
   type NodeChange,
 } from '@xyflow/react'
 import { runWorkflow, workflowList, workflowLoad, workflowSave } from '../api'
+import { dagLayout } from '../canvas/layout'
 
 export type NodeStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
 
@@ -232,6 +233,7 @@ interface WorkflowState {
   updateNodeData: (id: string, data: Record<string, unknown>) => void
   removeNode: (id: string) => void
   toggleLock: (id: string) => void
+  applyAutoLayout: () => void
   clearAll: () => void
   setNodeStatus: (id: string, s: NodeStatus) => void
   setNodeOutput: (id: string, output: unknown) => void
@@ -298,6 +300,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   clearAll: () => set({ nodes: [], edges: [], nodeStatus: {}, nodeOutputs: {}, workflowId: '' }),
 
+  applyAutoLayout: () => set((s) => ({ nodes: dagLayout(s.nodes, s.edges) })),
+
   setNodeStatus: (id, st) => set((s) => ({ nodeStatus: { ...s.nodeStatus, [id]: st } })),
   setNodeOutput: (id, output) => set((s) => ({ nodeOutputs: { ...s.nodeOutputs, [id]: output } })),
   resetStatus: () => set({ nodeStatus: {}, nodeOutputs: {} }),
@@ -334,6 +338,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       setRunError((e as Error).message)
     } finally {
       setRunning(false)
+      // 出结果后自动排列一次，避免节点内容变化导致重叠
+      get().applyAutoLayout()
     }
   },
 

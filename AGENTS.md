@@ -231,6 +231,47 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 **StoryNode AI 解析流程**：用户在 StoryNode 填故事→选类型/风格/比例→点「AI 解析」→前端调用 `filmStoryParse()`（POST `/api/v2/mcp/call`）→MCP film.story_parse 工具执行→返回 characters/scenes/props/storyboard JSON→StoryNode 渲染解析结果展示。
 
+## 一·十四、节点生图/生视频五项优化（2026-08-26 完成）
+
+阿勇五项需求一次性落地并验收（backend + frontend 镜像均已重建上线，真实硅基流动出图验证 ~11.7s）：
+
+**根因**：节点「生成」按钮没接通「生成方式/供应商」——角色/场景走 `film.character_generate`→`dispatch_render_task`（写死本地 127.0.0.1:8188），图片/视频/道具走「第一个启用渲染器」，云端 provider 选择全被忽略 → 云端出图一直卡「生图中」；且角色节点 `prompt` 字段被后端忽略。
+
+**改动**
+1. **提示词翻译（只显示不改原文）**：`PromptTranslate.tsx` 改中英双向互译、仅展示；`film_character/scene_generate` 真正用上 `prompt` 字段（原生语种引用，不强制翻译）。
+2. **详细过程日志**：`providers/cloud_gen.py` 重写，返回结构化 `logs`（路由→provider→model→提交→轮询→完成/报错+耗时）；新增 `renderers/generate.py` 的 `render_media()`；前端 `LogPanel.emitRenderLogs()` 逐条打印。
+3. **云端出图修复**：新增 `POST /api/renderers/media/generate` 统一端点（**声明在 `/{renderer_id}/generate` 之前，否则被动态段吞掉**）；`render_media` 按 render_mode 路由 cloud→cloud_gen / comfyui→渲染器。
+4. **模型方案 + 提示词优化**：`GenerationModeField` 加模型下拉（云端取 provider.models / comfyui 填 checkpoint）+ 渲染器下拉；新增 `PromptOptimize.tsx` 手动按钮 + `POST /api/ai/prompt-optimize`（`ai/prompt_optimizer.py`：先搜 prompt_knowledge+skills，命中参考优化，无匹配 AI 兜底）。
+5. **ComfyUI 局域网**：节点按钮不再写死 127.0.0.1，改用渲染器 endpoint（可填局域网 IP）；RendererPanel 加局域网说明。
+
+**验证**：py_compile/tsc/vite build 全过；`/media/generate`（cloud 无 provider 报明确错误、comfyui 走配置渲染器）、`/ai/prompt-optimize`（命中 KB 返回 source=kb）、film.character_generate（cloud 路由）回归通过；真实硅基流动 Qwen-Image 出图返回有效 URL。验收脚本 `tmp/verify_lumiweave_optimize.py`（自带 TOTP，无 pyotp 依赖）。
+
+**约定**：硅基流动 Qwen-Image `image_size` 默认 1024x1024 合法，`cloud_gen` 用 `batch_size:1`+`num_inference_steps`；provider 已配 image=Qwen/Qwen-Image、video=Wan-AI/Wan2.2-T2V-A14B。
+
+## 一·十五、日志任务化 + 配置统一 + 结果自适应（2026-08-26 完成）
+
+阿勇追加三项，仅前端（frontend 镜像已重建上线）：
+
+1. **日志任务化**：重写 `LogPanel.tsx` 总线——一次生成=一个「任务」，running→completed/failed 同条目更新（修掉"完成后一直转圈"），点任务展开看 steps。新增 `startTask/taskStep/taskLogs/taskEnd`，保留 `emitLog/emitRenderLogs` 兼容签名（内部按 `nodeId|nodeType` 合并 running→completed，旧节点代码无需改）。
+2. **分镜配置同步角色节点**：重写 `ShotGenerator.tsx`——改用 `GenerationModeField`（comfyui/cloud + provider + 模型 + 渲染器下拉）+ `PromptOptimize` + `PromptTranslate`（双向），生成走统一 `renderMedia`；`Shot` 增加 `render_mode/provider_id/model` 字段（兼容旧 `renderer_type`）。
+3. **结果自适应画面尺寸**：新增 `ResultMedia.tsx`（img 读 naturalWidth/Height、video 读 videoWidth/Height，aspect-ratio 自适应 + maxH 兜底 object-contain，不裁剪不变形）；替换 Character/Image/Scene/Prop/FilmVideo/Layout 节点 + ShotGenerator + ShotChainPanel 的固定高度结果展示。
+
+**约定**：无限画布 `objectNodes.tsx` 的结果用 `.obj-img`（object-fit:cover 填满对象框）属对象节点自身尺寸，**不改**；日志任务合并按 `nodeId|nodeType` 匹配 running 任务，同节点并发会互相覆盖 running 映射（分镜逐个生成可接受）。
+
+## 一·十六、生视频多模式 + 无背景/多视角 + 自动排列（2026-08-26 完成）
+
+阿勇拍板：**多参考视频接 MiniMax 多图、手动+自动排列、四条线一次性全做**（穿插：角色/道具加无背景+多视角）。backend + frontend 镜像已重建上线。
+
+**根因回顾**：场景生成（`film_scene_generate`/engine scene）只拼「风格+地点+时间+天气+镜头+描述」，不引用角色 → "四个女人"在场景/视频环节丢失；视频节点只做文生视频，没接图生视频；对象画布的 asset 卡片无「生成」按钮。
+
+**改动**
+- 后端：`cloud_gen.py` 加图生图（`reference_images`→Qwen-Image-Edit-2509 多图合成）+ 图生视频（image_url→切 I2V）；`video_api.py` MiniMax `subject_reference` 多图；`render_media` 重写（多参考自动走 video-api 渲染器）；`film_tools` 新增 `film.video_generate`（3 模式 + 参数不全 `needs_input` 询问式），MCP 工具 28 个。
+- 前端：`CharacterNode/PropNode` 加「背景」「视角」（无背景纯白底 / 三视图·四视图 turnaround）；`FilmVideoNode` 加生视频模式 + 首帧/多参考选图；新增 `RefImagePicker.tsx`；`ShotGenerator` 加输出图/视频切换 + 生视频模式 + 参考图；`dagLayout` 改尺寸感知防重叠 + `workflowStore.applyAutoLayout` + run 后自动排 + 画布「自动排列」按钮；`ChatPanel` 带历史多轮 + system 询问式指令。
+
+**待办（外部条件）**：🔴 多参考生视频需 MiniMax H3 video-api 渲染器（endpoint 含 minimax/hailuo/h3 + key），当前 renderers 表只有 comfy-local，需在「设置-出图配置」补。
+
+**约定**：硅基流动图生图 `Qwen/Qwen-Image-Edit-2509`（¥0.3/张，多图最佳 1-3 张）、图生视频 `Wan-AI/Wan2.2-I2V-A14B`（¥2/视频）；无背景=纯白背景（非真透明 PNG）；多视角=turnaround sheet 一张图多视角。
+
 ## 二、服务拓扑与端口
 
 | 服务 | 镜像 | 宿主端口 → 容器 | 说明 |

@@ -17,7 +17,7 @@ WF_TO_CANVAS: dict[str, str] = {
     'character': 'asset',
     'scene': 'asset',
     'prop': 'asset',
-    'storyboard': 'text',
+    'storyboard': 'storyboard',
     'image': 'image',
     'video': 'video',
     'audio': 'asset',
@@ -37,6 +37,7 @@ CANVAS_TO_WF: dict[str, str] = {
     'input': 'story', 'asset': 'character', 'image': 'image', 'video': 'video',
     'prompt': 'prompt', 'analyze': 'analyze', 'skill': 'skill', 'output': 'output',
     'text': 'text', 'note': 'note', 'llm': 'llm', 'render': 'render',
+    'storyboard': 'storyboard',
 }
 
 _FILM_ASSET_LABEL = {'character': '角色', 'scene': '场景', 'prop': '道具'}
@@ -66,7 +67,7 @@ def wf_content(ntype: str, data: dict[str, Any]) -> dict[str, Any]:
     if ntype == 'story':
         return {'text': data.get('text', '')}
     if ntype == 'storyboard':
-        return {'text': _storyboard_text(data)}
+        return {'text': _storyboard_text(data), 'shots': data.get('shots', [])}
     if ntype == 'image':
         return {'prompt': data.get('prompt', ''), 'url': data.get('url', ''), 'ratio': data.get('ratio', '')}
     if ntype == 'video':
@@ -87,17 +88,36 @@ def wf_content(ntype: str, data: dict[str, Any]) -> dict[str, Any]:
 
 def wf_to_canvas(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     objects: list[dict[str, Any]] = []
+    # 是否存在独立的 storyboard 节点（有则不再从 story 节点重复生成）
+    has_storyboard_node = any(str(n.get('type', '')) == 'storyboard' for n in nodes)
+
     for n in nodes:
         ntype = str(n.get('type', 'text'))
         ctype = WF_TO_CANVAS.get(ntype, 'text')
         data = n.get('data') or {}
         if not isinstance(data, dict):
             data = {}
+        pos = n.get('position') or {'x': 0, 'y': 0}
+
+        # story 节点：分镜数据可能存于 data.storyboard / data.shots（StoryNode 解析产物），
+        # 转画布时若没有独立 storyboard 节点，则额外生成一个 storyboard 对象，避免分镜丢失
+        if ntype == 'story' and not has_storyboard_node:
+            shots = data.get('storyboard') or data.get('shots') or []
+            if shots:
+                objects.append({
+                    'id': f"{n.get('id')}_storyboard",
+                    'type': 'storyboard',
+                    'content': {'text': _storyboard_text({'shots': shots}), 'shots': shots},
+                    'position': {'x': pos.get('x', 0) + 400, 'y': pos.get('y', 0)},
+                    'size': {},
+                    'metadata': {'_wf_type': 'storyboard', '_wf_data': {'shots': shots}},
+                })
+
         objects.append({
             'id': n.get('id'),
             'type': ctype,
             'content': wf_content(ntype, data),
-            'position': n.get('position') or {'x': 0, 'y': 0},
+            'position': pos,
             'size': n.get('size') or {},
             'metadata': {'_wf_type': ntype, '_wf_data': data},
         })
@@ -119,9 +139,29 @@ def canvas_to_wf(objects: list[dict[str, Any]], edges: list[dict[str, Any]]) -> 
         if not isinstance(meta, dict):
             meta = {}
         wf_type = meta.get('_wf_type') or CANVAS_TO_WF.get(ctype, ctype)
-        data = meta.get('_wf_data') or (o.get('content') or {})
+
+        content = o.get('content') or {}
+        if not isinstance(content, dict):
+            content = {'text': str(content)}
+
+        _wf_data = meta.get('_wf_data') or {}
+
+        # storyboard 特殊处理：content.shots 是 canvas 侧保存的完整数据，
+        # 优先级高于 _wf_data（_wf_data 可能是早期转换的旧格式，只有 text 无 shots）
+        if ctype == 'storyboard' and 'shots' in content:
+            _wf_data = dict(_wf_data, shots=content['shots'])
+
+        # 最终 node.data：优先用 _wf_data，content 作兜底
+        data = dict(_wf_data) if _wf_data else {}
+        if not data:
+            data = dict(content)
         if not isinstance(data, dict):
             data = {'text': str(data)}
+
+        # storyboard 双保险：若最终 data 仍无 shots 而 content 有，补进去
+        if ctype == 'storyboard' and 'shots' in content and 'shots' not in data:
+            data = dict(data, shots=content['shots'])
+
         nodes.append({
             'id': o.get('id'),
             'type': wf_type,

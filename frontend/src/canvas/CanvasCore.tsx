@@ -40,7 +40,14 @@ function CanvasCoreInner() {
         id: String(o.id),
         type: String(o.type || 'text'),
         position: (o.position as { x: number; y: number }) || { x: 0, y: 0 },
-        data: (o.content as Record<string, unknown>) || {},
+        data: (() => {
+          const c = (o.content as Record<string, unknown>) || {}
+          // storyboard 类型：content.shots 透传到 data（避免画布加载后 shots 丢失）
+          if (o.type === 'storyboard' && Array.isArray(c.shots)) {
+            return { ...c, shots: c.shots }
+          }
+          return c
+        })(),
         style: (o.size as { width?: number; height?: number })?.width
           ? { width: (o.size as { width: number }).width, height: (o.size as { height: number }).height }
           : undefined,

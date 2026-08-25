@@ -48,9 +48,15 @@ export default function ChatPanel() {
     setMessages((prev) => [...prev, { role: 'user', content: text }])
 
     try {
+      // 带上最近几轮对话，让 AI 能多轮追问关键配置（而不是直接假设）
+      const history = messages.slice(-6).map((m) => `${m.role === 'user' ? '用户' : '助手'}：${m.content}`).join('\n')
+      const fullUser = history ? `${history}\n用户：${text}` : text
       const res = await aiChat({
-        system: '你是绵绣 LumiWeave 平台的 AI 创作助手，帮用户完成文案、提示词、创意构思等创作任务，回答简洁实用。',
-        user: text,
+        system: '你是绵绣 LumiWeave 平台的 AI 创作助手，帮用户完成文案、提示词、创意构思等创作任务。'
+          + '重要：当用户要「生成视频」时，先询问并确认三件事——①生视频模式（文生视频 / 首帧生视频 / 多参考生视频）；②首帧图或多参考图用哪些（角色图/场景图/道具图）。'
+          + '当用户要「生成图片/角色/道具/场景」时，先询问是否需要「无背景」和「多视角（三视图/四视图）」。'
+          + '拿到用户明确答复后再给出配置建议，不要擅自假设参数。回答简洁实用。',
+        user: fullUser,
         scenario: 'chat',
       })
       if (res.ok) {

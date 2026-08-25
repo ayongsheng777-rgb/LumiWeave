@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { Mountain } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
-import { getProviders } from '../../api'
+import { getProviders, getRenderers, filmSceneGenerate } from '../../api'
 import { cameraLabel } from '../../cameraLabels'
 import { NodeShell, Field, inputCls } from './NodeShell'
-import { GenerationModeField } from './GenerationModeField'
+import { GenerationModeField, type ProviderInfo, type RendererInfo } from './GenerationModeField'
+import { PromptOptimize } from './PromptOptimize'
+import { ResultMedia } from './ResultMedia'
+import { emitLog, emitRenderLogs } from '../LogPanel'
 
 const LOCATIONS = ['城市', '森林', '空间站', '房间', '战场', '幻想世界', '海边', '沙漠', '雪地', '废弃工厂', '自定义']
 const TIMES     = ['白天', '黄昏', '夜晚', '黎明', '深夜']
@@ -16,11 +19,15 @@ const STYLES    = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋�
 export function SceneNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
-  const [providers, setProviders] = useState<{ id: string; name: string }[]>([])
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const [renderers, setRenderers] = useState<RendererInfo[]>([])
 
   useEffect(() => {
     getProviders().then((r) => {
       if (r.ok) setProviders((r.data.providers || []).filter((p: { type: string }) => p.type === 'image'))
+    })
+    getRenderers().then((r) => {
+      if (r.ok) setRenderers((r.data.renderers || []).filter((rr: { type: string }) => rr.type === 'comfyui'))
     })
   }, [])
 
@@ -35,8 +42,35 @@ export function SceneNode({ id, data, selected }: NodeProps) {
   const url     = String((d.result as Record<string, unknown>)?.url ?? '')
   const renderMode = String(d.render_mode ?? 'comfyui')
   const providerId = String(d.provider_id ?? '')
+  const rendererId = String(d.renderer_id ?? '')
+  const model    = String(d.model ?? '')
 
-  const run = () => update(id, { action: 'execute' })
+  const run = async () => {
+    if (!loc.trim() && !desc.trim()) { update(id, { status: 'failed', error: '请先输入地点或场景描述' }); return }
+    update(id, { status: 'running' })
+    emitLog({ nodeId: id, nodeLabel: '场景设计', nodeType: 'scene', status: 'running', message: `开始生成 · ${renderMode === 'cloud' ? `云端(${providerId || '未选'})` : 'ComfyUI'}` })
+    const t0 = Date.now()
+    try {
+      const res = await filmSceneGenerate({
+        name, location: loc, time, weather, camera, description: desc, style, reference_urls: refs,
+        render_mode: renderMode, provider_id: providerId, model, renderer_id: rendererId,
+      })
+      const data = res as unknown as { ok?: boolean; error?: string; data?: Record<string, unknown> }
+      if (data.ok !== false && data.data) {
+        emitRenderLogs((data.data.logs as unknown[]) || [], id, '场景设计', 'scene')
+        update(id, { status: 'completed', result: data.data })
+        emitLog({ nodeId: id, nodeLabel: '场景设计', nodeType: 'scene', status: 'completed', message: '场景图生成完成', duration: Date.now() - t0 })
+      } else {
+        const err = String(data.error || '生成失败')
+        emitRenderLogs((data.data as Record<string, unknown> | undefined)?.logs, id, '场景设计', 'scene')
+        update(id, { status: 'failed', error: err })
+        emitLog({ nodeId: id, nodeLabel: '场景设计', nodeType: 'scene', status: 'failed', message: `生成失败 · ${err.slice(0, 80)}`, detail: err })
+      }
+    } catch (e) {
+      update(id, { status: 'failed', error: String(e) })
+      emitLog({ nodeId: id, nodeLabel: '场景设计', nodeType: 'scene', status: 'failed', message: `生成失败 · ${String(e).slice(0, 80)}` })
+    }
+  }
 
   return (
     <NodeShell id={id} selected={selected} title="场景设计" icon={<Mountain size={15} />}>
@@ -69,6 +103,8 @@ export function SceneNode({ id, data, selected }: NodeProps) {
       <Field label="场景描述">
         <textarea className={inputCls} rows={2} value={desc} placeholder="补充场景细节……"
           onChange={(e) => update(id, { description: e.target.value })} />
+        <PromptOptimize prompt={desc} kind="image" model={model} nodeLabel="场景设计"
+          onApply={(v) => update(id, { description: v })} />
       </Field>
       <Field label="风格">
         <select className={inputCls} value={style} onChange={(e) => update(id, { style: e.target.value })}>
@@ -80,14 +116,19 @@ export function SceneNode({ id, data, selected }: NodeProps) {
           {refs.map((r, i) => <img key={i} src={r} className="h-12 w-12 rounded-md object-cover" alt="ref" />)}
         </div>
       )}
-      {url ? <img className="h-28 w-full rounded-md object-cover" src={url} alt="场景图" />
+      {url ? <ResultMedia url={url} />
         : <div className="flex h-20 items-center justify-center rounded-md bg-soft text-[11px] text-ink-3">点击生成获取场景图</div>}
       <GenerationModeField
         mode={renderMode}
         providerId={providerId}
         providers={providers}
+        rendererId={rendererId}
+        renderers={renderers}
+        model={model}
         onModeChange={(v) => update(id, { render_mode: v })}
         onProviderChange={(v) => update(id, { provider_id: v })}
+        onRendererChange={(v) => update(id, { renderer_id: v })}
+        onModelChange={(v) => update(id, { model: v })}
       />
       <button className="nodrag w-full rounded-lg bg-brand-500 px-3 py-2 text-sm text-white transition hover:bg-brand-600 disabled:opacity-50"
         onClick={run}>

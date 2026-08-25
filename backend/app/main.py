@@ -26,6 +26,7 @@ from app.tasks.routes import router as task_router
 from app.tools import register_canvas_tools
 from app.token_usage.routes import router as token_router
 from app.api_v2 import router as api_v2_router
+from app.mcp.call_routes import router as mcp_call_router
 
 PUBLIC_EXACT = {"/api/health"}
 PUBLIC_PREFIXES = ("/api/auth/",)
@@ -161,3 +162,4 @@ app.include_router(skill_router, prefix="/api/skills")
 app.include_router(renderer_router, prefix="/api/renderers")
 app.include_router(prompt_kb_router, prefix="/api/prompt-kb")
 app.include_router(api_v2_router, prefix="/api/v2")
+app.include_router(mcp_call_router, prefix="/api/mcp/call")

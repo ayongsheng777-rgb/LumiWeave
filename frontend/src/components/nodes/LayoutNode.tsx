@@ -2,6 +2,7 @@ import { type NodeProps } from '@xyflow/react'
 import { Layout } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
 import { NodeShell, Field, inputCls } from './NodeShell'
+import { ResultMedia } from './ResultMedia'
 
 const TEMPLATES = [
   { value: 'film_poster', label: '电影海报' },
@@ -34,7 +35,7 @@ export function LayoutNode({ id, data, selected }: NodeProps) {
           {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </Field>
-      {url ? <img className="h-36 w-full rounded-md object-cover" src={url} alt="排版预览" />
+      {url ? <ResultMedia url={url} />
         : <div className="flex h-24 items-center justify-center rounded-md bg-soft text-[11px] text-ink-3">
             排版结果预览
           </div>}

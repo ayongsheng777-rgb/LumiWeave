@@ -2,22 +2,36 @@ import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { User } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
-import { getProviders } from '../../api'
+import { getProviders, getRenderers, filmCharacterGenerate } from '../../api'
 import { NodeShell, Field, inputCls } from './NodeShell'
-import { GenerationModeField } from './GenerationModeField'
+import { GenerationModeField, type ProviderInfo, type RendererInfo } from './GenerationModeField'
+import { PromptTranslate } from './PromptTranslate'
+import { PromptOptimize } from './PromptOptimize'
+import { ResultMedia } from './ResultMedia'
+import { emitLog, emitRenderLogs } from '../LogPanel'
 
 const STYLES = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋克', '古风']
 const POSES  = ['', '站立', '行走', '战斗姿态', '坐姿', '跑步', '飞行', '持械', '休闲']
 const EXPRESSIONS = ['', '冷峻', '微笑', '愤怒', '悲伤', '惊讶', '坚定', '神秘', '欢乐']
+const BACKGROUNDS = ['有背景', '无背景']
+const VIEWS = ['单视角', '三视图', '四视图']
+const VIEW_PROMPT: Record<string, string> = {
+  '三视图': 'character turnaround sheet, front view, side view, back view, three-view reference',
+  '四视图': 'character turnaround sheet, front view, three-quarter view, side view, back view, four-view reference',
+}
 
 export function CharacterNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
-  const [providers, setProviders] = useState<{ id: string; name: string }[]>([])
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const [renderers, setRenderers] = useState<RendererInfo[]>([])
 
   useEffect(() => {
     getProviders().then((r) => {
       if (r.ok) setProviders((r.data.providers || []).filter((p: { type: string }) => p.type === 'image'))
+    })
+    getRenderers().then((r) => {
+      if (r.ok) setRenderers((r.data.renderers || []).filter((rr: { type: string }) => rr.type === 'comfyui'))
     })
   }, [])
 
@@ -32,8 +46,45 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
   const url     = String((d.result as Record<string, unknown>)?.url ?? '')
   const renderMode = String(d.render_mode ?? 'comfyui')
   const providerId = String(d.provider_id ?? '')
+  const rendererId = String(d.renderer_id ?? '')
+  const model    = String(d.model ?? '')
+  const background = String(d.background ?? '有背景')
+  const views      = String(d.views ?? '单视角')
 
-  const run = () => update(id, { action: 'execute' })
+  const run = async () => {
+    if (!name.trim() && !prompt.trim() && !desc.trim()) { update(id, { status: 'failed', error: '请先输入角色名或提示词' }); return }
+    update(id, { status: 'running' })
+    emitLog({ nodeId: id, nodeLabel: '角色设计', nodeType: 'character', status: 'running', message: `开始生成 · ${renderMode === 'cloud' ? `云端(${providerId || '未选'})` : 'ComfyUI'}` })
+    // 无背景 / 多视角：拼成描述后缀
+    const suffix = [
+      background === '无背景' ? 'isolated on plain white background, no background, studio lighting' : '',
+      VIEW_PROMPT[views] || '',
+    ].filter(Boolean).join(', ')
+    const finalDesc = [desc, suffix].filter(Boolean).join(', ')
+    const t0 = Date.now()
+    try {
+      const res = await filmCharacterGenerate({
+        name, description: finalDesc, prompt, style, pose, expression: expr,
+        reference_urls: refs, seed,
+        render_mode: renderMode, provider_id: providerId, model, renderer_id: rendererId,
+      })
+      const data = res as unknown as { ok?: boolean; error?: string; data?: Record<string, unknown> }
+      if (data.ok !== false && data.data) {
+        const logs = (data.data.logs as unknown[]) || []
+        emitRenderLogs(logs, id, '角色设计', 'character')
+        update(id, { status: 'completed', result: data.data, seed: (data.data.seed as string) || seed })
+        emitLog({ nodeId: id, nodeLabel: '角色设计', nodeType: 'character', status: 'completed', message: '角色图生成完成', duration: Date.now() - t0 })
+      } else {
+        const err = String(data.error || '生成失败')
+        emitRenderLogs((data.data as Record<string, unknown> | undefined)?.logs, id, '角色设计', 'character')
+        update(id, { status: 'failed', error: err })
+        emitLog({ nodeId: id, nodeLabel: '角色设计', nodeType: 'character', status: 'failed', message: `生成失败 · ${err.slice(0, 80)}`, detail: err })
+      }
+    } catch (e) {
+      update(id, { status: 'failed', error: String(e) })
+      emitLog({ nodeId: id, nodeLabel: '角色设计', nodeType: 'character', status: 'failed', message: `生成失败 · ${String(e).slice(0, 80)}` })
+    }
+  }
 
   return (
     <NodeShell id={id} selected={selected} title="角色设计" icon={<User size={15} />}>
@@ -46,8 +97,11 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
           onChange={(e) => update(id, { description: e.target.value })} />
       </Field>
       <Field label="提示词">
-        <textarea className={inputCls} rows={2} value={prompt} placeholder="AI 出图提示词"
+        <textarea className={inputCls} rows={2} value={prompt} placeholder="AI 出图提示词（原文引用，不强制翻译）"
           onChange={(e) => update(id, { prompt: e.target.value })} />
+        <PromptTranslate prompt={prompt} />
+        <PromptOptimize prompt={prompt} kind="character" model={model} nodeLabel="角色设计"
+          onApply={(v) => update(id, { prompt: v })} />
       </Field>
       <div className="grid grid-cols-2 gap-2">
         <Field label="风格">
@@ -65,6 +119,16 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
             {EXPRESSIONS.map((e) => <option key={e} value={e}>{e || '未选择'}</option>)}
           </select>
         </Field>
+        <Field label="背景">
+          <select className={inputCls} value={background} onChange={(e) => update(id, { background: e.target.value })}>
+            {BACKGROUNDS.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </Field>
+        <Field label="视角">
+          <select className={inputCls} value={views} onChange={(e) => update(id, { views: e.target.value })}>
+            {VIEWS.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </Field>
         {seed && (
           <div className="col-span-2 rounded bg-soft px-2 py-1 text-[10px] text-ink-3">
             角色种子：{seed}（同一角色复用此种子保持一致性）
@@ -76,14 +140,19 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
           {refs.map((r, i) => <img key={i} src={r} className="h-12 w-12 rounded-md object-cover" alt="ref" />)}
         </div>
       )}
-      {url ? <img className="h-32 w-full rounded-md object-cover" src={url} alt="角色图" />
+      {url ? <ResultMedia url={url} />
         : <div className="flex h-20 items-center justify-center rounded-md bg-soft text-[11px] text-ink-3">点击生成获取角色图</div>}
       <GenerationModeField
         mode={renderMode}
         providerId={providerId}
         providers={providers}
+        rendererId={rendererId}
+        renderers={renderers}
+        model={model}
         onModeChange={(v) => update(id, { render_mode: v })}
         onProviderChange={(v) => update(id, { provider_id: v })}
+        onRendererChange={(v) => update(id, { renderer_id: v })}
+        onModelChange={(v) => update(id, { model: v })}
       />
       <button className="nodrag w-full rounded-lg bg-brand-500 px-3 py-2 text-sm text-white transition hover:bg-brand-600 disabled:opacity-50"
         onClick={run}>

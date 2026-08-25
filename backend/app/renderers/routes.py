@@ -10,6 +10,7 @@ from app.ai.config import mask_key
 from app.renderers import init_renderers, renderer_registry
 from app.renderers.dispatcher import dispatch_render_task, queue_status
 from app.task_service import add_event, create_task, set_result, set_status
+from app.renderers.workflow_builder import build_workflow
 
 router = APIRouter()
 
@@ -87,6 +88,35 @@ async def dispatch(request: Request):
     return result
 
 
+@router.post("/media/generate")
+async def media_generate(request: Request):
+    """统一媒体生成入口（节点「生成」按钮用）。
+
+    入参：
+      kind: 'image' | 'video'
+      render_mode: 'cloud' | 'comfyui'
+      provider_id: 云端 provider（cloud 模式）
+      model: 模型名（可选，cloud 覆盖 provider 默认 / comfyui 填 checkpoint）
+      renderer_id: ComfyUI 渲染器（comfyui 模式，可选，留空自动挑第一个启用的）
+      params: {prompt, negative, ratio, seed, steps, duration, ...}
+    返回：{ok, images, videos, url, logs, error}
+    """
+    data = await request.json() or {}
+    kind = str(data.get("kind") or "image")
+    params = data.get("params") or {}
+    if not isinstance(params, dict):
+        return JSONResponse(status_code=400, content={"error": "params 必须是对象"})
+    from app.renderers.generate import render_media
+    result = await render_media(
+        kind, params,
+        render_mode=str(data.get("render_mode") or "comfyui"),
+        provider_id=str(data.get("provider_id") or ""),
+        model=str(data.get("model") or ""),
+        renderer_id=str(data.get("renderer_id") or ""),
+    )
+    return result
+
+
 @router.get("/{renderer_id}/health")
 async def renderer_health(renderer_id: str):
     r = renderer_registry.get(renderer_id)
@@ -104,15 +134,28 @@ async def renderer_generate(renderer_id: str, request: Request):
     if not r.cfg.enabled:
         return JSONResponse(status_code=400, content={"error": "Renderer 未启用"})
     data = await request.json()
+
+    # 两种调用方式：
+    # 1. workflow：直接传 ComfyUI workflow JSON（规格完整）
+    # 2. params + mode：从简化参数自动构建工作流（前端用这个）
     workflow = data.get("workflow")
-    if not isinstance(workflow, dict):
-        return JSONResponse(status_code=400, content={"error": "workflow 必须是对象"})
+    if isinstance(workflow, dict):
+        # 直接传入了完整 workflow，不转换
+        pass
+    elif data.get("params"):
+        # 从简化参数构建工作流
+        mode  = str(data.get("mode", "text2image"))
+        model = str(data.get("model", ""))
+        workflow = build_workflow(data["params"], mode, model=model)
+    else:
+        return JSONResponse(status_code=400,
+                            content={"error": "必须传 workflow（完整 JSON）或 params（简化参数）+ mode"})
 
     tid = await create_task(
         user_id=data.get("user_id", ""), canvas_id=data.get("canvas_id", ""),
         renderer_id=renderer_id,
     )
-    await add_event(tid, "render_queued", {"renderer": renderer_id})
+    await add_event(tid, "render_queued", {"renderer": renderer_id, "mode": data.get("mode", "text2image")})
     await set_status(tid, "running")
 
     result = await r.generate(workflow)

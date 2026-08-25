@@ -24,6 +24,8 @@ MODEL_RULES = [
     ("qwen3.7-plus", ["long", "zh"]),
     ("qwen3.7-flash", ["fast", "cheap", "zh"]),
     ("qwen3-235b-a22b", ["reasoning", "long", "zh"]),
+    ("qwen3-8b", ["zh", "general"]),    # Qwen3 8B（ComfyUI 内置 LLM 节点）
+    ("qwen3-plus-8b", ["zh", "general"]),
     ("qwen", ["zh", "general"]),
     ("kimi-k3", ["reasoning", "long", "zh"]),
     ("kimi", ["zh", "long"]),

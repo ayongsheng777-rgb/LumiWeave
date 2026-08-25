@@ -6,6 +6,8 @@ import ChatPanel from './ChatPanel'
 import Lightbox from './Lightbox'
 import SettingsModal from './SettingsModal'
 import CanvasCore from '../canvas/CanvasCore'
+import { LogPanel } from './LogPanel'
+import { ShotChainPanel } from './ShotChainPanel'
 
 export default function Workspace() {
   const mode = useUiStore((s) => s.mode)
@@ -29,6 +31,9 @@ export default function Workspace() {
       </div>
       {lightbox && <Lightbox />}
       {managementOpen && <SettingsModal />}
+      {/* 全局运行日志（右侧） + 分镜链信息框（左侧），两个画布共用 */}
+      <LogPanel />
+      <ShotChainPanel />
     </div>
   )
 }

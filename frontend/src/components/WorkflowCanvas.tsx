@@ -17,7 +17,7 @@ import { nodeTypes } from './nodes'
 const DND_KEY = 'application/lumiweave-node'
 
 function WorkflowCanvasInner() {
-  const { nodes, edges, running, runError, onNodesChange, onEdgesChange, onConnect, addNode, clearAll, setRunError, save, workflowId, projectId } =
+  const { nodes, edges, running, runError, onNodesChange, onEdgesChange, onConnect, addNode, clearAll, setRunError, save, workflowId, projectId, applyAutoLayout } =
     useWorkflowStore()
   const theme = useUiStore((s) => s.theme)
   const { screenToFlowPosition } = useReactFlow()
@@ -95,6 +95,14 @@ function WorkflowCanvasInner() {
         <Controls className="!shadow-node-dark !border !border-edge !bg-panel-2" showInteractive={false} />
         <Panel position="top-left">
           <div className="flex items-center gap-2">
+            <button
+              className="rounded-lg border border-edge bg-soft px-3 py-1.5 text-xs text-ink-2 transition hover:bg-soft disabled:opacity-40"
+              onClick={applyAutoLayout}
+              disabled={running || nodes.length === 0}
+              title="按连线自动排列节点，避免重叠"
+            >
+              自动排列
+            </button>
             <button
               className="rounded-lg border border-edge bg-soft px-3 py-1.5 text-xs text-ink-2 transition hover:bg-soft disabled:opacity-40"
               onClick={toCanvas}
