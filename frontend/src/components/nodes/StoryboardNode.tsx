@@ -39,7 +39,7 @@ export function StoryboardNode({ id, data, selected }: NodeProps) {
         <span>{shots.length} 个镜头</span>
         <span>总时长 {totalDuration}s</span>
       </div>
-      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+      <div className="space-y-1.5">
         {shots.map((s, i) => (
           <div key={i} className="rounded-md border border-edge bg-soft p-2">
             <div className="mb-1 flex items-center justify-between">
