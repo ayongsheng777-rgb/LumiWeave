@@ -1,5 +1,6 @@
-import { Handle, Position } from '@xyflow/react'
+import { Handle, Position, NodeResizer } from '@xyflow/react'
 import type { ReactNode } from 'react'
+import { Lock, LockOpen, Trash2 } from 'lucide-react'
 import { useWorkflowStore, type NodeStatus } from '../../store/workflowStore'
 import StatusBadge from './StatusBadge'
 
@@ -33,21 +34,36 @@ export function NodeShell({
   id,
   title,
   icon,
+  selected,
   children,
 }: {
   id: string
   title: string
   icon?: ReactNode
+  selected?: boolean
   children: ReactNode
 }) {
   const status = useWorkflowStore((s) => s.nodeStatus[id] || 'idle')
   const output = useWorkflowStore((s) => s.nodeOutputs[id])
+  const locked = useWorkflowStore(
+    (s) => ((s.nodes.find((n) => n.id === id)?.data as Record<string, unknown>)?.locked) === true,
+  )
+  const toggleLock = useWorkflowStore((s) => s.toggleLock)
+  const removeNode = useWorkflowStore((s) => s.removeNode)
   const summary = summarize(output)
 
   return (
     <div
-      className={`w-64 rounded-xl bg-panel-2 ring-1 ${ringOf[status]} border border-edge shadow-node-dark animate-fade-in`}
+      className={`rounded-xl bg-panel-2 ring-1 ${ringOf[status]} border border-edge shadow-node-dark animate-fade-in`}
+      style={{ width: '100%', minWidth: 240 }}
     >
+      <NodeResizer
+        isVisible={!!selected && !locked}
+        minWidth={240}
+        minHeight={80}
+        color="#8b5cf6"
+        lineStyle={{ borderWidth: 1.5 }}
+      />
       <Handle
         type="target"
         position={Position.Left}
@@ -56,7 +72,21 @@ export function NodeShell({
       <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
         <span className="text-brand-300">{icon}</span>
         <span className="text-sm font-medium text-ink">{title}</span>
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-1">
+          <button
+            className="nodrag rounded p-1 text-ink-3 transition hover:bg-soft hover:text-ink"
+            title={locked ? '解锁' : '锁定'}
+            onClick={() => toggleLock(id)}
+          >
+            {locked ? <LockOpen size={13} /> : <Lock size={13} />}
+          </button>
+          <button
+            className="nodrag rounded p-1 text-ink-3 transition hover:bg-soft hover:text-red-400"
+            title="删除节点"
+            onClick={() => removeNode(id)}
+          >
+            <Trash2 size={13} />
+          </button>
           <StatusBadge status={status} />
         </span>
       </div>

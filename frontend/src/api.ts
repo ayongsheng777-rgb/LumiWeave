@@ -405,6 +405,14 @@ export async function aiBuildWorkflow(prompt: string) {
   return request('POST', '/canvas/build', { prompt })
 }
 
+export async function canvasFromWorkflow(workflowId: string, projectId: string) {
+  return request('POST', '/canvas/from-workflow', { workflow_id: workflowId, project_id: projectId })
+}
+
+export async function canvasToWorkflow(projectId: string, name: string) {
+  return request('POST', '/canvas/to-workflow', { project_id: projectId, name })
+}
+
 export async function getProviders() {
   return request('GET', '/providers')
 }

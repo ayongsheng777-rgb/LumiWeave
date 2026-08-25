@@ -11,17 +11,41 @@ import {
 import '@xyflow/react/dist/style.css'
 import { defaultDataFor, useWorkflowStore } from '../store/workflowStore'
 import { useUiStore } from '../store/uiStore'
+import { canvasFromWorkflow } from '../api'
 import { nodeTypes } from './nodes'
 
 const DND_KEY = 'application/lumiweave-node'
 
 function WorkflowCanvasInner() {
-  const { nodes, edges, running, runError, onNodesChange, onEdgesChange, onConnect, addNode, clearAll, setRunError } =
+  const { nodes, edges, running, runError, onNodesChange, onEdgesChange, onConnect, addNode, clearAll, setRunError, save, workflowId, projectId } =
     useWorkflowStore()
   const theme = useUiStore((s) => s.theme)
   const { screenToFlowPosition } = useReactFlow()
   const [dragOver, setDragOver] = useState(false)
+  const [converting, setConverting] = useState(false)
   const dotColor = theme === 'dark' ? '#333333' : '#d3d6dd'
+
+  const toCanvas = async () => {
+    if (converting || nodes.length === 0) return
+    setConverting(true)
+    let wid = workflowId
+    if (!wid) {
+      await save()
+      wid = useWorkflowStore.getState().workflowId
+    }
+    if (!wid) {
+      setRunError('请先保存工作流再转成画布')
+      setConverting(false)
+      return
+    }
+    const res = await canvasFromWorkflow(wid, projectId)
+    setConverting(false)
+    if (res.ok) {
+      setRunError(null)
+    } else {
+      setRunError('转成画布失败，请重试')
+    }
+  }
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -70,16 +94,25 @@ function WorkflowCanvasInner() {
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.6} color={dotColor} />
         <Controls className="!shadow-node-dark !border !border-edge !bg-panel-2" showInteractive={false} />
         <Panel position="top-left">
-          <button
-            className="rounded-lg border border-edge bg-soft px-3 py-1.5 text-xs text-ink-2 transition hover:bg-soft disabled:opacity-40"
-            onClick={() => {
-              clearAll()
-              setRunError(null)
-            }}
-            disabled={running}
-          >
-            清空画布
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded-lg border border-edge bg-soft px-3 py-1.5 text-xs text-ink-2 transition hover:bg-soft disabled:opacity-40"
+              onClick={toCanvas}
+              disabled={running || converting || nodes.length === 0}
+            >
+              {converting ? '转换中…' : '转成画布'}
+            </button>
+            <button
+              className="rounded-lg border border-edge bg-soft px-3 py-1.5 text-xs text-ink-2 transition hover:bg-soft disabled:opacity-40"
+              onClick={() => {
+                clearAll()
+                setRunError(null)
+              }}
+              disabled={running}
+            >
+              清空画布
+            </button>
+          </div>
         </Panel>
       </ReactFlow>
 

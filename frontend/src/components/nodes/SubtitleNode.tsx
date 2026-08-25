@@ -5,7 +5,7 @@ import { NodeShell, Field, inputCls } from './NodeShell'
 
 const FORMATS = ['srt', 'ass', 'ssa']
 
-export function SubtitleNode({ id, data }: NodeProps) {
+export function SubtitleNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
 
@@ -19,7 +19,7 @@ export function SubtitleNode({ id, data }: NodeProps) {
   const run = () => update(id, { action: 'execute' })
 
   return (
-    <NodeShell id={id} title="字幕" icon={<Type size={15} />}>
+    <NodeShell id={id} selected={selected} title="字幕" icon={<Type size={15} />}>
       <Field label="视频URL">
         <input className={inputCls} value={videoUrl} placeholder="视频链接"
           onChange={(e) => update(id, { video_url: e.target.value })} />

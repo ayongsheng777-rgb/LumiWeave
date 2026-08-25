@@ -11,7 +11,7 @@ const FORMATS = [
   { value: 'storyboard_json', label: 'Storyboard JSON' },
 ]
 
-export function ExportNode({ id, data }: NodeProps) {
+export function ExportNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
 
@@ -26,7 +26,7 @@ export function ExportNode({ id, data }: NodeProps) {
   const run = () => update(id, { action: 'execute' })
 
   return (
-    <NodeShell id={id} title="导出成片" icon={<Download size={15} />}>
+    <NodeShell id={id} selected={selected} title="导出成片" icon={<Download size={15} />}>
       <Field label="导出格式">
         <select className={inputCls} value={format} onChange={(e) => update(id, { format: e.target.value })}>
           {FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}

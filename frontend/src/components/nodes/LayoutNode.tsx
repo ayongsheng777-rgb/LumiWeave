@@ -11,7 +11,7 @@ const TEMPLATES = [
 ]
 const RATIOS = ['16:9', '9:16', '1:1', '4:3']
 
-export function LayoutNode({ id, data }: NodeProps) {
+export function LayoutNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
 
@@ -23,7 +23,7 @@ export function LayoutNode({ id, data }: NodeProps) {
   const run = () => update(id, { action: 'execute' })
 
   return (
-    <NodeShell id={id} title="排版设计" icon={<Layout size={15} />}>
+    <NodeShell id={id} selected={selected} title="排版设计" icon={<Layout size={15} />}>
       <Field label="模板">
         <select className={inputCls} value={template} onChange={(e) => update(id, { template: e.target.value })}>
           {TEMPLATES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}

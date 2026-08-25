@@ -1,15 +1,26 @@
+import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { Film } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
+import { getProviders } from '../../api'
+import { cameraLabel } from '../../cameraLabels'
 import { NodeShell, Field, inputCls } from './NodeShell'
+import { GenerationModeField } from './GenerationModeField'
 
 const CAMERAS  = ['static', 'slow push-in', 'pan-left', 'pan-right', 'handheld', 'orbit', 'zoom-in', 'dolly', 'tracking']
 const RATIOS   = ['16:9', '9:16', '1:1', '4:3']
 const STYLES   = ['电影感', '动漫', '写实', '3D']
 
-export function FilmVideoNode({ id, data }: NodeProps) {
+export function FilmVideoNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
+  const [providers, setProviders] = useState<{ id: string; name: string }[]>([])
+
+  useEffect(() => {
+    getProviders().then((r) => {
+      if (r.ok) setProviders((r.data.providers || []).filter((p: { type: string }) => p.type === 'video'))
+    })
+  }, [])
 
   const prompt     = String(d.prompt ?? '')
   const camera     = String(d.camera ?? 'static')
@@ -19,11 +30,13 @@ export function FilmVideoNode({ id, data }: NodeProps) {
   const style      = String(d.style ?? '电影感')
   const images     = (d.images as string[]) || []
   const videoUrl   = String(d.video_url ?? '')
+  const renderMode = String(d.render_mode ?? 'comfyui')
+  const providerId = String(d.provider_id ?? '')
 
   const run = () => update(id, { action: 'execute' })
 
   return (
-    <NodeShell id={id} title="视频生成" icon={<Film size={15} />}>
+    <NodeShell id={id} selected={selected} title="视频生成" icon={<Film size={15} />}>
       <Field label="视频提示词">
         <textarea className={inputCls} rows={2} value={prompt} placeholder="描述视频动作/运镜……"
           onChange={(e) => update(id, { prompt: e.target.value })} />
@@ -31,7 +44,8 @@ export function FilmVideoNode({ id, data }: NodeProps) {
       <div className="grid grid-cols-2 gap-2">
         <Field label="运镜">
           <select className={inputCls} value={camera} onChange={(e) => update(id, { camera: e.target.value })}>
-            {CAMERAS.map((c) => <option key={c} value={c}>{c}</option>)}
+            {CAMERAS.map((c) => <option key={c} value={c}>{cameraLabel(c)}</option>)}
+            {!CAMERAS.includes(camera) && camera && <option value={camera}>{camera}</option>}
           </select>
         </Field>
         <Field label="比例">
@@ -53,6 +67,13 @@ export function FilmVideoNode({ id, data }: NodeProps) {
           {STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </Field>
+      <GenerationModeField
+        mode={renderMode}
+        providerId={providerId}
+        providers={providers}
+        onModeChange={(v) => update(id, { render_mode: v })}
+        onProviderChange={(v) => update(id, { provider_id: v })}
+      />
       {images.length > 0 && (
         <div className="flex gap-1 overflow-x-auto py-1">
           {images.map((img, i) => <img key={i} src={img} className="h-12 w-20 rounded-md object-cover" alt={`img-${i}`} />)}

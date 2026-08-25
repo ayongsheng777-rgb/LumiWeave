@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { NodeProps } from '@xyflow/react'
 import { useCanvasStore } from '../store/canvasStore'
 import { aiChat, getRenderers, getSkills, rendererGenerate } from '../api'
+import { cameraLabel } from '../cameraLabels'
 import NodeShell from './NodeShell'
 
 type ObjData = Record<string, unknown>
@@ -227,7 +228,7 @@ function VideoNode({ id, data, selected }: NodeProps) {
             <div className="grid grid-cols-2 gap-1.5">
               <label className="text-[10px] text-[var(--lw-ink-3)]">时长(秒)<input className={fieldCls} type="number" min={3} max={30} value={duration} onChange={(e) => update(id, { duration: Number(e.target.value) })} /></label>
               <label className="text-[10px] text-[var(--lw-ink-3)]">比例<select className={fieldCls} value={ratio} onChange={(e) => update(id, { ratio: e.target.value })}>{RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}</select></label>
-              <label className="text-[10px] text-[var(--lw-ink-3)]">运镜<select className={fieldCls} value={camera} onChange={(e) => update(id, { camera: e.target.value })}>{CAMERAS.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
+              <label className="text-[10px] text-[var(--lw-ink-3)]">运镜<select className={fieldCls} value={camera} onChange={(e) => update(id, { camera: e.target.value })}>{CAMERAS.map((c) => <option key={c} value={c}>{cameraLabel(c)}</option>)}</select></label>
               <label className="text-[10px] text-[var(--lw-ink-3)]">风格<select className={fieldCls} value={style} onChange={(e) => update(id, { style: e.target.value })}>{STYLES.map((s) => <option key={s} value={s}>{s}</option>)}</select></label>
             </div>
             {renderers.length > 0 && (

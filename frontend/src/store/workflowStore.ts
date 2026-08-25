@@ -231,6 +231,7 @@ interface WorkflowState {
   addNode: (node: Node) => void
   updateNodeData: (id: string, data: Record<string, unknown>) => void
   removeNode: (id: string) => void
+  toggleLock: (id: string) => void
   clearAll: () => void
   setNodeStatus: (id: string, s: NodeStatus) => void
   setNodeOutput: (id: string, output: unknown) => void
@@ -286,6 +287,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set((s) => ({
       nodes: s.nodes.filter((n) => n.id !== id),
       edges: s.edges.filter((e) => e.source !== id && e.target !== id),
+    })),
+
+  toggleLock: (id) =>
+    set((s) => ({
+      nodes: s.nodes.map((n) =>
+        n.id === id ? { ...n, data: { ...(n.data as object), locked: !((n.data as Record<string, unknown>).locked === true) } } : n,
+      ),
     })),
 
   clearAll: () => set({ nodes: [], edges: [], nodeStatus: {}, nodeOutputs: {}, workflowId: '' }),

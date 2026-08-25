@@ -7,7 +7,7 @@ const STYLES = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋克',
 const POSES  = ['', '站立', '行走', '战斗姿态', '坐姿', '跑步', '飞行', '持械', '休闲']
 const EXPRESSIONS = ['', '冷峻', '微笑', '愤怒', '悲伤', '惊讶', '坚定', '神秘', '欢乐']
 
-export function CharacterNode({ id, data }: NodeProps) {
+export function CharacterNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
 
@@ -24,7 +24,7 @@ export function CharacterNode({ id, data }: NodeProps) {
   const run = () => update(id, { action: 'execute' })
 
   return (
-    <NodeShell id={id} title="角色设计" icon={<User size={15} />}>
+    <NodeShell id={id} selected={selected} title="角色设计" icon={<User size={15} />}>
       <Field label="角色名">
         <input className={inputCls} value={name} placeholder="如：赛博女战士"
           onChange={(e) => update(id, { name: e.target.value })} />

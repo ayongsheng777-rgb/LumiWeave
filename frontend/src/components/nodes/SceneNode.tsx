@@ -9,7 +9,7 @@ const WEATHERS  = ['晴', '雨', '雪', '雾', '风', '雷暴', '多云']
 const CAMERAS   = ['wide shot', 'medium shot', 'close-up', 'birds-eye view', 'worm-eye view', 'dolly in', 'dolly out', 'pan left', 'pan right', 'tracking shot']
 const STYLES    = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋克', '蒸汽朋克', '古风']
 
-export function SceneNode({ id, data }: NodeProps) {
+export function SceneNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
 
@@ -26,7 +26,7 @@ export function SceneNode({ id, data }: NodeProps) {
   const run = () => update(id, { action: 'execute' })
 
   return (
-    <NodeShell id={id} title="场景设计" icon={<Mountain size={15} />}>
+    <NodeShell id={id} selected={selected} title="场景设计" icon={<Mountain size={15} />}>
       <Field label="场景名">
         <input className={inputCls} value={name} placeholder="如：未来都市夜景"
           onChange={(e) => update(id, { name: e.target.value })} />

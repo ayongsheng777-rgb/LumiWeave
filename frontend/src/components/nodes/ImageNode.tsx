@@ -1,14 +1,24 @@
+import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { ImageIcon } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
+import { getProviders } from '../../api'
 import { NodeShell, Field, inputCls } from './NodeShell'
+import { GenerationModeField } from './GenerationModeField'
 
 const RATIOS = ['16:9', '9:16', '1:1', '4:3', '3:4']
 const STYLES = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋克', '古风']
 
-export function ImageNode({ id, data }: NodeProps) {
+export function ImageNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
+  const [providers, setProviders] = useState<{ id: string; name: string }[]>([])
+
+  useEffect(() => {
+    getProviders().then((r) => {
+      if (r.ok) setProviders((r.data.providers || []).filter((p: { type: string }) => p.type === 'image'))
+    })
+  }, [])
 
   const prompt  = String(d.prompt ?? '')
   const negative = String(d.negative ?? '')
@@ -17,11 +27,13 @@ export function ImageNode({ id, data }: NodeProps) {
   const refs    = (d.reference as string[]) || []
   const charIds = (d.character_ids as string[]) || []
   const url     = String(d.url ?? '')
+  const renderMode = String(d.render_mode ?? 'comfyui')
+  const providerId = String(d.provider_id ?? '')
 
   const run = () => update(id, { action: 'execute' })
 
   return (
-    <NodeShell id={id} title="图片生成" icon={<ImageIcon size={15} />}>
+    <NodeShell id={id} selected={selected} title="图片生成" icon={<ImageIcon size={15} />}>
       <Field label="正向提示词">
         <textarea className={inputCls} rows={2} value={prompt} placeholder="描述画面内容……"
           onChange={(e) => update(id, { prompt: e.target.value })} />
@@ -42,6 +54,13 @@ export function ImageNode({ id, data }: NodeProps) {
           </select>
         </Field>
       </div>
+      <GenerationModeField
+        mode={renderMode}
+        providerId={providerId}
+        providers={providers}
+        onModeChange={(v) => update(id, { render_mode: v })}
+        onProviderChange={(v) => update(id, { provider_id: v })}
+      />
       {charIds.length > 0 && (
         <div className="rounded bg-soft px-2 py-1 text-[10px] text-ink-3">
           引用角色：{charIds.join(', ')}

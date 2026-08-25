@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { Handle, Position } from '@xyflow/react'
+import { Handle, Position, NodeResizer } from '@xyflow/react'
 
-// 工作流节点外壳：带 source/target handles + 锁定/删除按钮 + 状态角标
+// 工作流节点外壳：带 source/target handles + 锁定/删除按钮 + 状态角标 + 缩放
 export default function NodeShell({
   title,
   color = '#3b82f6',
@@ -30,6 +30,13 @@ export default function NodeShell({
       className={`obj-node ${selected ? 'obj-selected' : ''}`}
       style={{ borderTopColor: color }}
     >
+      <NodeResizer
+        isVisible={!!selected && !locked}
+        minWidth={140}
+        minHeight={60}
+        color="#8b5cf6"
+        lineStyle={{ borderWidth: 1.5 }}
+      />
       {input && <Handle type="target" position={Position.Left} className="workflow-handle" />}
 
       <div className="obj-node-head">

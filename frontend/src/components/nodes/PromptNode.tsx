@@ -3,11 +3,11 @@ import { FileText } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
 import { NodeShell, Field, inputCls } from './NodeShell'
 
-export function PromptNode({ id, data }: NodeProps) {
+export function PromptNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
   return (
-    <NodeShell id={id} title="提示词模板" icon={<FileText size={15} />}>
+    <NodeShell id={id} selected={selected} title="提示词模板" icon={<FileText size={15} />}>
       <Field label="模板（{{kb}} 会被替换成知识库检索结果）">
         <textarea
           className={inputCls}

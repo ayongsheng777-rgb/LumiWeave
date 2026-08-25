@@ -10,7 +10,7 @@ const AUDIO_TYPES = [
   { value: 'sfx', label: '音效' },
 ]
 
-export function AudioNode({ id, data }: NodeProps) {
+export function AudioNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
 
@@ -23,7 +23,7 @@ export function AudioNode({ id, data }: NodeProps) {
   const run = () => update(id, { action: 'execute' })
 
   return (
-    <NodeShell id={id} title="声音" icon={<Music size={15} />}>
+    <NodeShell id={id} selected={selected} title="声音" icon={<Music size={15} />}>
       <Field label="类型">
         <select className={inputCls} value={type} onChange={(e) => update(id, { type: e.target.value })}>
           {AUDIO_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}

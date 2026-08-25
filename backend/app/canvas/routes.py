@@ -141,3 +141,61 @@ async def build_workflow(request: Request):
     if not result or not isinstance(result, dict):
         return JSONResponse(status_code=500, content={"error": "AI 生成工作流失败"})
     return {"nodes": result.get("nodes") or [], "edges": result.get("edges") or []}
+
+
+# ==================== 工作流 ↔ 画布 双向转换 ====================
+
+@router.post("/from-workflow")
+async def canvas_from_workflow(request: Request):
+    """工作流 → 画布：读 workflows 表 graph，转成画布对象 + 连线并落库。"""
+    data = await request.json()
+    workflow_id = str(data.get("workflow_id") or "")
+    project_id = str(data.get("project_id") or "default")
+    if not workflow_id:
+        return JSONResponse(status_code=400, content={"error": "workflow_id 必填"})
+
+    from app.canvas import conversion
+    from app.workflow import service as wf_service
+
+    wf = await wf_service.get_workflow(workflow_id)
+    if not wf:
+        return JSONResponse(status_code=404, content={"error": "工作流不存在"})
+    graph = wf.get("graph") or {}
+    objects, edges = conversion.wf_to_canvas(graph.get("nodes") or [], graph.get("edges") or [])
+
+    # 先清空目标画布，再建新（保证一致）
+    for o in await service.list_objects(project_id):
+        await service.delete_object(o["id"])
+    for e in await service.list_edges(project_id):
+        await service.delete_edge(e["id"])
+    for o in objects:
+        await service.create_object(
+            project_id, str(o.get("type", "text")), o.get("content") or {},
+            o.get("position") or {}, o.get("size") or {}, 0, o.get("metadata") or {},
+            oid=str(o.get("id") or ""),
+        )
+    for e in edges:
+        await service.create_edge(
+            project_id, str(e.get("source", "")), str(e.get("target", "")),
+            e.get("source_handle"), e.get("target_handle"),
+        )
+    return {"ok": True, "objects": len(objects), "edges": len(edges)}
+
+
+@router.post("/to-workflow")
+async def canvas_to_workflow(request: Request):
+    """画布 → 工作流：读画布对象 + 连线，转成工作流 graph 并落 workflows 表。"""
+    data = await request.json()
+    project_id = str(data.get("project_id") or "default")
+    name = str(data.get("name") or "画布工作流")
+
+    from app.canvas import conversion
+    from app.workflow import service as wf_service
+
+    objects = await service.list_objects(project_id)
+    edges = await service.list_edges(project_id)
+    nodes, wf_edges = conversion.canvas_to_wf(objects, edges)
+    wid = await wf_service.save_workflow(
+        project_id, {"nodes": nodes, "edges": wf_edges}, name=name,
+    )
+    return {"ok": True, "workflow_id": wid, "nodes": len(nodes), "edges": len(wf_edges)}

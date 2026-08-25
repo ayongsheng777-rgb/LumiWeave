@@ -3,11 +3,11 @@ import { Download } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
 import { NodeShell, Field, inputCls } from './NodeShell'
 
-export function OutputNode({ id, data }: NodeProps) {
+export function OutputNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
   return (
-    <NodeShell id={id} title="输出" icon={<Download size={15} />}>
+    <NodeShell id={id} selected={selected} title="输出" icon={<Download size={15} />}>
       <Field label="备注（无上游时直接输出这段文字）">
         <textarea
           className={inputCls}

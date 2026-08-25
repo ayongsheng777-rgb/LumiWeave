@@ -3,11 +3,11 @@ import { Brain } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
 import { NodeShell, Field, inputCls } from './NodeShell'
 
-export function LLMNode({ id, data }: NodeProps) {
+export function LLMNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
   return (
-    <NodeShell id={id} title="LLM 推理" icon={<Brain size={15} />}>
+    <NodeShell id={id} selected={selected} title="LLM 推理" icon={<Brain size={15} />}>
       <Field label="提示词（可用 {{上游节点id}} 引用）">
         <textarea
           className={inputCls}

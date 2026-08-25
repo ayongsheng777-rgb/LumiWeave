@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { aiBuildWorkflow, canvasApplyLayout, canvasSaveGraph, runWorkflow } from '../api'
+import { aiBuildWorkflow, canvasApplyLayout, canvasSaveGraph, canvasToWorkflow, runWorkflow } from '../api'
 import { useCanvasStore } from '../store/canvasStore'
-import { canvasToWorkflow } from './workflowAdapter'
+import { canvasToWorkflow as toWfGraph } from './workflowAdapter'
 import { dagLayout } from './layout'
-import { Play, Save, Undo2, Redo2, Trash2, Wand2 } from 'lucide-react'
+import { Play, Save, Undo2, Redo2, Trash2, Wand2, Workflow } from 'lucide-react'
 
 export default function CanvasToolbar() {
   const { undo, redo, clear, projectId, objects, edges, updateNodeStatus, load } = useCanvasStore()
@@ -11,13 +11,14 @@ export default function CanvasToolbar() {
   const [building, setBuilding] = useState(false)
   const [buildPrompt, setBuildPrompt] = useState('')
   const [saved, setSaved] = useState(false)
+  const [converting, setConverting] = useState(false)
 
   const run = async () => {
     if (!objects.length || running) return
     setRunning(true)
     objects.forEach((o) => updateNodeStatus(o.id, 'queued'))
     try {
-      const graph = canvasToWorkflow(objects, edges)
+      const graph = toWfGraph(objects, edges)
       await runWorkflow(graph, (nodeId, status, result) => {
         updateNodeStatus(nodeId, status, result)
       })
@@ -28,10 +29,24 @@ export default function CanvasToolbar() {
     }
   }
 
+  const toWorkflow = async () => {
+    if (!objects.length || converting) return
+    setConverting(true)
+    const res = await canvasToWorkflow(projectId, '画布工作流')
+    setConverting(false)
+    if (res.ok) {
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    }
+  }
+
   const save = async () => {
     const res = await canvasSaveGraph(
       projectId,
-      objects.map((o) => ({ id: o.id, type: o.type, data: o.data, position: o.position })),
+      objects.map((o) => ({
+        id: o.id, type: o.type, data: o.data, position: o.position,
+        size: o.style?.width ? { width: o.style.width, height: o.style.height } : undefined,
+      })),
       edges.map((e) => ({ id: e.id, source: e.source, target: e.target, source_handle: e.sourceHandle, target_handle: e.targetHandle })),
     )
     if (res.ok) {
@@ -84,6 +99,9 @@ export default function CanvasToolbar() {
       </button>
       <button className="ghost" onClick={save} title="保存画布">
         <Save size={14} /> {saved ? '已保存' : '保存'}
+      </button>
+      <button className="ghost" onClick={toWorkflow} disabled={converting || objects.length === 0} title="把画布转回工作流">
+        <Workflow size={14} /> {converting ? '转换中…' : '转回工作流'}
       </button>
 
       <div className="build-box nodrag nowheel">

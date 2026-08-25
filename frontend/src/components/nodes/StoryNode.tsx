@@ -9,7 +9,7 @@ const GENRES = ['科幻', '奇幻', '爱情', '战争', '悬疑', '喜剧', '动
 const STYLES = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋克', '蒸汽朋克', '古风']
 const RATIOS = ['16:9', '9:16', '1:1', '4:3', '3:4']
 
-export function StoryNode({ id, data }: NodeProps) {
+export function StoryNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
 
@@ -55,7 +55,7 @@ export function StoryNode({ id, data }: NodeProps) {
   }
 
   return (
-    <NodeShell id={id} title="故事输入" icon={<BookOpen size={15} />}>
+    <NodeShell id={id} selected={selected} title="故事输入" icon={<BookOpen size={15} />}>
       <Field label="故事内容">
         <textarea
           className={inputCls}

@@ -33,7 +33,7 @@ function toArgs(rows: { k: string; v: string }[]): Record<string, unknown> {
   return out
 }
 
-export function SkillNode({ id, data }: NodeProps) {
+export function SkillNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
   const [skills, setSkills] = useState<{ id: string; name: string }[]>([])
@@ -61,7 +61,7 @@ export function SkillNode({ id, data }: NodeProps) {
   }
 
   return (
-    <NodeShell id={id} title="技能调用" icon={<Wrench size={15} />}>
+    <NodeShell id={id} selected={selected} title="技能调用" icon={<Wrench size={15} />}>
       <Field label="选择技能">
         <select
           className={inputCls}

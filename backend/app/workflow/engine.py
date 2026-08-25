@@ -279,14 +279,64 @@ class WorkflowEngine:
                 artifacts=self._extract_artifacts(result),
             )
 
-        if ntype in ("image", "video", "file"):
-            # 媒体节点：透传上游媒体结果，或取自身 data 中的 url/path
+        if ntype == "file":
+            # 文件节点：透传上游媒体结果，或取自身 data 中的 url/path
             media = data.get("url") or data.get("path") or data.get("src")
             if not media and upstream:
                 media = self._pick_media(upstream)
             return NodeResult.success(
                 node_id, {"kind": ntype, "url": media or "", "data": data},
             )
+
+        if ntype == "image":
+            # 图片节点：render_mode=cloud 走云端 provider，comfyui 走 ComfyUI，否则透传
+            render_mode = str(data.get("render_mode", ""))
+            prompt = self._render(data.get("prompt", ""), outputs) or self._pick_str(upstream)
+            if render_mode == "cloud" and data.get("provider_id") and prompt:
+                from app.providers.cloud_gen import cloud_image_generate
+                result = await cloud_image_generate(
+                    str(data.get("provider_id")), prompt,
+                    negative=str(data.get("negative", "")),
+                    size=str(data.get("size", "1024x1024")),
+                )
+                if result.get("ok") is False:
+                    raise RuntimeError(result.get("error") or "云端图片生成失败")
+                imgs = result.get("images") or []
+                url = imgs[0].get("url") if imgs else ""
+                return NodeResult.success(node_id, {"kind": "image", "url": url, "images": imgs})
+            if render_mode == "comfyui" and prompt:
+                from app.renderers.dispatcher import dispatch_render_task
+                result = await dispatch_render_task(node_id, {"prompt": prompt, "model": data.get("model", "")}, wait=True)
+                if isinstance(result, dict) and result.get("ok") is False:
+                    raise RuntimeError(result.get("error") or "出图失败")
+                return NodeResult.success(node_id, {"kind": "image", "render": result})
+            media = data.get("url") or self._pick_media(upstream)
+            return NodeResult.success(node_id, {"kind": "image", "url": media or "", "data": data})
+
+        if ntype == "video":
+            # 视频节点：render_mode=cloud 走云端 provider，comfyui 走 ComfyUI，否则透传
+            render_mode = str(data.get("render_mode", ""))
+            prompt = self._render(data.get("prompt", ""), outputs) or self._pick_str(upstream)
+            if render_mode == "cloud" and data.get("provider_id") and prompt:
+                from app.providers.cloud_gen import cloud_video_generate
+                result = await cloud_video_generate(
+                    str(data.get("provider_id")), prompt,
+                    duration=int(data.get("duration", 10) or 10),
+                    ratio=str(data.get("ratio", "16:9")),
+                )
+                if result.get("ok") is False:
+                    raise RuntimeError(result.get("error") or "云端视频生成失败")
+                vids = result.get("videos") or []
+                url = vids[0].get("url") if vids else ""
+                return NodeResult.success(node_id, {"kind": "video", "url": url, "videos": vids})
+            if render_mode == "comfyui" and prompt:
+                from app.renderers.dispatcher import dispatch_render_task
+                result = await dispatch_render_task(node_id, {"prompt": prompt, "model": data.get("renderer_id", "")}, wait=True)
+                if isinstance(result, dict) and result.get("ok") is False:
+                    raise RuntimeError(result.get("error") or "视频生成失败")
+                return NodeResult.success(node_id, {"kind": "video", "render": result})
+            media = data.get("video_url") or data.get("url") or self._pick_media(upstream)
+            return NodeResult.success(node_id, {"kind": "video", "url": media or "", "data": data})
 
         # ══════════════════════════════════════════════════════
         # 影视创作节点（V2 film nodes）
@@ -328,7 +378,7 @@ class WorkflowEngine:
             expr = str(data.get("expression", ""))
             seed = str(data.get("seed", "")) or str(data.get("character_id", "")) or str(uuid.uuid4().int)[:10]
             refs = data.get("reference") or []
-            prompt_parts = [style, desc, pose, expr, "cinematic lighting, high detail"].filter(bool)
+            prompt_parts = [p for p in [style, desc, pose, expr, "cinematic lighting, high detail"] if p]
             full_prompt = ", ".join(prompt_parts)
             workflow = {
                 "prompt": full_prompt,
@@ -337,7 +387,14 @@ class WorkflowEngine:
                 "steps": 30,
                 "cfg_scale": 7.5,
             }
-            result = await dispatch_render_task(f"char_{node_id[:8]}", workflow, wait=True)
+            if str(data.get("render_mode", "comfyui")) == "cloud" and data.get("provider_id"):
+                from app.providers.cloud_gen import cloud_image_generate
+                result = await cloud_image_generate(
+                    str(data.get("provider_id")), full_prompt,
+                    negative="blurry, low quality, deformed, ugly",
+                )
+            else:
+                result = await dispatch_render_task(f"char_{node_id[:8]}", workflow, wait=True)
             if isinstance(result, dict) and result.get("ok") is False:
                 raise RuntimeError(result.get("error") or "角色生成失败")
             images = (result or {}).get("images") or []
@@ -366,7 +423,14 @@ class WorkflowEngine:
                 "steps": 30,
                 "cfg_scale": 7.5,
             }
-            result = await dispatch_render_task(f"scene_{node_id[:8]}", workflow, wait=True)
+            if str(data.get("render_mode", "comfyui")) == "cloud" and data.get("provider_id"):
+                from app.providers.cloud_gen import cloud_image_generate
+                result = await cloud_image_generate(
+                    str(data.get("provider_id")), full_prompt,
+                    negative="blurry, low quality, deformed, text, watermark",
+                )
+            else:
+                result = await dispatch_render_task(f"scene_{node_id[:8]}", workflow, wait=True)
             if isinstance(result, dict) and result.get("ok") is False:
                 raise RuntimeError(result.get("error") or "场景生成失败")
             images = (result or {}).get("images") or []
@@ -391,7 +455,14 @@ class WorkflowEngine:
                 "steps": 25,
                 "cfg_scale": 7.0,
             }
-            result = await dispatch_render_task(f"prop_{node_id[:8]}", workflow, wait=True)
+            if str(data.get("render_mode", "comfyui")) == "cloud" and data.get("provider_id"):
+                from app.providers.cloud_gen import cloud_image_generate
+                result = await cloud_image_generate(
+                    str(data.get("provider_id")), full_prompt,
+                    negative="blurry, low quality, deformed",
+                )
+            else:
+                result = await dispatch_render_task(f"prop_{node_id[:8]}", workflow, wait=True)
             if isinstance(result, dict) and result.get("ok") is False:
                 raise RuntimeError(result.get("error") or "道具生成失败")
             images = (result or {}).get("images") or []

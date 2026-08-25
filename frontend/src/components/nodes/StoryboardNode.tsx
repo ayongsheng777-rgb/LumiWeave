@@ -1,6 +1,7 @@
 import { type NodeProps } from '@xyflow/react'
 import { Clapperboard } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
+import { cameraLabel } from '../../cameraLabels'
 import { NodeShell, inputCls } from './NodeShell'
 
 const CAMERAS = ['wide shot', 'medium shot', 'close-up', 'birds-eye view', 'worm-eye view',
@@ -8,7 +9,7 @@ const CAMERAS = ['wide shot', 'medium shot', 'close-up', 'birds-eye view', 'worm
 
 interface Shot { shot: number; camera: string; duration: number; description: string; prompt: string }
 
-export function StoryboardNode({ id, data }: NodeProps) {
+export function StoryboardNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
   const shots = (d.shots as Shot[]) || []
@@ -33,7 +34,7 @@ export function StoryboardNode({ id, data }: NodeProps) {
   const run = () => update(id, { action: 'execute' })
 
   return (
-    <NodeShell id={id} title="电影分镜" icon={<Clapperboard size={15} />}>
+    <NodeShell id={id} selected={selected} title="电影分镜" icon={<Clapperboard size={15} />}>
       <div className="mb-2 flex items-center justify-between text-[11px] text-ink-3">
         <span>{shots.length} 个镜头</span>
         <span>总时长 {totalDuration}s</span>
@@ -50,7 +51,8 @@ export function StoryboardNode({ id, data }: NodeProps) {
             <div className="grid grid-cols-2 gap-1">
               <select className={`${inputCls} text-[11px]`} value={s.camera}
                 onChange={(e) => updateShot(i, { camera: e.target.value })}>
-                {CAMERAS.map((c) => <option key={c} value={c}>{c}</option>)}
+                {CAMERAS.map((c) => <option key={c} value={c}>{cameraLabel(c)}</option>)}
+                {!CAMERAS.includes(s.camera) && s.camera && <option value={s.camera}>{s.camera}</option>}
               </select>
               <input className={`${inputCls} text-[11px]`} type="number" min={1} max={30} value={s.duration}
                 placeholder="秒" onChange={(e) => updateShot(i, { duration: Number(e.target.value) })} />

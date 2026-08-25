@@ -3,11 +3,11 @@ import { FileInput } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
 import { NodeShell, Field, inputCls } from './NodeShell'
 
-export function InputNode({ id, data }: NodeProps) {
+export function InputNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
   return (
-    <NodeShell id={id} title="输入" icon={<FileInput size={15} />}>
+    <NodeShell id={id} selected={selected} title="输入" icon={<FileInput size={15} />}>
       <Field label="原始需求">
         <textarea
           className={inputCls}
