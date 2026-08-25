@@ -146,26 +146,6 @@ function SkillNode({ id, data, selected }: NodeProps) {
   )
 }
 
-// ==================== 智能体节点 ====================
-
-function AgentNode({ id, data, selected }: NodeProps) {
-  const d = data as ObjData
-  const { update, toggleLock, remove } = useNodeActions(id)
-  const message = String(d.message ?? '')
-  return (
-    <NodeShell title="智能体" color="#8b5cf6" selected={!!selected} onToggleLock={toggleLock} onDelete={remove}>
-      <textarea
-        className="nodrag nowheel"
-        rows={3}
-        value={message}
-        placeholder="给智能体的指令（留空则透传上游）"
-        onChange={(e) => update(id, { message: e.target.value })}
-      />
-      <input className={fieldCls} placeholder="指定 agent_id（可选，默认 auto）" value={String(d.agent_id ?? '')} onChange={(e) => update(id, { agent_id: e.target.value })} />
-    </NodeShell>
-  )
-}
-
 // ==================== 输出节点 ====================
 
 function OutputNode({ id, data, selected }: NodeProps) {
@@ -288,7 +268,6 @@ export const objectNodeTypes = {
   analyze: AnalyzeNode,
   asset: AssetNode,
   skill: SkillNode,
-  agent: AgentNode,
   output: OutputNode,
   image: ImageNode,
   video: VideoNode,

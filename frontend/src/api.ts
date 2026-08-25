@@ -132,88 +132,22 @@ export async function deletePricing(id: number) {
   return request('DELETE', `/token-usage/pricing/${id}`)
 }
 
-// ==================== Agent 多智能体 ====================
+// ==================== MCP（外部编程智能体接入） ====================
 
-export async function getAgents() {
-  return request('GET', '/agents')
+export async function getMcpInfo() {
+  return request('GET', '/v2/mcp/info')
 }
 
-export async function getAgentHealth(agentId: string) {
-  return request('GET', `/agents/${agentId}/health`)
+export async function listMcpClients() {
+  return request('GET', '/v2/mcp/clients')
 }
 
-export async function reloadAgents() {
-  return request('POST', '/agents/reload')
+export async function createMcpClient(payload: { name: string; type: string; permissions: string[] }) {
+  return request('POST', '/v2/mcp/clients', payload)
 }
 
-export async function upsertAgent(payload: Record<string, unknown>) {
-  return request('POST', '/agents', payload)
-}
-
-export async function deleteAgent(agentId: string) {
-  return request('DELETE', `/agents/${encodeURIComponent(agentId)}`)
-}
-
-export async function getAgentTools() {
-  return request('GET', '/agents/tools')
-}
-
-export async function saveAgentTools(searchConfig: Record<string, unknown>) {
-  return request('POST', '/agents/tools', { search_config: searchConfig })
-}
-
-export async function agentChat(payload: {
-  message: string
-  agent_id?: string
-  skill_id?: string
-  system_prompt?: string
-  learn_prompt?: boolean
-}) {
-  return request('POST', '/agents/chat', payload)
-}
-
-export async function agentChatStream(
-  payload: { message: string; agent_id?: string; skill_id?: string; learn_prompt?: boolean },
-  onEvent: (type: string, data: Record<string, unknown>) => void,
-) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const token = getToken()
-  if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await fetch(`${API_BASE}/agents/chat/stream`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  })
-  if (!res.ok) {
-    let err = '对话失败'
-    try {
-      const d = await res.json()
-      err = d.error || err
-    } catch {
-      /* ignore */
-    }
-    throw new Error(err)
-  }
-  const reader = res.body!.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const parts = buffer.split('\n\n')
-    buffer = parts.pop() || ''
-    for (const part of parts) {
-      const line = part.trim()
-      if (!line.startsWith('data: ')) continue
-      try {
-        const msg = JSON.parse(line.slice(6))
-        onEvent(msg.type, msg.data)
-      } catch {
-        /* ignore malformed */
-      }
-    }
-  }
+export async function deleteMcpClient(clientId: string) {
+  return request('DELETE', `/v2/mcp/clients/${encodeURIComponent(clientId)}`)
 }
 
 // ==================== 技能库 Skills ====================

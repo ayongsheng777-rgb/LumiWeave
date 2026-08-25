@@ -21,7 +21,6 @@ export const NODE_DEFAULTS: Record<string, Record<string, unknown>> = {
   skill: { skill_id: '', args: {} },
   output: { text: '' },
   render: { prompt: '', model: '' },
-  agent: { agent_id: '', message: '' },
 }
 
 export function defaultDataFor(type: string): Record<string, unknown> {

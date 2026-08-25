@@ -39,16 +39,16 @@ CREATE TABLE IF NOT EXISTS model_pricing (
     UNIQUE (model, provider)
 );
 
--- Agent 注册中心（Phase 2）
-CREATE TABLE IF NOT EXISTS agents (
+-- MCP 客户端注册（MCP 改造：记录 Codex/Claude/WorkBuddy 等外部编程智能体）
+CREATE TABLE IF NOT EXISTS mcp_clients (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
-    provider    JSONB NOT NULL DEFAULT '{}',
+    type        TEXT NOT NULL DEFAULT 'generic',
+    token       TEXT NOT NULL DEFAULT '',
+    permissions JSONB NOT NULL DEFAULT '[]',
     enabled     BOOLEAN NOT NULL DEFAULT TRUE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- 已有 agents 表补 tools 字段（该 Agent 可调用的工具 id 列表）
-ALTER TABLE agents ADD COLUMN IF NOT EXISTS tools JSONB NOT NULL DEFAULT '[]';
 
 -- Skills 中央仓库（Phase 3，平台级，非绑单 Agent）
 CREATE TABLE IF NOT EXISTS skills (

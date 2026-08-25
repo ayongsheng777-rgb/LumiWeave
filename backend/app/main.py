@@ -7,10 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import auth, db
-from app.agent import init_agents
-from app.agent.routes import router as agent_router
-from app.agent.workflow_routes import router as workflow_router
 from app.assets.routes import router as asset_router
+from app.workflow.routes import router as workflow_router
 from app.canvas.routes import router as canvas_router
 from app.ai.persist import load_custom_models, load_overrides
 from app.ai.routes import router as ai_router
@@ -27,6 +25,7 @@ from app.skills.routes import router as skill_router
 from app.tasks.routes import router as task_router
 from app.tools import register_canvas_tools
 from app.token_usage.routes import router as token_router
+from app.api_v2 import router as api_v2_router
 
 PUBLIC_EXACT = {"/api/health"}
 PUBLIC_PREFIXES = ("/api/auth/",)
@@ -37,8 +36,7 @@ async def lifespan(app: FastAPI):
     await db.get_pool()
     await load_overrides()
     await load_custom_models()
-    # Phase 2/3/5 启动加载：Agent / Skill / Renderer
-    await init_agents()
+    # 启动加载：Skill / Renderer（MCP 改造后无 Agent）
     await init_skills()
     await init_renderers()
     register_canvas_tools()
@@ -153,7 +151,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
 app.include_router(ai_router, prefix="/api/ai")
 app.include_router(token_router, prefix="/api/token-usage")
-app.include_router(agent_router, prefix="/api/agents")
 app.include_router(workflow_router, prefix="/api/workflow")
 app.include_router(task_router, prefix="/api/tasks")
 app.include_router(canvas_router, prefix="/api/canvas")
@@ -163,3 +160,4 @@ app.include_router(layout_router, prefix="/api/layout")
 app.include_router(skill_router, prefix="/api/skills")
 app.include_router(renderer_router, prefix="/api/renderers")
 app.include_router(prompt_kb_router, prefix="/api/prompt-kb")
+app.include_router(api_v2_router, prefix="/api/v2")

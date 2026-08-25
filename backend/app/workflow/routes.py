@@ -7,9 +7,9 @@ from fastapi import APIRouter, Request, WebSocket
 from fastapi.responses import JSONResponse
 
 from app import auth, task_service
-from app.agent import workflow_service
-from app.agent.engine import WorkflowEngine
-from app.agent.types import WorkflowGraph
+from app.workflow import service as workflow_service
+from app.workflow.engine import WorkflowEngine
+from app.workflow.types import WorkflowGraph
 from app.task_runner import run_workflow_as_task
 
 router = APIRouter()
@@ -47,7 +47,7 @@ async def workflow_list(project_id: str = ""):
 @router.get("/nodes")
 async def workflow_nodes():
     """节点库（规格书 §8/§25）：前端 Node Library 消费，按分类渲染。"""
-    from app.agent.node_registry import list_nodes
+    from app.workflow.node_registry import list_nodes
     return {"nodes": list_nodes()}
 
 

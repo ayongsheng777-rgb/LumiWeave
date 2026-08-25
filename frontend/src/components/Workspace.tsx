@@ -2,7 +2,6 @@ import { useUiStore } from '../store/uiStore'
 import TopHeader from './TopHeader'
 import FloatingToolbar from './FloatingToolbar'
 import WorkflowCanvas from './WorkflowCanvas'
-import AgentDrawer from './AgentDrawer'
 import ChatPanel from './ChatPanel'
 import Lightbox from './Lightbox'
 import SettingsModal from './SettingsModal'
@@ -22,7 +21,6 @@ export default function Workspace() {
         <div className="relative flex-1">
           {mode === 'workflow' ? <WorkflowCanvas /> : <CanvasCore />}
         </div>
-        <AgentDrawer />
         {chatOpen && (
           <aside className="w-[400px] shrink-0 border-l border-edge bg-panel">
             <ChatPanel />

@@ -5,7 +5,6 @@
   - input           输入节点：透传原始需求
   - llm             大模型推理节点 -> app.ai.client.chat_full
   - prompt_template 提示词模板节点 -> app.prompt_learning.retrieve_for（知识库检索注入）
-  - agent           智能体节点 -> app.agent.agent_registry（Agent Router 路由）
   - skill           技能节点 -> app.skills.skill_manager.execute
   - render          出图节点 -> app.renderers.dispatcher.dispatch_render_task
   - image/video/file 媒体节点：透传上游媒体结果
@@ -29,7 +28,7 @@ from typing import Any, Awaitable, Callable, Optional
 
 import networkx as nx
 
-from app.agent.types import NodeExecutionContext, NodeResult, WorkflowGraph
+from app.workflow.types import NodeExecutionContext, NodeResult, WorkflowGraph
 
 # 节点状态推送回调：on_event(node_id, status, result)
 EventCallback = Callable[[str, str, Any], Awaitable[None]]
@@ -244,27 +243,6 @@ class WorkflowEngine:
             return NodeResult.success(
                 node_id, {"prompt": final},
                 usage={"rag_enabled": bool(learned), "rag_hits": len(learned)},
-            )
-
-        if ntype == "agent":
-            message = self._render(data.get("message", ""), outputs) or self._pick_str(upstream)
-            if not message:
-                raise ValueError("Agent 节点缺少 message")
-            agent_id = str(data.get("agent_id", "") or "auto").strip()
-            from app.agent import agent_registry, agent_router
-            from app.agent.types import AgentRequest
-            resolved = agent_router.resolve(agent_id, message)
-            adapter = agent_registry.safe_get(resolved) or agent_registry.safe_get("default")
-            if not adapter:
-                raise RuntimeError("没有可用的 Agent")
-            resp = await adapter.chat(AgentRequest(
-                task_id=ctx.task_id or node_id, user_id="", message=message,
-                system_prompt=str(data.get("system_prompt", "") or ""),
-            ))
-            usage = dict(resp.usage or {})
-            usage.setdefault("agent", resp.agent)
-            return NodeResult.success(
-                node_id, {"content": resp.content or "", "agent": resp.agent}, usage=usage,
             )
 
         if ntype == "skill":

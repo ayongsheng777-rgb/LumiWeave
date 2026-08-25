@@ -9,10 +9,10 @@
 - **统一 DAG 协议**：`app/schemas/workflow.py` 定义前后端唯一契约，`to_engine_graph()` 转换到执行层。
 - **LLM 统一网关**：`provider_gateway.py` 统一调用出口，自动拦截并记录 Token。
 - **Token 追踪与计费**：`tracker.py` + PostgreSQL 记录，按日/模型/场景汇总、费用折算、官方价同步、飞书日报（可选）。
-- **多智能体 Agent**：统一 Adapter/Registry/Router，自动路由或手动切换，流式 + token 计量。
+- **MCP Server（外部 AI 驱动）**：暴露 canvas/workflow/asset/provider/project 五类 21 个 MCP 工具，Codex / Claude Code / WorkBuddy / Cursor 等编程智能体经 MCP 协议（stdio + streamable-http）操控画布与工作流。
 - **Skill 中央仓库**：平台级技能，自动发现 + 热加载 + 权限控制，已内置 h3-prompt-writing。
 - **Prompt 学习 / RAG**：知识源 → 抽取 → 向量检索 → 动态注入提示词模板节点。
-- **现代化 UI**：Tailwind 暗色优先 + 浅色主题可切换，右侧智能体抽屉、悬浮工具条、灯箱预览、设置管理面板（模型/接口/出图/技能/知识库/素材/计费）。
+- **现代化 UI**：Tailwind 暗色优先 + 浅色主题可切换，悬浮工具条、灯箱预览、设置管理面板（模型/接口/出图/技能/知识库/素材/计费/安全/MCP）。
 - **OTP/TOTP 认证**：纯标准库 RFC 6238，支持验证器扫码登录。
 - **独立 Docker 部署**：PostgreSQL + Redis + FastAPI 后端 + React 前端，一键启动。
 
@@ -20,12 +20,20 @@
 
 - **工作流持久化**：DAG 落库 `workflows` 表，`/api/workflow/save|list|load|delete`，刷新/重启不丢，前端自动恢复上次工作流。
 - **统一 Task 体系**：`/api/tasks` 六端点（创建+执行/查询/列表/取消/重试/事件），状态机 `queued→running→completed|failed|cancelled|timeout`。
-- **Result 回写画布**：render/llm/agent/skill/output 节点执行后自动落 `ai_result`/`image` 对象，保留 task_id/workflow_id/node_id/prompt/model 全链路可追溯。
-- **Node Registry**：12 类节点统一注册（含 schema），`/api/workflow/nodes` 供前端节点库消费。
+- **Result 回写画布**：render/llm/skill/output 节点执行后自动落 `ai_result`/`image` 对象，保留 task_id/workflow_id/node_id/prompt/model 全链路可追溯。
+- **Node Registry**：11 类节点统一注册（含 schema），`/api/workflow/nodes` 供前端节点库消费。
 - **结构化节点结果**：`NodeResult`（ok/status/output/error/usage/duration），节点级超时与取消。
 - **Renderer Provider 抽象**：`submit/status/cancel/result` 分离 + 配置式 ComfyUI 模板（模板 + 输入映射）。
 - **AI 统一错误码**：`INVALID_API_KEY/MODEL_NOT_FOUND/RATE_LIMIT/TIMEOUT/PROVIDER_ERROR/NETWORK_ERROR/INVALID_RESPONSE`。
 - **Token 关联计费**：`token_usage_log` 记录 task_id/workflow_id/node_id/cost/currency；Provider api_key 脱敏返回。
+
+### V2.2 MCP 改造（2026-08-25）
+
+- **删除内部 Agent 中心**：`app/agent/` 移除，`/api/agents` 下线，`agents` 表删除；workflow 执行核心迁到 `app/workflow/`。
+- **新增 MCP Server**：`app/mcp/`（MCPServer + 21 个工具 + token/权限），stdio（`python -m app.mcp`）+ streamable-http（`--http`）双模式。
+- **新增服务层 + API v2**：`app/services/` 四服务层；`/api/v2/` 端点（canvas/workflow/provider/mcp 客户端管理）。
+- **数据库**：`mcp_clients` 表（外部客户端 token + permissions）。
+- **前端**：智能体组件删除，对话面板改纯 LLM；新增 MCP 状态/工具面板；`.mcp/` 三份客户端配置（Codex/Claude/WorkBuddy）。
 
 > 维护手册见 `AGENTS.md`（唯一维护文档，2026-08-25 起 `docs/` 已清理）。
 

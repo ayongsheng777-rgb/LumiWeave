@@ -14,7 +14,6 @@ from typing import Any, Awaitable, Callable
 # 节点分类（规格书 §25）
 CATEGORY_INPUT = "输入"
 CATEGORY_AI = "AI"
-CATEGORY_AGENT = "Agent"
 CATEGORY_SKILL = "Skill"
 CATEGORY_GEN = "生成"
 CATEGORY_PROC = "处理"
@@ -68,8 +67,6 @@ _BUILTIN: list[NodeDefinition] = [
     NodeDefinition("llm", "大模型", CATEGORY_AI, "调用 LLM 推理生成文本",
                    {"system": "string", "prompt": "string", "temperature": "float", "max_tokens": "int"},
                    {"content": "string"}),
-    NodeDefinition("agent", "智能体", CATEGORY_AGENT, "经 Agent Router 路由到具体智能体/Provider",
-                   {"agent_id": "string", "message": "string"}, {"content": "string"}),
     NodeDefinition("skill", "技能", CATEGORY_SKILL, "调用平台技能（Skill Runtime）",
                    {"skill_id": "string", "args": "object"}, {"result": "any"}),
     NodeDefinition("render", "出图/算力", CATEGORY_GEN, "经算力路由提交 ComfyUI 生成图片/视频",

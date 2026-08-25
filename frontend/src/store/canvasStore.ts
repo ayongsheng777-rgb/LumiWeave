@@ -20,7 +20,6 @@ export const OBJECT_LIBRARY: { type: string; label: string; defaultData: Record<
   { type: 'asset', label: '资产', defaultData: { prompt: '', assetType: '资产' }, size: { width: 260, height: 220 } },
   { type: 'video', label: '视频', defaultData: { prompt: '', url: '', duration: 6, ratio: '16:9', camera: 'static', style: 'cinematic', renderer_id: '' }, size: { width: 320, height: 300 } },
   { type: 'skill', label: '技能', defaultData: { skill_id: '', args: {} }, size: { width: 240, height: 140 } },
-  { type: 'agent', label: '智能体', defaultData: { message: '', agent_id: '' }, size: { width: 240, height: 140 } },
   { type: 'output', label: '输出', defaultData: { text: '' }, size: { width: 240, height: 120 } },
   { type: 'ai_result', label: 'AI 结果', defaultData: { text: '', kind: 'text' }, size: { width: 240, height: 140 } },
 ]

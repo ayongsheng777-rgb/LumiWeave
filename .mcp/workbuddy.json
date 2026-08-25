@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "lumiweave": {
+      "command": "python",
+      "args": ["-m", "app.mcp"],
+      "env": {
+        "PYTHONPATH": "backend"
+      }
+    }
+  }
+}

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app import task_service
-from app.agent import workflow_service
+from app.workflow import service as workflow_service
 from app.task_runner import run_workflow_as_task
 
 router = APIRouter()

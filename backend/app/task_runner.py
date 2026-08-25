@@ -12,8 +12,8 @@ import json
 from typing import Any, Awaitable, Callable, Optional
 
 from app import task_service
-from app.agent.engine import WorkflowEngine, WorkflowExecutionError
-from app.agent.types import WorkflowGraph
+from app.workflow.engine import WorkflowEngine, WorkflowExecutionError
+from app.workflow.types import WorkflowGraph
 
 EventCallback = Callable[[str, str, Any], Awaitable[None]]
 

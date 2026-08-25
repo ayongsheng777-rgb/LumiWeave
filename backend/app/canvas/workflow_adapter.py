@@ -5,7 +5,7 @@
     通过 `metadata.node_type` 标记其节点身份；
   - 自由画布对象（text/image/prompt/note 等）不参与 DAG 执行，仅展示。
 
-本模块工作在引擎层格式（data 命名），与 `app.agent.types.WorkflowGraph`
+本模块工作在引擎层格式（data 命名），与 `app.workflow.types.WorkflowGraph`
 以及前端 workflowStore 提交格式完全一致，避免再引入一层协议转换。
 
 关系（规格书 §6）：

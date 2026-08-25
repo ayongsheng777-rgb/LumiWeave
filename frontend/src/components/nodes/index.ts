@@ -4,9 +4,8 @@ import { PromptNode } from './PromptNode'
 import { SkillNode } from './SkillNode'
 import { OutputNode } from './OutputNode'
 import { RenderNode } from './RenderNode'
-import { AgentNode } from './AgentNode'
 
-// 与后端 agent/engine.py 的节点 type 对齐
+// 与后端 workflow/engine.py 的节点 type 对齐（MCP 改造后无 Agent 节点）
 export const nodeTypes = {
   input: InputNode,
   llm: LLMNode,
@@ -14,5 +13,4 @@ export const nodeTypes = {
   skill: SkillNode,
   output: OutputNode,
   render: RenderNode,
-  agent: AgentNode,
 }

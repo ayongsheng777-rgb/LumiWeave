@@ -143,6 +143,36 @@ V2 按《LumiWeave V2 起死回生重构实施总规格书》10 个 Issue 推进
 
 **踩坑**：①AI 搭建超时——build 提示词过长 + DeepSeek-V3 生成 JSON 超 60s，精简提示词 + 超时提 120s；②autoBest 会按 latency 误选 LoRA 微调模型（不可用），需回改 stable 模型；③容器内 `exec python` 是新进程不触发 lifespan，测运行态必须走 API。
 
+## 一·十二、MCP 改造（2026-08-25 完成）
+
+按 `docs/mcp改造.md` 把 LumiWeave 从「内部 Agent 中心」改为「外部编程智能体（Codex / Claude Code / WorkBuddy / Cursor）经 MCP 协议驱动」。LumiWeave 定位从「带 AI 的设计工具」变为「可被任何 AI 编程体控制的创作操作系统」。
+
+**删除 Agent 中心**
+- 后端 `app/agent/` 整个删除（adapter/registry/router/provider/routes/tools）；`/api/agents` 路由移除。
+- 数据库 `agents` 表 DROP。
+- 前端删 `AgentDrawer/AgentManager/AgentSelector/AgentNode`，画布/节点库移除 agent 节点。
+- ChatPanel 改为纯 LLM 对话（走 `/api/ai/chat`，不再依赖内部智能体）。
+
+**保留并迁移 workflow 执行核心**：`agent/engine.py`（DAG 引擎）、`types.py`、`workflow_service.py`、`node_registry.py`、`workflow_routes.py` → 迁到 `app/workflow/`，全部 import 改 `app.workflow.*`。
+
+**新增**
+- `app/mcp/`：MCP Server（`server.py` 用 `mcp==2.1.0` 的 MCPServer）+ `registry.py`（ToolRegistry）+ `tools/`（canvas/workflow/asset/provider/project 五类 21 个工具）+ `auth/`（token/permission）+ `schemas/`。
+- `app/services/`：canvas/workflow/asset/provider 四服务层（MCP 工具与 /api/v2 共用）。
+- `app/api_v2/`：`/api/v2/` 端点（canvas/workflow/provider/mcp 客户端管理）。
+- 数据库 `mcp_clients` 表（记录外部客户端 token + permissions）。
+- 前端 `components/mcp/MCPStatus.tsx` + `ToolPanel.tsx` + `api/client.ts`；SettingsModal 加「MCP」tab。
+- `.mcp/codex.json` / `claude.json` / `workbuddy.json` 客户端配置；`tests/mcp/` 五测试。
+
+**MCP 双模式**
+- stdio：`python -m app.mcp`（Codex/Claude Code 本地直连）。
+- streamable-http：`python -m app.mcp --http --port 8901`（独立进程，远程客户端）。
+
+**依赖**：`requirements.txt` 加 `mcp==2.1.0`；升级 `pydantic 2.8.2→2.12.0`、`pydantic-settings 2.4.0→2.5.2`、`uvicorn 0.30.6→0.31.1`。
+
+**验证**：py_compile/tsc 全过；MCP 工具 21 个（权限分类正确）；节点库无 agent；工作流创建/执行正常（迁移后 engine）；MCP 客户端注册/列表/删除全通；streamable-http initialize + tools/list 返回 200。
+
+**踩坑**：①mcp 2.x 的 `streamable_http_app()` 挂载到 FastAPI 报 `Task group is not initialized`（需 anyio task group 上下文）→ 改独立进程 `run_streamable_http_async`；②mcp 2.1.0 依赖 `pydantic>=2.12` / `uvicorn>=0.31.1`，需升级。
+
 ## 二、服务拓扑与端口
 
 | 服务 | 镜像 | 宿主端口 → 容器 | 说明 |
@@ -154,7 +184,7 @@ V2 按《LumiWeave V2 起死回生重构实施总规格书》10 个 Issue 推进
 
 数据库：`postgresql://lumiweave:lumiweave2026@postgres:5432/lumiweave`（容器内），宿主连 `localhost:5435`。
 
-数据表：`agents` / `skills` / `renderers` / `tasks` / `task_events` / `task_results` / `token_usage_log` / `model_pricing` / `app_kv` / `prompt_sources` / `prompt_knowledge` / `workflows`；【V2 新增】`canvas_objects` / `canvas_edges` / `providers` / `assets`。
+数据表：`skills` / `renderers` / `tasks` / `task_events` / `task_results` / `token_usage_log` / `model_pricing` / `app_kv` / `prompt_sources` / `prompt_knowledge` / `workflows` / `mcp_clients`；【V2 新增】`canvas_objects` / `canvas_edges` / `providers` / `assets`。（MCP 改造已删 `agents` 表）
 
 ## 三、启动 / 重启 SOP
 

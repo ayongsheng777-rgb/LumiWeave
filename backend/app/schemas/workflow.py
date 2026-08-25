@@ -3,10 +3,10 @@
 这是前后端通信的唯一契约。无论前端连线多复杂，
 最终必须组装成该格式提交给后端。
 
-与现有 `app.agent.types.WorkflowGraph` 的关系：
+与现有 `app.workflow.types.WorkflowGraph` 的关系：
 - 本模块是「对外协议层」（含 workflow_id、params 命名），
   面向 API 入参/出参。
-- `app.agent.types` 是「引擎执行层」（data 命名），面向执行。
+- `app.workflow.types` 是「引擎执行层」（data 命名），面向执行。
 - 提供 `to_engine_graph()` 一键转换，互不侵入。
 """
 from __future__ import annotations
@@ -41,12 +41,12 @@ class WorkflowDAG(BaseModel):
     edges: List[Edge] = Field(default_factory=list)
 
     def to_engine_graph(self):
-        """转换为引擎执行层的 WorkflowGraph（app.agent.types）。
+        """转换为引擎执行层的 WorkflowGraph（app.workflow.types）。
 
         命名映射：params -> data，source_handle/target_handle -> sourceHandle/targetHandle。
         引擎节点 id 直接用协议层 id（引擎不要求与连线 id 一致）。
         """
-        from app.agent.types import WorkflowEdge, WorkflowGraph, WorkflowNode
+        from app.workflow.types import WorkflowEdge, WorkflowGraph, WorkflowNode
 
         nodes = [
             WorkflowNode(id=n.id, type=n.type, data=dict(n.params or {}))
