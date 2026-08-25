@@ -34,7 +34,7 @@ async def film_story_parse(
 
 3. props: 道具列表，每项含 id, name, description, prompt（用于绘图）
 
-4. shots: 分镜列表（建议每3秒一个镜头，总时长{duration}秒），每项含 shot编号, camera（镜头类型）, duration（秒）, description（动作/情节描述）, prompt（用于绘图）
+4. shots: 分镜列表（建议每3秒一个镜头，总时长{duration}秒），每项含 shot编号, camera（镜头类型）, duration（秒）, description（动作/情节描述）, prompt（用于绘图）, character_ids（该镜头出现的角色id数组）, scene_ids（该镜头出现的场景id数组）
 
 类型：{genre}
 风格：{style}
@@ -87,8 +87,8 @@ async def film_storyboard_generate(
 总时长：{total_duration}秒（建议每镜3秒，共{ max(1, total_duration // 3) }个镜头）
 
 请按以下 JSON 格式输出分镜列表（严格 JSON，无前缀）：
-[
-  {{"shot": 1, "camera": "wide shot", "duration": 3, "description": "主角进入场景", "prompt": "绘图提示词"}},
+  [
+  {{"shot": 1, "camera": "wide shot", "duration": 3, "description": "主角进入场景", "prompt": "绘图提示词", "character_ids": ["char_1"], "scene_ids": ["scene_1"]}},
   ...
 ]
 
@@ -293,6 +293,51 @@ async def film_video_generate(
         return {"ok": False, "error": str(e)}
 
 
+async def film_prop_generate(
+    name: str = "",
+    description: str = "",
+    prompt: str = "",
+    style: str = "电影感",
+    reference_urls: list[str] | None = None,
+    render_mode: str = "comfyui",
+    provider_id: str = "",
+    model: str = "",
+    renderer_id: str = "",
+) -> dict[str, Any]:
+    from app.renderers.generate import render_media
+
+    parts = [p for p in [prompt, description, style] if p and str(p).strip()]
+    parts.append("cinematic, high detail")
+    full_prompt = ", ".join(parts)
+
+    params = {
+        "prompt": full_prompt,
+        "negative": "blurry, low quality, deformed",
+        "seed": str(uuid.uuid4().int)[:10],
+        "steps": 25,
+        "cfg": 7.0,
+    }
+    if reference_urls:
+        params["reference"] = reference_urls
+    try:
+        result = await render_media(
+            "image", params,
+            render_mode=render_mode, provider_id=provider_id,
+            model=model, renderer_id=renderer_id,
+        )
+        logs = result.get("logs") or []
+        if isinstance(result, dict) and result.get("ok") is not False:
+            images = result.get("images") or []
+            url = images[0].get("url") if images else ""
+            return {
+                "ok": True,
+                "data": {"name": name, "prompt": full_prompt, "url": url, "images": images, "logs": logs},
+            }
+        return {"ok": False, "error": result.get("error") if isinstance(result, dict) else "生成失败", "logs": logs}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 async def film_subtitle_generate(
     video_url: str = "",
     audio_url: str = "",
@@ -373,6 +418,11 @@ _FILM_TOOLS = [
         film_scene_generate,
     ),
     (
+        "film.prop_generate",
+        "根据道具定义生成道具图片，支持参考图和风格参数。",
+        film_prop_generate,
+    ),
+    (
         "film.storyboard_generate",
         "根据角色/场景/时长生成分镜表（Shot-by-Shot），输出镜头列表含 camera/duration/description。",
         film_storyboard_generate,
@@ -409,6 +459,7 @@ _FILM_CALL_MAP: dict[str, Any] = {
     "film.storyboard_generate": film_storyboard_generate,
     "film.character_generate": film_character_generate,
     "film.scene_generate": film_scene_generate,
+    "film.prop_generate": film_prop_generate,
     "film.video_generate": film_video_generate,
     "film.subtitle_generate": film_subtitle_generate,
     "film.export": film_export,

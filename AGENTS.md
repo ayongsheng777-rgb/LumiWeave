@@ -280,6 +280,30 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 - `canvas/objectNodes.tsx`：重写 `AssetNode`（生成按钮 + assetType 下拉 + 无背景/多视角 + 场景参考角色图 + 生成方式 + 提示词优化/翻译 + 结果自适应）；重写 `VideoNode`（生视频模式文生/首帧/多参考 + 参考图多选 + 生成方式，走 renderMedia）
 - `RefImagePicker.tsx`：同时读 workflowStore + canvasStore，两套画布都能挑参考图
 
+## 一·十八、故事节点全流程生成 + 分镜自动联动（2026-08-26 完成）
+
+**改动**：
+- `backend/app/mcp/tools/film_tools.py`：
+  - `film_story_parse` prompt 改，每个 shot 输出 `character_ids`（角色id数组）+ `scene_ids`（场景id数组），供后续按镜关联
+  - 新增 `film_prop_generate` 工具函数（之前缺失道具生成）
+  - `_FILM_CALL_MAP` + MCP 注册均加入 `film.prop_generate` + `film.video_generate`
+- `frontend/src/api.ts`：新增 `filmPropGenerate` + `filmVideoGenerate`（对应后端新工具）
+- `frontend/src/components/nodes/StoryNode.tsx`：重写
+  - ① 解析按钮 → AI 解析故事（已有）
+  - ② 新增「全流程生成」按钮，三种模式可选：
+    - **全量参考**：先生成角色图+场景图+道具图 → 每个 shot 的 `reference_images` = 该镜头涉及的所有角色图+场景图 → video_mode=multi_ref → 各分镜可生成视频
+    - **首帧参考**：同上先生图 → 每个 shot 的 `image_url` = 第一张参考图 → video_mode=image2video
+    - **纯文生**：不做图片生成，直接填 shots → video_mode=text2video
+  - 生成完成后在节点内展示角色图/场景图/道具图缩略图预览
+- `frontend/src/components/nodes/StoryboardNode.tsx`：重写
+  - 连线上游 StoryNode 时自动触发 `autoLinkStoryNode()`：读取 StoryNode 的 `character_urls/scene_urls/prop_urls`，按每个 shot 的 `character_ids/scene_ids` 把对应图片填入 `reference_images`
+  - 联动成功后在节点内显示「已联动」状态栏（显示角色/场景/道具图数量）
+  - 提供「闪电」按钮手动重新触发联动
+  - 分镜级独立参考：每个 shot 只填它 `character_ids`/`scene_ids` 关联的图片，不是全量填
+- `frontend/src/store/nodeAdapter.tsx`：新增 `getNodes()` + `getEdges()`，供 StoryboardNode 查找上游 StoryNode
+
+**前端 hash**：`index-BWFGjrGT.js`
+
 **关键架构约定**：
 - 两套画布 = 两套 store：工作流画布 `workflowStore` + `components/nodes/*.tsx`；无限画布 `canvasStore` + `canvas/objectNodes.tsx`，节点组件**不通用**（各自 NodeShell），改功能要两边都改
 - 无限画布 `OBJECT_LIBRARY` 声明了 character/scene/prop 类型，但 `objectNodeTypes` **没注册**对应渲染组件（历史遗留不一致）；用户实际用 `asset` 类型（`assetType` 字段标记 角色/场景/道具），故升级的是 AssetNode

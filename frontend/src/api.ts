@@ -514,6 +514,22 @@ export async function filmSceneGenerate(params: {
   return mcpCall('film.scene_generate', params)
 }
 
+export async function filmPropGenerate(params: {
+  name: string; description: string; prompt?: string; style?: string;
+  reference_urls?: string[];
+  render_mode?: string; provider_id?: string; model?: string; renderer_id?: string
+}) {
+  return mcpCall('film.prop_generate', params)
+}
+
+export async function filmVideoGenerate(params: {
+  prompt: string; mode?: string; duration?: number; ratio?: string; camera?: string;
+  image_url?: string; reference_images?: string[];
+  render_mode?: string; provider_id?: string; model?: string; renderer_id?: string
+}) {
+  return mcpCall('film.video_generate', params)
+}
+
 export async function filmSubtitleGenerate(params: {
   video_url?: string; audio_url?: string; subtitle_content?: string; format?: string
 }) {

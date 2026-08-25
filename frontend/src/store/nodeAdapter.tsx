@@ -20,6 +20,10 @@ export interface NodeAdapter {
   getLocked: (id: string) => boolean
   toggleLock: (id: string) => void
   remove: (id: string) => void
+  /** 返回当前画布全部节点（供 StoryboardNode 查找上游 StoryNode） */
+  getNodes: () => Node[]
+  /** 返回当前画布全部连线（供 StoryboardNode 查找上游 StoryNode） */
+  getEdges: () => Edge[]
 }
 
 const NodeAdapterContext = createContext<NodeAdapter | null>(null)
@@ -41,6 +45,8 @@ function buildWorkflowAdapter(): NodeAdapter {
     getStatus: (id) => status[id] || 'idle',
     getOutput: (id) => outputs[id],
     getLocked: (id) => (nodes.find((n) => n.id === id)?.data as Record<string, unknown> | undefined)?.locked === true,
+    getNodes: () => nodes,
+    getEdges: () => edges,
   }
 }
 
@@ -63,6 +69,8 @@ function buildCanvasAdapter(): NodeAdapter {
       return typeof r === 'string' || typeof r === 'number' ? r : undefined
     },
     getLocked: (id) => byId(id)?.locked === true,
+    getNodes: () => objects,
+    getEdges: () => edges,
   }
 }
 
