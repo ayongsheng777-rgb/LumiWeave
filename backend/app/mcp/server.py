@@ -41,10 +41,18 @@ def http_app():
 
     每个请求校验 `Authorization: Bearer lw-mcp-xxx`（查 mcp_clients 表），
     无效或缺失返回 401。stdio 模式走本地信任，不经此层。
+
+    MCP HTTP streamable 协议要求客户端 Accept: application/json, text/event-stream。
+    WorkBuddy MCP 发 Accept: application/json，不支持 SSE → server 强制返回 JSON 响应。
+    通过 patch streamable_http_app 的响应逻辑，让它忽略 Accept 检查始终返回 JSON。
     """
     from starlette.responses import JSONResponse
 
-    base = server.streamable_http_app(streamable_http_path="/mcp")
+    base = server.streamable_http_app(
+        streamable_http_path="/mcp",
+        json_response=True,  # 支持 Accept: application/json（非强制 SSE）
+        stateless_http=True,  # 无状态，无需 session cookie，适合 HTTP API 客户端
+    )
 
     async def wrapped(scope, receive, send):
         if scope["type"] == "http":
@@ -61,6 +69,7 @@ def http_app():
                 resp = JSONResponse({"error": "MCP token 无效", "code": "AUTH_REQUIRED"}, status_code=401)
                 await resp(scope, receive, send)
                 return
+
         await base(scope, receive, send)
 
     return wrapped

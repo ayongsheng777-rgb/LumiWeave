@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Trash2, Plus, Plug, KeyRound } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { Trash2, Plus, Plug, KeyRound, RefreshCw } from 'lucide-react'
 import { mcpClient } from '../../api/client'
 
 interface McpClient {
@@ -16,16 +16,19 @@ export default function MCPStatus() {
   const [message, setMessage] = useState('')
   const [form, setForm] = useState({ name: '', type: 'codex' })
   const [newToken, setNewToken] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    setLoading(true)
     const [iRes, cRes] = await Promise.all([mcpClient.info(), mcpClient.clients()])
     if (iRes.ok) setInfo(iRes.data)
     if (cRes.ok) setClients(cRes.data.clients || [])
-  }
+    setLoading(false)
+  }, [])
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
 
   const create = async () => {
     setMessage('')
@@ -55,9 +58,19 @@ export default function MCPStatus() {
 
       {/* MCP Server 状态 */}
       <div className="rounded-xl border border-edge bg-panel-2 p-4">
-        <div className="mb-2 flex items-center gap-2 text-sm font-medium text-ink">
-          <Plug size={15} className="text-brand-400" />
-          MCP Server
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium text-ink">
+            <Plug size={15} className="text-brand-400" />
+            MCP Server
+          </div>
+          <button
+            onClick={() => load()}
+            disabled={loading}
+            className="flex items-center gap-1 rounded-lg border border-edge bg-soft px-2.5 py-1 text-xs text-ink transition hover:border-brand-500 hover:text-brand-400 disabled:opacity-50"
+          >
+            <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+            {loading ? '刷新中…' : '刷新'}
+          </button>
         </div>
         <div className="space-y-1 text-xs text-ink-2">
           <p>名称：{info?.name ?? 'lumiweave'}</p>
