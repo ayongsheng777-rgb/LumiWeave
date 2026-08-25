@@ -1,13 +1,23 @@
+import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { Package } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
+import { getProviders } from '../../api'
 import { NodeShell, Field, inputCls } from './NodeShell'
+import { GenerationModeField } from './GenerationModeField'
 
 const BIND_TYPES = ['', 'character', 'scene']
 
 export function PropNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
+  const [providers, setProviders] = useState<{ id: string; name: string }[]>([])
+
+  useEffect(() => {
+    getProviders().then((r) => {
+      if (r.ok) setProviders((r.data.providers || []).filter((p: { type: string }) => p.type === 'image'))
+    })
+  }, [])
 
   const name    = String(d.name ?? '')
   const desc    = String(d.description ?? '')
@@ -16,6 +26,8 @@ export function PropNode({ id, data, selected }: NodeProps) {
   const bindId  = String(d.bind_id ?? '')
   const refs    = (d.reference as string[]) || []
   const url     = String((d.result as Record<string, unknown>)?.url ?? '')
+  const renderMode = String(d.render_mode ?? 'comfyui')
+  const providerId = String(d.provider_id ?? '')
 
   const run = () => update(id, { action: 'execute' })
 
@@ -53,6 +65,13 @@ export function PropNode({ id, data, selected }: NodeProps) {
       )}
       {url ? <img className="h-24 w-full rounded-md object-cover" src={url} alt="道具图" />
         : <div className="flex h-16 items-center justify-center rounded-md bg-soft text-[11px] text-ink-3">点击生成获取道具图</div>}
+      <GenerationModeField
+        mode={renderMode}
+        providerId={providerId}
+        providers={providers}
+        onModeChange={(v) => update(id, { render_mode: v })}
+        onProviderChange={(v) => update(id, { provider_id: v })}
+      />
       <button className="nodrag w-full rounded-lg bg-brand-500 px-3 py-2 text-sm text-white transition hover:bg-brand-600 disabled:opacity-50"
         onClick={run}>
         生成道具

@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { User } from 'lucide-react'
 import { useWorkflowStore } from '../../store/workflowStore'
+import { getProviders } from '../../api'
 import { NodeShell, Field, inputCls } from './NodeShell'
+import { GenerationModeField } from './GenerationModeField'
 
 const STYLES = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋克', '古风']
 const POSES  = ['', '站立', '行走', '战斗姿态', '坐姿', '跑步', '飞行', '持械', '休闲']
@@ -10,6 +13,13 @@ const EXPRESSIONS = ['', '冷峻', '微笑', '愤怒', '悲伤', '惊讶', '坚�
 export function CharacterNode({ id, data, selected }: NodeProps) {
   const update = useWorkflowStore((s) => s.updateNodeData)
   const d = data as Record<string, unknown>
+  const [providers, setProviders] = useState<{ id: string; name: string }[]>([])
+
+  useEffect(() => {
+    getProviders().then((r) => {
+      if (r.ok) setProviders((r.data.providers || []).filter((p: { type: string }) => p.type === 'image'))
+    })
+  }, [])
 
   const name    = String(d.name ?? '')
   const desc    = String(d.description ?? '')
@@ -20,6 +30,8 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
   const refs    = (d.reference as string[]) || []
   const seed    = String(d.seed ?? '')
   const url     = String((d.result as Record<string, unknown>)?.url ?? '')
+  const renderMode = String(d.render_mode ?? 'comfyui')
+  const providerId = String(d.provider_id ?? '')
 
   const run = () => update(id, { action: 'execute' })
 
@@ -66,6 +78,13 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
       )}
       {url ? <img className="h-32 w-full rounded-md object-cover" src={url} alt="角色图" />
         : <div className="flex h-20 items-center justify-center rounded-md bg-soft text-[11px] text-ink-3">点击生成获取角色图</div>}
+      <GenerationModeField
+        mode={renderMode}
+        providerId={providerId}
+        providers={providers}
+        onModeChange={(v) => update(id, { render_mode: v })}
+        onProviderChange={(v) => update(id, { provider_id: v })}
+      />
       <button className="nodrag w-full rounded-lg bg-brand-500 px-3 py-2 text-sm text-white transition hover:bg-brand-600 disabled:opacity-50"
         onClick={run}>
         生成角色

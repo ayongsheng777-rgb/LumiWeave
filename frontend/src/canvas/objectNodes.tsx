@@ -39,7 +39,7 @@ function TextLikeNode({ id, data, selected, title, color, placeholder, rows }: N
   }
 
   return (
-    <NodeShell title={title} color={color} selected={!!selected} locked={locked} onToggleLock={toggleLock} onDelete={remove} input={false}>
+    <NodeShell title={title} color={color} selected={!!selected} locked={locked} onToggleLock={toggleLock} onDelete={remove}>
       <textarea
         className="nodrag nowheel"
         rows={rows}
@@ -69,7 +69,7 @@ function InputNode({ id, data, selected }: NodeProps) {
   const { update, toggleLock, remove } = useNodeActions(id)
   const locked = d.locked === true
   return (
-    <NodeShell title="故事输入" color="#8b5cf6" selected={!!selected} locked={locked} onToggleLock={toggleLock} onDelete={remove} input={false}>
+    <NodeShell title="故事输入" color="#8b5cf6" selected={!!selected} locked={locked} onToggleLock={toggleLock} onDelete={remove}>
       <textarea
         className="nodrag nowheel"
         rows={5}
