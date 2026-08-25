@@ -33,11 +33,17 @@ export const NODE_DEFAULTS: Record<string, Record<string, unknown>> = {
     style: '电影感',    // 风格：电影感/动漫/写实/水彩/3D
     ratio: '16:9',      // 比例：16:9 / 9:16 / 1:1 / 4:3
     duration: 30,       // 目标时长（秒）
+    video_mode: 'auto_full',  // 全流程生成模式：auto_full / auto_firstframe / text2video
     // 执行后填充
     characters: [],    // {id, name, description, prompt}[]
     scenes: [],         // {id, location, time, weather, description}[]
     props: [],          // {id, name, description, prompt}[]
-    storyboard: [],     // {id, shot, description, camera, duration}[]
+    storyboard: [],     // {shot, camera, duration, description, prompt, character_ids, scene_ids}[]
+    shots: [],          // 同 storyboard（兼容）
+    character_urls: {}, // {id: url}  生成完成后填入
+    scene_urls: {},     // {id: url}
+    prop_urls: {},      // {id: url}
+    status: 'idle',
   },
 
   // ── 角色 ─────────────────────────────────────────────────
