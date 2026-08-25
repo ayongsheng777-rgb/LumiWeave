@@ -3,11 +3,11 @@ import { aiBuildWorkflow, canvasApplyLayout, canvasSaveGraph, canvasToWorkflow, 
 import { useCanvasStore } from '../store/canvasStore'
 import { canvasToWorkflow as toWfGraph } from './workflowAdapter'
 import { dagLayout } from './layout'
-import { Play, Save, Undo2, Redo2, Trash2, Wand2, Workflow } from 'lucide-react'
+import { Play, Save, Undo2, Redo2, Trash2, Wand2, Workflow, LayoutGrid } from 'lucide-react'
 import { emitLog } from '../components/LogPanel'
 
 export default function CanvasToolbar() {
-  const { undo, redo, clear, projectId, objects, edges, updateNodeStatus, load } = useCanvasStore()
+  const { undo, redo, clear, projectId, objects, edges, updateNodeStatus, load, applyAutoLayout } = useCanvasStore()
   const [running, setRunning] = useState(false)
   const [building, setBuilding] = useState(false)
   const [buildPrompt, setBuildPrompt] = useState('')
@@ -146,6 +146,7 @@ export default function CanvasToolbar() {
           <option value="" disabled>一键排版…</option>
           {['poster', 'xiaohongshu', 'ppt', 'ecommerce', 'magazine'].map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
+        <button className="ghost" onClick={applyAutoLayout} title="按连线自动排列节点" disabled={objects.length === 0}><LayoutGrid size={14} /> 自动排列</button>
         <button className="ghost" onClick={undo} title="撤销"><Undo2 size={14} /></button>
         <button className="ghost" onClick={redo} title="重做"><Redo2 size={14} /></button>
         <button className="ghost" onClick={clear} title="清空"><Trash2 size={14} /></button>

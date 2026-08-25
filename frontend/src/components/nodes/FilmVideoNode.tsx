@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { Film } from 'lucide-react'
-import { useWorkflowStore } from '../../store/workflowStore'
+import { useNodeAdapter } from '../../store/nodeAdapter'
 import { getProviders, getRenderers, renderMedia } from '../../api'
 import { cameraLabel } from '../../cameraLabels'
 import { NodeShell, Field, inputCls } from './NodeShell'
@@ -22,7 +22,7 @@ const VIDEO_MODES = [
 ]
 
 export function FilmVideoNode({ id, data, selected }: NodeProps) {
-  const update = useWorkflowStore((s) => s.updateNodeData)
+  const { update } = useNodeAdapter()
   const d = data as Record<string, unknown>
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [renderers, setRenderers] = useState<RendererInfo[]>([])

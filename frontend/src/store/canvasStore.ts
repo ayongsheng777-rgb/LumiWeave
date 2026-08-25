@@ -9,6 +9,7 @@ import {
   type EdgeChange,
   type Connection,
 } from '@xyflow/react'
+import { dagLayout } from '../canvas/layout'
 
 // =====================================================================
 // 影视创作节点系统 V2 — 画布工具条节点库（13节点）
@@ -16,23 +17,23 @@ import {
 // =====================================================================
 export const OBJECT_LIBRARY: { type: string; label: string; defaultData: Record<string, unknown>; size: { width: number; height: number } }[] = [
   // ── 创作入口 ──────────────────────────────────────────────
-  { type: 'story',       label: '故事输入',   defaultData: { text: '', genre: '科幻', style: '电影感', ratio: '16:9', duration: 30 }, size: { width: 300, height: 280 } },
+  { type: 'story',       label: '故事输入',   defaultData: { text: '', genre: '科幻', style: '电影感', ratio: '16:9', duration: 30, characters: [], scenes: [], props: [], storyboard: [] }, size: { width: 280, height: 430 } },
   // ── 资产生成 ──────────────────────────────────────────────
-  { type: 'character',   label: '角色',       defaultData: { name: '', prompt: '', style: '电影感', pose: '', expression: '' }, size: { width: 280, height: 320 } },
-  { type: 'scene',       label: '场景',       defaultData: { name: '', location: '', time: '白天', weather: '晴', camera: 'wide shot', description: '' }, size: { width: 280, height: 340 } },
-  { type: 'prop',        label: '道具',       defaultData: { name: '', prompt: '', bind_type: '', bind_id: '' }, size: { width: 260, height: 260 } },
+  { type: 'character',   label: '角色',       defaultData: { name: '', description: '', prompt: '', reference: [], style: '电影感', pose: '', expression: '', seed: '', character_id: '' }, size: { width: 280, height: 620 } },
+  { type: 'scene',       label: '场景',       defaultData: { name: '', location: '', time: '白天', weather: '晴', camera: 'wide shot', description: '', prompt: '', style: '电影感', reference: [], scene_id: '' }, size: { width: 280, height: 520 } },
+  { type: 'prop',        label: '道具',       defaultData: { name: '', description: '', prompt: '', reference: [], bind_type: '', bind_id: '', prop_id: '' }, size: { width: 280, height: 480 } },
   // ── 分镜 ─────────────────────────────────────────────────
-  { type: 'storyboard',  label: '分镜',       defaultData: { shots: [], ratio: '16:9', total_duration: 0, status: 'idle' }, size: { width: 340, height: 480 } },
+  { type: 'storyboard',  label: '分镜',       defaultData: { shots: [], total_duration: 0, ratio: '16:9', style: '电影感' }, size: { width: 340, height: 640 } },
   // ── 媒体生成 ──────────────────────────────────────────────
-  { type: 'image',       label: '图片',       defaultData: { prompt: '', ratio: '16:9', style: '电影感', url: '' }, size: { width: 300, height: 280 } },
-  { type: 'video',       label: '视频',       defaultData: { prompt: '', images: [], camera: 'static', duration: 10, fps: 24, ratio: '16:9', video_url: '' }, size: { width: 320, height: 340 } },
+  { type: 'image',       label: '图片',       defaultData: { prompt: '', negative: '', reference: [], character_ids: [], scene_id: '', ratio: '16:9', style: '电影感', model: '', url: '' }, size: { width: 280, height: 520 } },
+  { type: 'video',       label: '视频',       defaultData: { prompt: '', images: [], character_ids: [], camera: 'static', duration: 10, fps: 24, ratio: '16:9', style: '电影感', renderer_id: '', video_url: '' }, size: { width: 300, height: 640 } },
   // ── 后期 ─────────────────────────────────────────────────
-  { type: 'audio',       label: '声音',       defaultData: { type: 'narration', script: '', voice: '默认', audio_url: '' }, size: { width: 260, height: 240 } },
-  { type: 'subtitle',    label: '字幕',       defaultData: { video_url: '', audio_url: '', format: 'srt', burnt_in: false, subtitle_url: '' }, size: { width: 260, height: 240 } },
-  { type: 'layout',      label: '排版',       defaultData: { template: 'film_poster', ratio: '16:9', elements: [] }, size: { width: 260, height: 240 } },
-  { type: 'export',      label: '导出',       defaultData: { format: 'mp4', video_url: '', include_storyboard: true, include_subtitles: true }, size: { width: 260, height: 220 } },
+  { type: 'audio',       label: '声音',       defaultData: { type: 'narration', script: '', voice: '默认', music_url: '', sfx_urls: [], audio_url: '' }, size: { width: 260, height: 240 } },
+  { type: 'subtitle',    label: '字幕',       defaultData: { video_url: '', audio_url: '', format: 'srt', content: '', burnt_in: false, subtitle_url: '' }, size: { width: 260, height: 240 } },
+  { type: 'layout',      label: '排版',       defaultData: { template: 'film_poster', elements: [], ratio: '16:9' }, size: { width: 280, height: 260 } },
+  { type: 'export',      label: '导出',       defaultData: { format: 'mp4', video_url: '', subtitle_url: '', include_storyboard: true, include_subtitles: true, export_path: '' }, size: { width: 260, height: 220 } },
   // ── 通用辅助 ──────────────────────────────────────────────
-  { type: 'prompt',      label: '提示词',     defaultData: { template: '', query: '' }, size: { width: 240, height: 160 } },
+  { type: 'prompt',      label: '提示词',     defaultData: { template: '', query: '' }, size: { width: 260, height: 200 } },
   { type: 'asset',       label: '资产',       defaultData: { prompt: '', assetType: '资产', url: '' }, size: { width: 260, height: 220 } },
 ]
 
@@ -74,6 +75,7 @@ interface CanvasState {
   updateNodeStatus: (id: string, status: string, result?: unknown, error?: string) => void
   deleteObjects: (ids: string[]) => void
   toggleLock: (id: string) => void
+  applyAutoLayout: () => void
   setSelected: (ids: string[]) => void
   bringForward: (id: string) => void
   sendBackward: (id: string) => void
@@ -157,6 +159,9 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         return { ...o, draggable: !locked, data: { ...o.data, locked } }
       }),
     })),
+
+  applyAutoLayout: () =>
+    set((s) => ({ objects: dagLayout(s.objects, s.edges) })),
 
   setSelected: (ids) => set({ selectedIds: ids }),
 

@@ -1,10 +1,10 @@
 import { type NodeProps } from '@xyflow/react'
 import { Download } from 'lucide-react'
-import { useWorkflowStore } from '../../store/workflowStore'
+import { useNodeAdapter } from '../../store/nodeAdapter'
 import { NodeShell, Field, inputCls } from './NodeShell'
 
 export function OutputNode({ id, data, selected }: NodeProps) {
-  const update = useWorkflowStore((s) => s.updateNodeData)
+  const { update } = useNodeAdapter()
   const d = data as Record<string, unknown>
   return (
     <NodeShell id={id} selected={selected} title="输出" icon={<Download size={15} />}>

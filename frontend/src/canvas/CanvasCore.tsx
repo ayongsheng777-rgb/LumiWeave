@@ -9,6 +9,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCanvasStore } from '../store/canvasStore'
+import { NodeAdapterProvider } from '../store/nodeAdapter'
 import { canvasGetGraph } from '../api'
 import { objectNodeTypes } from './objectNodes'
 import CanvasToolbar from './CanvasToolbar'
@@ -119,7 +120,9 @@ function CanvasCoreInner() {
 export default function CanvasCore() {
   return (
     <ReactFlowProvider>
-      <CanvasCoreInner />
+      <NodeAdapterProvider variant="canvas">
+        <CanvasCoreInner />
+      </NodeAdapterProvider>
     </ReactFlowProvider>
   )
 }

@@ -1,6 +1,6 @@
 import { type NodeProps } from '@xyflow/react'
 import { Music } from 'lucide-react'
-import { useWorkflowStore } from '../../store/workflowStore'
+import { useNodeAdapter } from '../../store/nodeAdapter'
 import { NodeShell, Field, inputCls } from './NodeShell'
 
 const AUDIO_TYPES = [
@@ -11,7 +11,7 @@ const AUDIO_TYPES = [
 ]
 
 export function AudioNode({ id, data, selected }: NodeProps) {
-  const update = useWorkflowStore((s) => s.updateNodeData)
+  const { update } = useNodeAdapter()
   const d = data as Record<string, unknown>
 
   const type    = String(d.type ?? 'narration')

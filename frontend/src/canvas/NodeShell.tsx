@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react'
 import { Handle, Position, NodeResizer } from '@xyflow/react'
+import { Lock, LockOpen, Trash2 } from 'lucide-react'
 
-// 工作流节点外壳：带 source/target handles + 锁定/删除按钮 + 状态角标 + 缩放
+// 画布节点外壳（Tailwind 现代样式，与工作流画布 NodeShell 同视觉语言）
+// 保留原有 props 签名，画布专属节点无需改动即可换皮。
 export default function NodeShell({
   title,
-  color = '#3b82f6',
+  color = '#8b5cf6',
   selected,
   locked,
   status,
@@ -25,43 +27,59 @@ export default function NodeShell({
   output?: boolean
   children: ReactNode
 }) {
+  const ring =
+    status === 'running'
+      ? 'ring-status-running/70'
+      : status === 'completed'
+        ? 'ring-status-completed/70'
+        : status === 'failed' || status === 'error'
+          ? 'ring-status-failed/70'
+          : 'ring-edge'
+
+  const badge =
+    status && status !== 'idle'
+      ? status === 'completed'
+        ? 'bg-status-completed/15 text-status-completed'
+        : status === 'failed' || status === 'error'
+          ? 'bg-status-failed/15 text-status-failed'
+          : 'bg-status-running/15 text-status-running animate-pulse'
+      : null
+
   return (
     <div
-      className={`obj-node ${selected ? 'obj-selected' : ''}`}
-      style={{ borderTopColor: color }}
+      className={`flex flex-col rounded-xl bg-panel-2 ring-1 border border-edge shadow-node-dark animate-fade-in ${ring} ${selected ? '!border-brand-400' : ''}`}
+      style={{ width: '100%', height: '100%', minWidth: 180 }}
     >
       <NodeResizer
         isVisible={!!selected && !locked}
-        minWidth={140}
+        minWidth={180}
         minHeight={60}
         color="#8b5cf6"
         lineStyle={{ borderWidth: 1.5 }}
       />
-      {input && <Handle type="target" position={Position.Left} className="workflow-handle" />}
+      {input && <Handle type="target" position={Position.Left} className="!h-3 !w-3 !border-2 !border-canvas !bg-brand-500" />}
 
-      <div className="obj-node-head">
-        <span className="obj-node-dot" style={{ background: color }} />
-        <span className="obj-node-title">{title}</span>
-        {status && status !== 'idle' && (
-          <span className={`node-status-badge node-status-${status}`}>{status}</span>
-        )}
-        <div className="obj-node-actions">
+      <div className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
+        <span className="text-sm font-medium text-ink">{title}</span>
+        <span className="ml-auto flex items-center gap-1">
+          {badge && <span className={`rounded px-1.5 py-0.5 text-[10px] ${badge}`}>{status}</span>}
           {onToggleLock && (
-            <button className="nodrag obj-node-btn" title={locked ? '解锁' : '锁定'} onClick={onToggleLock}>
-              {locked ? '🔒' : '🔓'}
+            <button className="nodrag rounded p-1 text-ink-3 transition hover:bg-soft hover:text-ink" title={locked ? '解锁' : '锁定'} onClick={onToggleLock}>
+              {locked ? <LockOpen size={13} /> : <Lock size={13} />}
             </button>
           )}
           {onDelete && (
-            <button className="nodrag obj-node-btn obj-node-btn-del" title="删除" onClick={onDelete}>
-              ✕
+            <button className="nodrag rounded p-1 text-ink-3 transition hover:bg-soft hover:text-red-400" title="删除" onClick={onDelete}>
+              <Trash2 size={13} />
             </button>
           )}
-        </div>
+        </span>
       </div>
 
-      <div className="obj-node-body">{children}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">{children}</div>
 
-      {output && <Handle type="source" position={Position.Right} className="workflow-handle" />}
+      {output && <Handle type="source" position={Position.Right} className="!h-3 !w-3 !border-2 !border-canvas !bg-brand-500" />}
     </div>
   )
 }

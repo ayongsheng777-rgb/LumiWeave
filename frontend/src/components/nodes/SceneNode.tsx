@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { Mountain } from 'lucide-react'
-import { useWorkflowStore } from '../../store/workflowStore'
+import { useNodeAdapter } from '../../store/nodeAdapter'
 import { getProviders, getRenderers, filmSceneGenerate } from '../../api'
 import { cameraLabel } from '../../cameraLabels'
 import { NodeShell, Field, inputCls } from './NodeShell'
@@ -17,7 +17,7 @@ const CAMERAS   = ['wide shot', 'medium shot', 'close-up', 'birds-eye view', 'wo
 const STYLES    = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋克', '蒸汽朋克', '古风']
 
 export function SceneNode({ id, data, selected }: NodeProps) {
-  const update = useWorkflowStore((s) => s.updateNodeData)
+  const { update } = useNodeAdapter()
   const d = data as Record<string, unknown>
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [renderers, setRenderers] = useState<RendererInfo[]>([])

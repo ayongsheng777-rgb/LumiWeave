@@ -1,12 +1,12 @@
 import { type NodeProps } from '@xyflow/react'
 import { Type } from 'lucide-react'
-import { useWorkflowStore } from '../../store/workflowStore'
+import { useNodeAdapter } from '../../store/nodeAdapter'
 import { NodeShell, Field, inputCls } from './NodeShell'
 
 const FORMATS = ['srt', 'ass', 'ssa']
 
 export function SubtitleNode({ id, data, selected }: NodeProps) {
-  const update = useWorkflowStore((s) => s.updateNodeData)
+  const { update } = useNodeAdapter()
   const d = data as Record<string, unknown>
 
   const videoUrl  = String(d.video_url ?? '')

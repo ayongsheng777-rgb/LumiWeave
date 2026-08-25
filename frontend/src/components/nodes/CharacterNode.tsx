@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { User } from 'lucide-react'
-import { useWorkflowStore } from '../../store/workflowStore'
+import { useNodeAdapter } from '../../store/nodeAdapter'
 import { getProviders, getRenderers, filmCharacterGenerate } from '../../api'
 import { NodeShell, Field, inputCls } from './NodeShell'
 import { GenerationModeField, type ProviderInfo, type RendererInfo } from './GenerationModeField'
@@ -21,7 +21,7 @@ const VIEW_PROMPT: Record<string, string> = {
 }
 
 export function CharacterNode({ id, data, selected }: NodeProps) {
-  const update = useWorkflowStore((s) => s.updateNodeData)
+  const { update } = useNodeAdapter()
   const d = data as Record<string, unknown>
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [renderers, setRenderers] = useState<RendererInfo[]>([])

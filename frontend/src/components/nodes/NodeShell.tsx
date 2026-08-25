@@ -1,7 +1,8 @@
 import { Handle, Position, NodeResizer } from '@xyflow/react'
 import type { ReactNode } from 'react'
 import { Lock, LockOpen, Trash2 } from 'lucide-react'
-import { useWorkflowStore, type NodeStatus } from '../../store/workflowStore'
+import type { NodeStatus } from '../../store/workflowStore'
+import { useNodeAdapter } from '../../store/nodeAdapter'
 import StatusBadge from './StatusBadge'
 
 export const inputCls =
@@ -43,13 +44,10 @@ export function NodeShell({
   selected?: boolean
   children: ReactNode
 }) {
-  const status = useWorkflowStore((s) => s.nodeStatus[id] || 'idle')
-  const output = useWorkflowStore((s) => s.nodeOutputs[id])
-  const locked = useWorkflowStore(
-    (s) => ((s.nodes.find((n) => n.id === id)?.data as Record<string, unknown>)?.locked) === true,
-  )
-  const toggleLock = useWorkflowStore((s) => s.toggleLock)
-  const removeNode = useWorkflowStore((s) => s.removeNode)
+  const { getStatus, getOutput, getLocked, toggleLock, remove } = useNodeAdapter()
+  const status = getStatus(id)
+  const output = getOutput(id)
+  const locked = getLocked(id)
   const summary = summarize(output)
 
   return (
@@ -83,7 +81,7 @@ export function NodeShell({
           <button
             className="nodrag rounded p-1 text-ink-3 transition hover:bg-soft hover:text-red-400"
             title="删除节点"
-            onClick={() => removeNode(id)}
+            onClick={() => remove(id)}
           >
             <Trash2 size={13} />
           </button>

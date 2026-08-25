@@ -1,7 +1,7 @@
 import { type NodeProps } from '@xyflow/react'
 import { BookOpen } from 'lucide-react'
 import { useState } from 'react'
-import { useWorkflowStore } from '../../store/workflowStore'
+import { useNodeAdapter } from '../../store/nodeAdapter'
 import { NodeShell, Field, inputCls } from './NodeShell'
 import { filmStoryParse } from '../../api'
 import { emitLog } from '../LogPanel'
@@ -11,7 +11,7 @@ const STYLES = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋克',
 const RATIOS = ['16:9', '9:16', '1:1', '4:3', '3:4']
 
 export function StoryNode({ id, data, selected }: NodeProps) {
-  const update = useWorkflowStore((s) => s.updateNodeData)
+  const { update } = useNodeAdapter()
   const d = data as Record<string, unknown>
 
   const story    = String(d.text ?? '')

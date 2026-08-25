@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { ImageIcon } from 'lucide-react'
-import { useWorkflowStore } from '../../store/workflowStore'
+import { useNodeAdapter } from '../../store/nodeAdapter'
 import { getProviders, getRenderers, renderMedia } from '../../api'
 import { NodeShell, Field, inputCls } from './NodeShell'
 import { GenerationModeField, type ProviderInfo, type RendererInfo } from './GenerationModeField'
@@ -14,7 +14,7 @@ const RATIOS = ['16:9', '9:16', '1:1', '4:3', '3:4']
 const STYLES = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋克', '古风']
 
 export function ImageNode({ id, data, selected }: NodeProps) {
-  const update = useWorkflowStore((s) => s.updateNodeData)
+  const { update } = useNodeAdapter()
   const d = data as Record<string, unknown>
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [renderers, setRenderers] = useState<RendererInfo[]>([])

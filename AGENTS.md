@@ -285,7 +285,28 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 - 无限画布 `OBJECT_LIBRARY` 声明了 character/scene/prop 类型，但 `objectNodeTypes` **没注册**对应渲染组件（历史遗留不一致）；用户实际用 `asset` 类型（`assetType` 字段标记 角色/场景/道具），故升级的是 AssetNode
 - 前端 hash：`index-DubDqtx2.js`
 
-## 二、服务拓扑与端口
+## 一·十八、无限画布与工作流画布节点同步（2026-08-26 完成）
+
+**根因**：阿勇报"工作流与画布都同步，但无限画布一直是个简陋版"——两套画布的节点组件各自独立（见一·十七「节点组件不通用」），导致故事节点、角色设计增强（无背景/多视角）、自动排列、AI/MCP 增强这些只做了工作流画布，无限画布里拖出来的 story/character/scene/prop/audio/subtitle/layout/export 是**死盒子**（OBJECT_LIBRARY 声明了类型但 objectNodeTypes 没渲染组件）。
+
+**改动（治本：加适配层，让两套画布共用同一套节点组件）**：
+- 新增 `store/nodeAdapter.tsx`：`NodeAdapter` 接口 + React Context + `useNodeAdapter()`。节点组件只依赖适配层，不再直接 import 某个 store；具体读写哪个 store 由渲染它的画布决定：
+  - `NodeAdapterProvider variant="workflow"` → workflowStore（nodes/edges/nodeStatus/nodeOutputs）
+  - `NodeAdapterProvider variant="canvas"` → canvasStore（objects/edges + data.status/data.result）
+  - 无 Provider 时兜底回 workflowStore（保证旧渲染路径不崩）
+- `components/nodes/NodeShell.tsx` + 13 个影视节点（story/character/scene/prop/image/video/audio/subtitle/layout/export/prompt/skill/output）改走 `useNodeAdapter()`；StoryboardNode/InputNode/LLMNode/RenderNode/RefImagePicker 保留直连（工作流专用 / 双 store 读）
+- `canvas/CanvasCore.tsx` 包 `NodeAdapterProvider variant="canvas"`；`objectNodeTypes` 的 13 个影视类型直接引用 `filmNodeTypes.*`（即工作流组件），仅保留画布专属：storyboard(StoryboardNodeCanvas)/asset(AssetNode)/input/analyze/text/note/ai_result
+- 删除画布里已由工作流组件接管的死代码 SkillNode/OutputNode/ImageNode/VideoNode
+- `canvasStore.OBJECT_LIBRARY` 默认值对齐 `workflowStore.NODE_DEFAULTS`（保证复用组件 + 整图运行数据形状一致）；新增 `applyAutoLayout`（dagLayout）
+- `CanvasToolbar` 加「自动排列」按钮；`canvas/NodeShell` + `NodePalette` 换 Tailwind 现代样式（与工作流画布同视觉语言）
+
+**关键架构约定（以后加功能只改一处）**：
+- 影视类节点统一在 `components/nodes/*.tsx` 维护，两套画布自动同步；`canvas/objectNodes.tsx` 只保留画布独有节点
+- 节点组件一律通过 `useNodeAdapter()` 取能力，**禁止**再直接 `import { useWorkflowStore }` 写死
+- 两套画布共用同一套 `--lw-*` 主题变量（tailwind token），明暗切换一致
+- 前端新 hash：`index-D0InHs1W.js`
+
+
 
 | 服务 | 镜像 | 宿主端口 → 容器 | 说明 |
 |---|---|---|---|

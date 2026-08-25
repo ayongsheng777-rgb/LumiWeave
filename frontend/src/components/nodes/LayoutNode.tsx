@@ -1,6 +1,6 @@
 import { type NodeProps } from '@xyflow/react'
 import { Layout } from 'lucide-react'
-import { useWorkflowStore } from '../../store/workflowStore'
+import { useNodeAdapter } from '../../store/nodeAdapter'
 import { NodeShell, Field, inputCls } from './NodeShell'
 import { ResultMedia } from './ResultMedia'
 
@@ -13,7 +13,7 @@ const TEMPLATES = [
 const RATIOS = ['16:9', '9:16', '1:1', '4:3']
 
 export function LayoutNode({ id, data, selected }: NodeProps) {
-  const update = useWorkflowStore((s) => s.updateNodeData)
+  const { update } = useNodeAdapter()
   const d = data as Record<string, unknown>
 
   const template = String(d.template ?? 'film_poster')

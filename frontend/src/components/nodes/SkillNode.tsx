@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { Wrench, Plus, X } from 'lucide-react'
 import { getSkills } from '../../api'
-import { useWorkflowStore } from '../../store/workflowStore'
+import { useNodeAdapter } from '../../store/nodeAdapter'
 import { NodeShell, Field, inputCls } from './NodeShell'
 
 // 把 data.args（对象）展开成键值对行，便于列表编辑
@@ -34,7 +34,7 @@ function toArgs(rows: { k: string; v: string }[]): Record<string, unknown> {
 }
 
 export function SkillNode({ id, data, selected }: NodeProps) {
-  const update = useWorkflowStore((s) => s.updateNodeData)
+  const { update } = useNodeAdapter()
   const d = data as Record<string, unknown>
   const [skills, setSkills] = useState<{ id: string; name: string }[]>([])
   const [rows, setRows] = useState(() => toRows(d.args))
