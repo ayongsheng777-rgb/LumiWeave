@@ -4,7 +4,7 @@
 
 ## 功能特性
 
-- **DAG 工作流画布**：React Flow + Zustand 数据驱动，6 类节点（输入 / LLM 推理 / 提示词模板 / 技能调用 / 出图算力 / 输出），拖拽落点、平滑连线、节点运行状态呼吸灯与结果回显。
+- **DAG 工作流画布**：React Flow + Zustand 数据驱动，节点可连线、可持久化（刷新不丢）、可真实执行；左侧节点库拖拽、右侧参数面板、AI 一句话自动搭建整条工作流。
 - **异构算力路由**：`asyncio.Queue` 本地队列 + 常驻 worker，大显存任务（Flux / Wan2.2 / 视频）自动抛云端，基础生图留本地串行，防止爆显存。
 - **统一 DAG 协议**：`app/schemas/workflow.py` 定义前后端唯一契约，`to_engine_graph()` 转换到执行层。
 - **LLM 统一网关**：`provider_gateway.py` 统一调用出口，自动拦截并记录 Token。
@@ -16,7 +16,18 @@
 - **OTP/TOTP 认证**：纯标准库 RFC 6238，支持验证器扫码登录。
 - **独立 Docker 部署**：PostgreSQL + Redis + FastAPI 后端 + React 前端，一键启动。
 
-> 维护手册见 `AGENTS.md`，架构/接口等细节文档见 `docs/`。
+### V2.1 核心链路（2026-08-25）
+
+- **工作流持久化**：DAG 落库 `workflows` 表，`/api/workflow/save|list|load|delete`，刷新/重启不丢，前端自动恢复上次工作流。
+- **统一 Task 体系**：`/api/tasks` 六端点（创建+执行/查询/列表/取消/重试/事件），状态机 `queued→running→completed|failed|cancelled|timeout`。
+- **Result 回写画布**：render/llm/agent/skill/output 节点执行后自动落 `ai_result`/`image` 对象，保留 task_id/workflow_id/node_id/prompt/model 全链路可追溯。
+- **Node Registry**：12 类节点统一注册（含 schema），`/api/workflow/nodes` 供前端节点库消费。
+- **结构化节点结果**：`NodeResult`（ok/status/output/error/usage/duration），节点级超时与取消。
+- **Renderer Provider 抽象**：`submit/status/cancel/result` 分离 + 配置式 ComfyUI 模板（模板 + 输入映射）。
+- **AI 统一错误码**：`INVALID_API_KEY/MODEL_NOT_FOUND/RATE_LIMIT/TIMEOUT/PROVIDER_ERROR/NETWORK_ERROR/INVALID_RESPONSE`。
+- **Token 关联计费**：`token_usage_log` 记录 task_id/workflow_id/node_id/cost/currency；Provider api_key 脱敏返回。
+
+> 维护手册见 `AGENTS.md`（唯一维护文档，2026-08-25 起 `docs/` 已清理）。
 
 ## 快速开始
 
@@ -68,17 +79,19 @@ AI_ACTIVE=deepseek
 ```
 绵绣LumiWeave/
 ├── AGENTS.md          维护手册（先读这个）
-├── docs/              架构/接口/数据库/部署文档
 ├── backend/           FastAPI 后端
 │   ├── app/
 │   │   ├── auth.py           OTP/TOTP + 会话令牌
 │   │   ├── main.py           入口与鉴权中间件 + lifespan（算力 worker 挂载）
 │   │   ├── task_service.py   统一 taskId（tasks/task_events/task_results）
+│   │   ├── task_runner.py    【V2.1】工作流执行绑定 TaskId + 结果回写
+│   │   ├── tasks/            【V2.1】Task API（创建/查/取消/重试/事件）
 │   │   ├── schemas/          【V2】统一 DAG 协议（workflow.py）
-│   │   ├── ai/               AI 模型面板 + provider_gateway（统一 LLM 网关）
-│   │   ├── agent/            多智能体 Agent + engine（DAG 执行引擎）
+│   │   ├── ai/               AI 模型面板 + provider_gateway（统一 LLM 网关）+ errors（统一错误码）
+│   │   ├── agent/            多智能体 Agent + engine（DAG 执行引擎）+ node_registry + workflow_service
 │   │   ├── skills/           Skill 中央仓库
 │   │   ├── renderers/        ComfyUI Renderer + dispatcher（异构算力路由）
+│   │   ├── canvas/           画布对象 CRUD + workflow_adapter + result_writer
 │   │   ├── prompt_learning/  Prompt 学习 / RAG
 │   │   └── token_usage/      Token 统计与计费 + tracker
 │   ├── skills/           平台技能目录（builtin/external/learned）

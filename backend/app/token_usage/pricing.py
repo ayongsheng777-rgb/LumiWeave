@@ -209,11 +209,18 @@ async def today_overview() -> dict[str, Any]:
         SELECT
             COUNT(*) AS calls,
             SUM(CASE WHEN success THEN 0 ELSE 1 END) AS fails,
-            SUM(prompt_tokens) AS prompt_tokens,
-            SUM(completion_tokens) AS completion_tokens,
-            ROUND(SUM(prompt_tokens)/1000000.0 * COALESCE((SELECT input_per_million FROM model_pricing WHERE model='*' LIMIT 1),0) +
-                  SUM(completion_tokens)/1000000.0 * COALESCE((SELECT output_per_million FROM model_pricing WHERE model='*' LIMIT 1),0), 4) AS cost_yuan
+            SUM(l.prompt_tokens) AS prompt_tokens,
+            SUM(l.completion_tokens) AS completion_tokens,
+            COALESCE(SUM(c.cost_yuan), 0) AS cost_yuan
         FROM token_usage_log l
+        LEFT JOIN LATERAL (
+            SELECT ROUND(l.prompt_tokens/1000000.0 * COALESCE(p.input_per_million,0) +
+                         l.completion_tokens/1000000.0 * COALESCE(p.output_per_million,0), 4) AS cost_yuan
+            FROM model_pricing p
+            WHERE (p.model=l.model AND p.provider=l.provider) OR (p.model=l.model AND p.provider='')
+            ORDER BY (p.model=l.model AND p.provider=l.provider) DESC
+            LIMIT 1
+        ) c ON TRUE
         WHERE l.ts >= date_trunc('day', now() AT TIME ZONE 'Asia/Shanghai') AT TIME ZONE 'Asia/Shanghai'
         """
     )

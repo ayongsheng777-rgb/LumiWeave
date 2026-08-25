@@ -1,14 +1,20 @@
 {
   "id": "h3-prompt-writing",
-  "name": "H3 Prompt Writing",
+  "name": "MiniMax H3 视频提示词写作",
   "version": "1.0.0",
-  "description": "Generate structured MiniMax H3 video generation prompts (T2VA / I2VA / FL2VA / L2VA / Ref2VA).",
+  "description": "把一句话需求，生成 MiniMax H3 视频模型可直接用的结构化提示词（支持文生视频 T2VA / 图生视频 I2VA / 首尾帧 FL2VA / 动态图 L2VA / 参考图 Ref2VA）。",
   "runtime": "prompt",
   "entry": "SKILL.md",
   "permissions": [],
   "tags": [
-    "prompt",
-    "video",
+    "提示词",
+    "视频",
     "h3"
+  ],
+  "params": [
+    { "name": "mode", "label": "生成模式", "type": "select", "default": "T2VA", "required": false },
+    { "name": "style", "label": "画面风格", "type": "string", "default": "cinematic", "required": false },
+    { "name": "camera", "label": "运镜", "type": "string", "default": "static", "required": false },
+    { "name": "duration_sec", "label": "时长(秒)", "type": "number", "default": "6", "required": false }
   ]
 }

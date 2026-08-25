@@ -1,13 +1,13 @@
 # AGENTS.md — 绵绣 LumiWeave 维护手册
 
 > 本文是项目交接与长期维护的总入口。动手前先读这里。
-> 架构细节拆在 `docs/` 下 12 篇，本文只放「最快能上手」的东西。
+> 2026-08-25 起 `docs/` 已清理，本文是唯一维护手册，所有细节都在这里。
 
 ## 一、项目定位
 
 V2 目标：**AI 原生无限画布创作平台**——画布是主产品，AI 是画布的操作系统（Canvas → Chat → Agent → Skill → Provider → Renderer → Result → Asset 全链路闭环）。
 
-> 🔴 当前在 `feature/v2-rebirth` 分支做 V2 重构（见「V2 重构进度」章节）。master 还是上一版「多智能体 + 工作流节点编辑器」形态。
+> V2 重构（`feature/v2-rebirth`）已合并回 master，当前 master 即 V2.1「工作流画布」形态。
 
 ⚠️ 真实项目是 **Python FastAPI 后端**（`backend/`），不是 Node/TS 的 `infinite-canvas`。旧 TS 参考方案见 `绵绣LumiWeave项目文档.md`（仅供参考，已不适用）。
 
@@ -76,6 +76,73 @@ V2 按《LumiWeave V2 起死回生重构实施总规格书》10 个 Issue 推进
 - 本机 docker build 报 `open C:\Users\anyong\.docker\buildx\.lock: Access is denied`——buildx 锁文件被进程持有且 ACL 拒删（takeown/icacls/Remove-Item/.NET 全删不掉）。解法：**`DOCKER_BUILDKIT=0 + COMPOSE_DOCKER_CLI_BUILD=0`** 走传统构建器绕开 buildx。
 - 前端镜像内 `npm ci` 报 picomatch 版本不匹配（本地 `--legacy-peer-deps` 生成的 lock 与严格 ci 不一致）→ Dockerfile 改 `npm ci --legacy-peer-deps --no-audit --no-fund`。
 
+## 一·九、V2.1 核心链路打通（2026-08-25）
+
+按 `docs/LumiWeave_V2.1_核心链路验收与商业化补全实施规格书.md` 实施，**不推倒重写，补强核心闭环**。核心成果：**工作流能存、能跑、结果落回画布、刷新重启不丢**。
+
+**新增后端模块**
+- `app/canvas/workflow_adapter.py`：Canvas 对象 ↔ Workflow 双向转换
+- `app/canvas/result_writer.py`：节点结果回写 ai_result/image 对象（可追溯）
+- `app/agent/workflow_service.py`：workflow DAG 持久化（workflows 表）
+- `app/agent/node_registry.py`：12 类节点统一注册 + schema
+- `app/task_runner.py`：执行绑定 TaskId + 结果回写（统一执行器）
+- `app/tasks/routes.py`：Task API 六端点
+- `app/ai/errors.py`：7 类统一 AI 错误码
+
+**关键改造**
+- `engine.py`：NodeResult/NodeExecutionContext 结构化结果、节点超时、取消钩子、agent/image/video/file 节点、token 关联 task/node
+- `renderers/registry.py`：RendererProvider Protocol（submit/status/cancel/result）
+- `renderers/comfyui.py`：submit/status/result 分离 + `build_runtime_workflow`（模板+输入映射）
+- `ai/client.py`：ChatResult.error 结构化错误 + task_id/node_id 透传
+- `providers/service.py`：api_key 脱敏（mask_key + has_api_key + 掩码回传保留原值）
+- `init_db.sql`：`workflows` 表 + `tasks.workflow_id` + `token_usage_log` 5 字段（task_id/workflow_id/node_id/cost/currency）
+
+**新端点**
+- `/api/workflow/save|list|load/{id}|delete/{id}|nodes`
+- `/api/tasks`（POST 创建+执行 / GET 列表 / GET|POST cancel|retry|events `/{id}`）
+- 旧 `/workflow/execute` 与 `/ws/execute` 已改为绑定 TaskId + 回写画布
+
+**前端**：`workflowStore` 加 save/load/loadLastWorkflow（持久化 + NodeResult 适配 + localStorage 记上次工作流）、`AgentDrawer` 加保存按钮、`AgentNode` 节点、NodeStatus 加 cancelled。
+
+**验证（真实）**：端点回归全部 200（nodes 12 类型 / save / load / execute / task / canvas 回写）；核心逻辑 7/7 通过；前端 tsc+vite build 通过。
+
+**外部条件（UNVERIFIED，非缺陷）**：真实 LLM 出字配 `AI_API_KEY`；真实 ComfyUI 出图配 `LOCAL_COMFY_URL`/`CLOUD_COMFY_URL` 或启用 renderers 表记录。
+
+## 一·十、七项改进落地（2026-08-25 晚）
+
+按阿勇七项需求一次性落地并验收（backend + frontend 镜像均已重建上线）：
+
+1. **模型说明/场景 + test_model_x 修复**：`ai/persist.py` 的 `load_custom_models` 与 `ai/routes.py` 的 `delete_model` 原本用 `global + 重新赋值` 改列表，跨模块 `from app.config import CUSTOM_MODELS` 拿的是引用，重新赋值只改本模块变量 → 界面空、DB 残留（test_model_x 删不掉的根因）。修法：原地 `clear()/extend()` 与 `[:] = ...`。自定义模型加 `description`/`scenario` 字段（前后端透传）。
+2. **Provider 说明**：`docs/PROVIDER_GUIDE.md`（8 类说明 + 字段 + 评分路由 + 起步三件套）。前端 ProviderPanel 加说明 banner。
+3. **技能库参数配置 + 新增**：`SkillManifest` 加 `params`（参数 schema）；`skills` 表加 `params` 列；`POST/DELETE /api/skills`；前端 SkillPanel 加新增表单 + 参数行编辑器 + 删除。
+4. **h3 技能中文化 + evolink 知识来源**：manifest 改名「MiniMax H3 视频提示词写作」+ 4 个参数；`prompt_learning/extractor.py` 加 evolink 专用提取器（JSON-LD ItemList 中文名 ↔ `<article id="prompt-">` 正文，40 案例全提取）。
+5. **素材库删除/改名**：`assets` 表加 `name` 列；`PATCH/DELETE /api/assets/{id}`；前端 AssetPanel 加改名/删除。
+6. **OTP 更换**：前端新 `OtpPanel` + SettingsModal「安全」tab；输原 OTP → 弹新二维码 → 去登录 → 新码进主界面（复用 `/api/auth/otp-reset`）。
+7. **画布视频模块**：`canvasStore` 加 `video` 对象 + `objectNodes` VideoNode（提示词/时长/比例/运镜/风格/渲染器下拉 + 生成按钮 + video 预览）；后端 `renderers/video_api.py`（MiniMax H3 / 可灵 / 硅基流动 / OpenAI 兼容，提交→轮询→取结果）；`comfyui.py` 加 `_extract_videos`（视频工作流输出）；`renderers/__init__` 加 `video-api` 分支；generate 端点返回 `videos`。
+
+**验证**：py_compile 全过；前端 tsc + vite build 通过；端点回归全 200；video-api 假 key 打真实 MiniMax API 返回官方鉴权错误（链路通）；evolink 40 blocks 落库中文标题正确。
+
+## 一·十一、V2.1 工作流画布改造（2026-08-25 完成）
+
+按《专业节点式 AI 创作画布集成改造实施规格书》把「对象画布」升级为「工作流画布」（P0+P1 全做 + 全链路测试），实现节点连线、持久化、真实执行、AI 自动搭建。
+
+**核心结论**：后端 `agent/engine.py` 早已是完整 DAG 执行引擎（networkx 拓扑 + 9 类节点 + 变量注入 `{{节点.key}}` + 超时 + WebSocket），真正缺口在前端连线 + 后端边持久化。
+
+**后端新增/改造**
+- `init_db.sql` 加 `canvas_edges` / `canvas_viewports` 表。
+- `canvas/service.py` 加 edge CRUD；`canvas/routes.py` 加 `GET /{pid}/graph`、`POST|DELETE /edge`、`POST /{pid}/graph/save`、`POST /build`（AI 自动搭建）。
+- `engine.py` 加 `analyze` 节点（AI 剧本解析 → characters/scenes/props/shots）。
+- `ai/client.py` JSON 模式超时 60→120s（长工作流 JSON 生成）。
+
+**前端新增/改造**
+- `canvasStore` Graph 化（edges + onConnect + undo/redo 含边）。
+- 新增 `NodeShell`（source/target 手柄 + 锁定/删除 + 状态角标）、`nodeRegistry`、`workflowAdapter`（画布→工作流）、`layout.ts`（DAG 分层布局）、`NodePalette`（左侧拖拽节点库）、`CanvasInspector`（右侧参数面板）。
+- `CanvasCore` 用真实 edges；`CanvasToolbar` 加运行/保存/AI 搭建；新增 input/analyze/asset/skill/agent/output 节点（旧 text/note/prompt/image/video/ai_result 保留）。
+
+**全链路实测**：连线持久化 ✓、graph/save ✓、AI 搭建（一句话 → 5 节点 4 边工作流）✓、运行工作流（input→llm→output，变量注入真实生成广告语）✓。
+
+**踩坑**：①AI 搭建超时——build 提示词过长 + DeepSeek-V3 生成 JSON 超 60s，精简提示词 + 超时提 120s；②autoBest 会按 latency 误选 LoRA 微调模型（不可用），需回改 stable 模型；③容器内 `exec python` 是新进程不触发 lifespan，测运行态必须走 API。
+
 ## 二、服务拓扑与端口
 
 | 服务 | 镜像 | 宿主端口 → 容器 | 说明 |
@@ -87,7 +154,7 @@ V2 按《LumiWeave V2 起死回生重构实施总规格书》10 个 Issue 推进
 
 数据库：`postgresql://lumiweave:lumiweave2026@postgres:5432/lumiweave`（容器内），宿主连 `localhost:5435`。
 
-数据表：`agents` / `skills` / `renderers` / `tasks` / `task_events` / `task_results` / `token_usage_log` / `model_pricing` / `app_kv` / `prompt_sources` / `prompt_knowledge`；【V2 新增】`canvas_objects` / `providers` / `assets`。
+数据表：`agents` / `skills` / `renderers` / `tasks` / `task_events` / `task_results` / `token_usage_log` / `model_pricing` / `app_kv` / `prompt_sources` / `prompt_knowledge` / `workflows`；【V2 新增】`canvas_objects` / `canvas_edges` / `providers` / `assets`。
 
 ## 三、启动 / 重启 SOP
 
@@ -185,9 +252,9 @@ SECRET=$(docker compose exec -T backend cat /app/data/otp_secret | tr -d '\r\n '
   OTP_SECRET="$SECRET" python D:/WorkBuddy/tmp/verify_lumiweave_phases.py
 ```
 
-## 九、文档索引（docs/）
+## 九、文档说明
 
-`ACCEPTANCE_REPORT`（验收）、`ARCHITECTURE`、`AGENT_ARCHITECTURE`、`SKILL_ARCHITECTURE`、`COMFYUI_ARCHITECTURE`、`PROMPT_LEARNING`、`AUTH_SECURITY`、`TOKEN_USAGE`、`API_REFERENCE`、`DATABASE`、`DEPLOYMENT`、`TEST_PLAN`。
+> 2026-08-25 起 `docs/` 目录已清理：历史规格书、验收报告、架构文档均已删除，其内容已沉淀进本文「一·」进度章节与代码本身。本文档是唯一维护手册。
 
 ## 十、待办（外部条件启用，非缺陷）
 

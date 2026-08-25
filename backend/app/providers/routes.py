@@ -40,3 +40,16 @@ async def route_provider(request: Request):
         limit=int(data.get("limit", 3)),
     )
     return {"providers": chain}
+
+
+@router.post("/{pid}/test")
+async def test_provider(pid: str):
+    result = await service.test_provider(pid)
+    # 写回 health 状态
+    health = {"last_test": "ok" if result.get("ok") else "fail"}
+    if not result.get("ok"):
+        health["error"] = result.get("error", "")
+    else:
+        health["latency_ms"] = result.get("latency_ms", 0)
+    await service.set_health(pid, health)
+    return result

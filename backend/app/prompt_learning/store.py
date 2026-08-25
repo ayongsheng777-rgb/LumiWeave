@@ -37,6 +37,16 @@ class PromptStore:
         row = await db.fetchrow("SELECT COUNT(*) AS c FROM prompt_knowledge")
         return int(row["c"]) if row else 0
 
+    async def delete_knowledge(self, kid: str) -> bool:
+        res = await db.execute("DELETE FROM prompt_knowledge WHERE id=$1", kid)
+        return bool(res)
+
+    async def delete_source(self, sid: str) -> bool:
+        """删除来源并级联删除其下所有知识块。"""
+        await db.execute("DELETE FROM prompt_knowledge WHERE source=$1", sid)
+        res = await db.execute("DELETE FROM prompt_sources WHERE id=$1", sid)
+        return bool(res)
+
     async def search(self, query: str, k: int = 5) -> list[dict[str, Any]]:
         qvec = await embedder.embed(query)
         rows = await self.all()

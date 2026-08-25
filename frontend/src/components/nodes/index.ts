@@ -4,6 +4,7 @@ import { PromptNode } from './PromptNode'
 import { SkillNode } from './SkillNode'
 import { OutputNode } from './OutputNode'
 import { RenderNode } from './RenderNode'
+import { AgentNode } from './AgentNode'
 
 // 与后端 agent/engine.py 的节点 type 对齐
 export const nodeTypes = {
@@ -13,4 +14,5 @@ export const nodeTypes = {
   skill: SkillNode,
   output: OutputNode,
   render: RenderNode,
+  agent: AgentNode,
 }

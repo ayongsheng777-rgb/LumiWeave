@@ -66,6 +66,22 @@ export async function getProfiles() {
   return request('GET', '/ai/profiles')
 }
 
+export async function getModels() {
+  return request('GET', '/ai/models')
+}
+
+export async function listPlatformModels(profileId?: string) {
+  return request('GET', `/ai/models-list${profileId ? `?profile_id=${encodeURIComponent(profileId)}` : ''}`)
+}
+
+export async function upsertModel(payload: Record<string, unknown>) {
+  return request('POST', '/ai/models', payload)
+}
+
+export async function deleteModel(modelId: string) {
+  return request('DELETE', `/ai/models/${encodeURIComponent(modelId)}`)
+}
+
 export async function probe(profileId?: string) {
   return request('POST', '/ai/probe', { profile_id: profileId })
 }
@@ -128,6 +144,22 @@ export async function getAgentHealth(agentId: string) {
 
 export async function reloadAgents() {
   return request('POST', '/agents/reload')
+}
+
+export async function upsertAgent(payload: Record<string, unknown>) {
+  return request('POST', '/agents', payload)
+}
+
+export async function deleteAgent(agentId: string) {
+  return request('DELETE', `/agents/${encodeURIComponent(agentId)}`)
+}
+
+export async function getAgentTools() {
+  return request('GET', '/agents/tools')
+}
+
+export async function saveAgentTools(searchConfig: Record<string, unknown>) {
+  return request('POST', '/agents/tools', { search_config: searchConfig })
 }
 
 export async function agentChat(payload: {
@@ -206,10 +238,30 @@ export async function setRiskySkills(permissions: string[]) {
   return request('POST', '/skills/risky', { permissions })
 }
 
+export async function upsertSkill(payload: Record<string, unknown>) {
+  return request('POST', '/skills', payload)
+}
+
+export async function deleteSkill(skillId: string) {
+  return request('DELETE', `/skills/${encodeURIComponent(skillId)}`)
+}
+
+export async function importSkillFromUrl(url: string) {
+  return request('POST', '/skills/import-from-url', { url })
+}
+
 // ==================== 渲染器 Renderers ====================
 
 export async function getRenderers() {
   return request('GET', '/renderers')
+}
+
+export async function upsertRenderer(payload: Record<string, unknown>) {
+  return request('POST', '/renderers', payload)
+}
+
+export async function deleteRenderer(rendererId: string) {
+  return request('DELETE', `/renderers/${encodeURIComponent(rendererId)}`)
 }
 
 export async function getRendererHealth(rendererId: string) {
@@ -244,6 +296,14 @@ export async function kbSearch(q: string, k = 5) {
 
 export async function kbSync() {
   return request('POST', '/prompt-kb/sync')
+}
+
+export async function kbDelete(kid: string) {
+  return request('DELETE', `/prompt-kb/knowledge/${encodeURIComponent(kid)}`)
+}
+
+export async function kbDeleteSource(sid: string) {
+  return request('DELETE', `/prompt-kb/sources/${encodeURIComponent(sid)}`)
 }
 
 // ==================== 画布工作流 ====================
@@ -326,6 +386,33 @@ export async function runWorkflow(
   }
 }
 
+// ==================== 工作流持久化（V2.1） ====================
+
+export async function workflowSave(payload: {
+  project_id: string
+  workflow_id?: string
+  name?: string
+  graph: WorkflowGraphPayload
+}) {
+  return request('POST', '/workflow/save', payload)
+}
+
+export async function workflowLoad(workflowId: string) {
+  return request('GET', `/workflow/load/${encodeURIComponent(workflowId)}`)
+}
+
+export async function workflowList(projectId: string) {
+  return request('GET', `/workflow/list?project_id=${encodeURIComponent(projectId)}`)
+}
+
+export async function workflowDelete(workflowId: string) {
+  return request('DELETE', `/workflow/delete/${encodeURIComponent(workflowId)}`)
+}
+
+export async function getNodeLibrary() {
+  return request('GET', '/workflow/nodes')
+}
+
 // ==================== 画布对象（V2） ====================
 
 export interface CanvasObject {
@@ -364,6 +451,26 @@ export async function canvasApplyLayout(projectId: string, template: string) {
   return request('POST', '/layout/apply', { canvas_id: projectId, template })
 }
 
+export async function canvasGetGraph(projectId: string) {
+  return request('GET', `/canvas/${encodeURIComponent(projectId)}/graph`)
+}
+
+export async function canvasCreateEdge(payload: Record<string, unknown>) {
+  return request('POST', '/canvas/edge', payload)
+}
+
+export async function canvasDeleteEdge(edgeId: string) {
+  return request('DELETE', `/canvas/edge/${encodeURIComponent(edgeId)}`)
+}
+
+export async function canvasSaveGraph(projectId: string, nodes: Record<string, unknown>[], edges: Record<string, unknown>[]) {
+  return request('POST', `/canvas/${encodeURIComponent(projectId)}/graph/save`, { nodes, edges })
+}
+
+export async function aiBuildWorkflow(prompt: string) {
+  return request('POST', '/canvas/build', { prompt })
+}
+
 export async function getProviders() {
   return request('GET', '/providers')
 }
@@ -382,4 +489,12 @@ export async function routeProviders(payload: Record<string, unknown>) {
 
 export async function getAssets(type?: string) {
   return request('GET', `/assets${type ? `?type=${encodeURIComponent(type)}` : ''}`)
+}
+
+export async function renameAsset(assetId: string, name: string) {
+  return request('PATCH', `/assets/${encodeURIComponent(assetId)}`, { name })
+}
+
+export async function deleteAsset(assetId: string) {
+  return request('DELETE', `/assets/${encodeURIComponent(assetId)}`)
 }

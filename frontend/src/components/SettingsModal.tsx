@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Cpu, Coins, Wrench, Image, BookOpen, Plug, FolderOpen } from 'lucide-react'
+import { X, Cpu, Coins, Wrench, Image, BookOpen, Plug, FolderOpen, Shield } from 'lucide-react'
 import { useUiStore } from '../store/uiStore'
 import ModelPanel from './ModelPanel'
 import TokenPanel from './TokenPanel'
@@ -8,8 +8,9 @@ import RendererPanel from './RendererPanel'
 import KnowledgePanel from './KnowledgePanel'
 import ProviderPanel from './ProviderPanel'
 import AssetPanel from './AssetPanel'
+import OtpPanel from './OtpPanel'
 
-type Tab = 'model' | 'token' | 'skills' | 'renderers' | 'kb' | 'providers' | 'assets'
+type Tab = 'model' | 'token' | 'skills' | 'renderers' | 'kb' | 'providers' | 'assets' | 'security'
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'model', label: '模型', icon: <Cpu size={15} /> },
@@ -19,6 +20,7 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'kb', label: '知识库', icon: <BookOpen size={15} /> },
   { key: 'assets', label: '素材', icon: <FolderOpen size={15} /> },
   { key: 'token', label: '计费', icon: <Coins size={15} /> },
+  { key: 'security', label: '安全', icon: <Shield size={15} /> },
 ]
 
 // 设置弹窗：承载各管理面板（模型/计费/技能/出图/知识库/接口/素材）
@@ -66,6 +68,7 @@ export default function SettingsModal() {
             {tab === 'kb' && <KnowledgePanel />}
             {tab === 'providers' && <ProviderPanel />}
             {tab === 'assets' && <AssetPanel />}
+            {tab === 'security' && <OtpPanel />}
           </div>
         </div>
       </div>

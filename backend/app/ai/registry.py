@@ -44,11 +44,11 @@ MODEL_RULES = [
 ]
 
 SCENARIOS: dict[str, list[str]] = {
-    "stock": ["reasoning", "zh"],
-    "institution": ["zh", "long"],
-    "lhb": ["zh", "fast"],
-    "sector": ["zh", "fast"],
-    "news": ["zh", "fast"],
+    "chat": ["zh", "general"],
+    "copywriting": ["zh", "long"],
+    "video_prompt": ["zh", "general"],
+    "image_prompt": ["zh", "general"],
+    "kb": ["zh", "long"],
     "general": ["general"],
 }
 

@@ -5,6 +5,7 @@ const CFG: Record<NodeStatus, { dot: string; label: string }> = {
   running: { dot: 'bg-status-running', label: '运行中' },
   completed: { dot: 'bg-status-completed', label: '完成' },
   failed: { dot: 'bg-status-failed', label: '失败' },
+  cancelled: { dot: 'bg-status-failed', label: '已取消' },
 }
 
 export default function StatusBadge({ status }: { status: NodeStatus }) {

@@ -12,7 +12,7 @@ from app.agent.routes import router as agent_router
 from app.agent.workflow_routes import router as workflow_router
 from app.assets.routes import router as asset_router
 from app.canvas.routes import router as canvas_router
-from app.ai.persist import load_overrides
+from app.ai.persist import load_custom_models, load_overrides
 from app.ai.routes import router as ai_router
 from app.config import settings
 from app.layout.routes import router as layout_router
@@ -24,6 +24,7 @@ from app.renderers.routes import router as renderer_router
 from app.scheduler import start_scheduler, stop_scheduler
 from app.skills import init_skills
 from app.skills.routes import router as skill_router
+from app.tasks.routes import router as task_router
 from app.tools import register_canvas_tools
 from app.token_usage.routes import router as token_router
 
@@ -35,6 +36,7 @@ PUBLIC_PREFIXES = ("/api/auth/",)
 async def lifespan(app: FastAPI):
     await db.get_pool()
     await load_overrides()
+    await load_custom_models()
     # Phase 2/3/5 启动加载：Agent / Skill / Renderer
     await init_agents()
     await init_skills()
@@ -153,6 +155,7 @@ app.include_router(ai_router, prefix="/api/ai")
 app.include_router(token_router, prefix="/api/token-usage")
 app.include_router(agent_router, prefix="/api/agents")
 app.include_router(workflow_router, prefix="/api/workflow")
+app.include_router(task_router, prefix="/api/tasks")
 app.include_router(canvas_router, prefix="/api/canvas")
 app.include_router(provider_router, prefix="/api/providers")
 app.include_router(asset_router, prefix="/api/assets")

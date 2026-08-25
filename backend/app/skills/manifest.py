@@ -17,13 +17,14 @@ class SkillManifest:
     permissions: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     source: str = "builtin"
+    params: list[dict] = field(default_factory=list)  # 参数 schema：[{name,type,label,default,required}]
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id, "name": self.name, "version": self.version,
             "description": self.description, "runtime": self.runtime,
             "entry": self.entry, "permissions": self.permissions,
-            "tags": self.tags, "source": self.source,
+            "tags": self.tags, "source": self.source, "params": self.params,
         }
 
     @classmethod
@@ -34,4 +35,5 @@ class SkillManifest:
             runtime=d.get("runtime", "prompt"), entry=d.get("entry", "SKILL.md"),
             permissions=list(d.get("permissions", []) or []),
             tags=list(d.get("tags", []) or []), source=d.get("source", "builtin"),
+            params=list(d.get("params", []) or []),
         )

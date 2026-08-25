@@ -3,15 +3,21 @@ import { checkAuth } from './api'
 import Login from './components/Login'
 import Workspace from './components/Workspace'
 import { useUiStore } from './store/uiStore'
+import { useWorkflowStore } from './store/workflowStore'
 
 function App() {
   const [authed, setAuthed] = useState<boolean | null>(null)
   const initTheme = useUiStore((s) => s.initTheme)
+  const loadLastWorkflow = useWorkflowStore((s) => s.loadLastWorkflow)
 
   useEffect(() => {
     initTheme()
     checkAuth().then((r) => setAuthed(r.authed))
   }, [initTheme])
+
+  useEffect(() => {
+    if (authed) loadLastWorkflow()
+  }, [authed, loadLastWorkflow])
 
   if (authed === null) {
     return (

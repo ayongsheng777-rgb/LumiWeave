@@ -6,7 +6,9 @@ from app.agent.registry import AgentRegistry
 class AgentRouter:
     """Task Classifier → 类型 → 最佳 Agent；同时支持手动锁定（spec #8）。"""
 
-    TASK_TYPES = ["coding", "prompt", "image", "video", "search", "copywriting", "general"]
+    TASK_TYPES = ["coding", "prompt", "image", "video", "search", "copywriting",
+                  "canvas_analyze", "canvas_prompt", "canvas_image", "canvas_video",
+                  "canvas_edit", "canvas_skill", "general"]
 
     # 任务类型 -> 偏好 Agent（可由手动锁定覆盖）
     TYPE_AGENT_MAP = {
@@ -16,6 +18,12 @@ class AgentRouter:
         "video": "default",
         "search": "default",
         "copywriting": "default",
+        "canvas_analyze": "default",
+        "canvas_prompt": "default",
+        "canvas_image": "default",
+        "canvas_video": "default",
+        "canvas_edit": "default",
+        "canvas_skill": "default",
         "general": "default",
     }
 

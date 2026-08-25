@@ -11,6 +11,7 @@ const ringOf: Record<NodeStatus, string> = {
   running: 'ring-status-running/70',
   completed: 'ring-status-completed/70',
   failed: 'ring-status-failed/70',
+  cancelled: 'ring-status-failed/70',
 }
 
 // 把节点输出转成可读的一行摘要

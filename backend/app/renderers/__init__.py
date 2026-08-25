@@ -3,6 +3,7 @@ from __future__ import annotations
 from app import db
 from app.renderers.comfyui import ComfyUIConnector
 from app.renderers.registry import BaseRenderer, RendererConfig, RendererRegistry
+from app.renderers.video_api import VideoApiConnector
 
 renderer_registry = RendererRegistry()
 
@@ -10,7 +11,9 @@ renderer_registry = RendererRegistry()
 def _build(cfg: RendererConfig) -> BaseRenderer:
     if cfg.type == "comfyui":
         return ComfyUIConnector(cfg)
-    # image-api / video-api 在此扩展，不影响核心
+    if cfg.type == "video-api":
+        return VideoApiConnector(cfg)
+    # image-api 等在此扩展，不影响核心
     return ComfyUIConnector(cfg)
 
 

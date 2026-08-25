@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app import db
@@ -21,6 +21,7 @@ class AgentProviderConfig:
     api_key: str = ""
     enabled: bool = True
     base_url: str = ""
+    tools: list[str] = field(default_factory=list)  # 可调用的工具 id 列表
 
     def to_profile(self) -> dict[str, Any]:
         base = self.base_url or self.endpoint
@@ -43,6 +44,12 @@ class AgentProviderConfig:
                 provider = json.loads(provider)
             except Exception:
                 provider = {}
+        tools = row.get("tools") or []
+        if isinstance(tools, str):
+            try:
+                tools = json.loads(tools)
+            except Exception:
+                tools = []
         return cls(
             id=row["id"],
             name=row.get("name", row["id"]),
@@ -52,6 +59,7 @@ class AgentProviderConfig:
             api_key=provider.get("api_key", ""),
             base_url=provider.get("base_url", ""),
             enabled=bool(row.get("enabled", True)),
+            tools=list(tools or []),
         )
 
 

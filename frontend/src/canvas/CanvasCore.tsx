@@ -1,37 +1,58 @@
-import { useMemo } from 'react'
+import { useMemo, useCallback } from 'react'
 import {
   Background,
   Controls,
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  useReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCanvasStore } from '../store/canvasStore'
 import { objectNodeTypes } from './objectNodes'
 import CanvasToolbar from './CanvasToolbar'
 import LayerPanel from './LayerPanel'
+import CanvasInspector from './CanvasInspector'
+import NodePalette from './NodePalette'
 
 function CanvasCoreInner() {
-  // 用 selector 精确订阅：不订阅 selectedIds，避免 onSelectionChange→setSelected→重渲染→再触发的死循环
   const objects = useCanvasStore((s) => s.objects)
+  const edges = useCanvasStore((s) => s.edges)
   const onNodesChange = useCanvasStore((s) => s.onNodesChange)
+  const onEdgesChange = useCanvasStore((s) => s.onEdgesChange)
+  const onConnect = useCanvasStore((s) => s.onConnect)
   const setSelected = useCanvasStore((s) => s.setSelected)
   const snapshot = useCanvasStore((s) => s.snapshot)
+  const addObject = useCanvasStore((s) => s.addObject)
+  const { screenToFlowPosition } = useReactFlow()
 
-  // 不把 selected 放进受控 node（选区由 ReactFlow 内部管理，仅经 onSelectionChange 同步回 store）
   const nodes = useMemo(() => objects.map((o) => ({ ...o })), [objects])
-  const edges = useMemo(() => [], [])
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault()
+      const type = event.dataTransfer.getData('application/lumiweave-node')
+      if (!type) return
+      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      addObject(type, position)
+    },
+    [screenToFlowPosition, addObject],
+  )
 
   return (
     <div className="canvas-wrap">
       <CanvasToolbar />
+
       <div className="canvas-body">
-        <div className="canvas-flow">
+        <NodePalette />
+
+        <div className="canvas-flow" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
             onSelectionChange={({ nodes: sel }) => setSelected(sel.map((n) => n.id))}
             onNodeDragStop={snapshot}
             nodeTypes={objectNodeTypes}
@@ -45,7 +66,9 @@ function CanvasCoreInner() {
             <MiniMap />
           </ReactFlow>
         </div>
+
         <LayerPanel />
+        <CanvasInspector />
       </div>
     </div>
   )

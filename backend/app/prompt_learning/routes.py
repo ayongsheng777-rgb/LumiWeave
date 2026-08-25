@@ -56,3 +56,19 @@ async def sync_all():
         d = dict(r)
         total += await sync_source(d["id"], d["kind"], d["uri"])
     return {"ok": True, "synced_blocks": total}
+
+
+@router.delete("/knowledge/{kid}")
+async def delete_knowledge(kid: str):
+    ok = await prompt_store.delete_knowledge(kid)
+    if not ok:
+        return JSONResponse(status_code=404, content={"error": "知识条目不存在"})
+    return {"ok": True}
+
+
+@router.delete("/sources/{sid}")
+async def delete_source(sid: str):
+    ok = await prompt_store.delete_source(sid)
+    if not ok:
+        return JSONResponse(status_code=404, content={"error": "来源不存在"})
+    return {"ok": True}

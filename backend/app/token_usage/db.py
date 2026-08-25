@@ -17,13 +17,20 @@ async def log_usage(
     completion_tokens: int,
     success: bool,
     latency_ms: int = 0,
+    *,
+    task_id: str = "",
+    workflow_id: str = "",
+    node_id: str = "",
+    cost: float = 0.0,
+    currency: str = "USD",
 ) -> None:
     try:
         await db.execute(
             """
             INSERT INTO token_usage_log
-            (model, provider, scenario, prompt_tokens, completion_tokens, success, latency_ms)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (model, provider, scenario, prompt_tokens, completion_tokens, success,
+             latency_ms, task_id, workflow_id, node_id, cost, currency)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             """,
             model,
             provider or "",
@@ -32,6 +39,11 @@ async def log_usage(
             int(completion_tokens or 0),
             bool(success),
             int(latency_ms or 0),
+            task_id or "",
+            workflow_id or "",
+            node_id or "",
+            float(cost or 0.0),
+            currency or "USD",
         )
     except Exception:
         logger.exception("log_token_usage failed")
@@ -45,11 +57,19 @@ def fire_and_forget(
     completion_tokens: int,
     success: bool,
     latency_ms: int = 0,
+    *,
+    task_id: str = "",
+    workflow_id: str = "",
+    node_id: str = "",
+    cost: float = 0.0,
+    currency: str = "USD",
 ) -> None:
     try:
         asyncio.create_task(
             log_usage(
-                model, provider, scenario, prompt_tokens, completion_tokens, success, latency_ms
+                model, provider, scenario, prompt_tokens, completion_tokens, success, latency_ms,
+                task_id=task_id, workflow_id=workflow_id, node_id=node_id,
+                cost=cost, currency=currency,
             )
         )
     except Exception:

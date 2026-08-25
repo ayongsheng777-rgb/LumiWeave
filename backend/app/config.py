@@ -16,6 +16,10 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 # 仅改模型名 / 生效 id，绝不覆盖 API Key 等敏感字段。
 AI_OVERRIDES: dict[str, Any] = {"active": None, "models": {}}
 
+# 自定义模型库：由 /api/ai/models 增删改，持久化在 app_kv（key=ai_models）。
+# 在界面即可新增模型 / 改 key / 改 base_url，无需再改环境变量重启。
+CUSTOM_MODELS: list[dict[str, Any]] = []
+
 
 def _parse_models_json(value: str) -> list[dict[str, Any]]:
     try:
@@ -79,6 +83,18 @@ class Settings(BaseSettings):
         for p in profiles:
             if p.get("id") in AI_OVERRIDES["models"]:
                 p["model"] = AI_OVERRIDES["models"][p["id"]]
+        # 合并自定义模型库（界面增删改，DB 持久化）：同 id 覆盖，新 id 追加
+        for cm in CUSTOM_MODELS:
+            if not cm.get("id"):
+                continue
+            hit = next((p for p in profiles if p.get("id") == cm["id"]), None)
+            if hit:
+                hit.update({k: v for k, v in cm.items() if k != "id"})
+                hit.setdefault("provider", self._provider_of(hit.get("base_url", "")))
+            else:
+                merged = dict(cm)
+                merged.setdefault("provider", self._provider_of(merged.get("base_url", "")))
+                profiles.append(merged)
         return profiles
 
     def active_ai_profile(self) -> dict[str, Any] | None:
@@ -102,12 +118,20 @@ class Settings(BaseSettings):
             return "deepseek"
         if "dashscope" in url or "aliyun" in url:
             return "dashscope"
+        if "googleapis" in url or "gemini" in url:
+            return "gemini"
+        if "x.ai" in url or "grok" in url:
+            return "grok"
         if "openai" in url:
             return "openai"
         if "moonshot" in url or "kimi" in url:
             return "moonshot"
         if "zhipu" in url:
             return "zhipu"
+        if "siliconflow" in url:
+            return "siliconflow"
+        if "minimax" in url:
+            return "minimax"
         if "hunyuan" in url or "tencent" in url:
             return "hunyuan"
         return "custom"

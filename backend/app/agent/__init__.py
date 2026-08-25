@@ -12,10 +12,10 @@ agent_router = AgentRouter()
 
 async def init_agents() -> None:
     """从 agents 表加载已启用 Agent；为空则播种默认 Agent（default/claude/hermes/workbuddy）。"""
-    rows = await db.fetch("SELECT id, name, provider, enabled FROM agents WHERE enabled=TRUE")
+    rows = await db.fetch("SELECT id, name, provider, enabled, tools FROM agents WHERE enabled=TRUE")
     if not rows:
         await seed_default_agents()
-        rows = await db.fetch("SELECT id, name, provider, enabled FROM agents WHERE enabled=TRUE")
+        rows = await db.fetch("SELECT id, name, provider, enabled, tools FROM agents WHERE enabled=TRUE")
     agent_registry._adapters.clear()
     for row in rows:
         d = dict(row)

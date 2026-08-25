@@ -109,6 +109,8 @@ async def auto_best(profile_id: str | None = None) -> dict[str, Any]:
         return {"ok": False, "reason": "无法获取模型列表", "tested": []}
 
     candidates.sort(key=lambda x: (x["tier"], x["model"]))
+    # 限制候选数量，避免全量测试过慢（按 tier 排序后只测高质量的前若干）
+    candidates = candidates[:15]
     sem = asyncio.Semaphore(4)
     tasks = [_test_one(profile, c["model"], sem) for c in candidates]
     tested = await asyncio.gather(*tasks)

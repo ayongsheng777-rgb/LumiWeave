@@ -1,13 +1,14 @@
 import { defaultDataFor, makeNode, useWorkflowStore } from '../store/workflowStore'
-import { FileInput, Brain, FileText, Wrench, Download, Sparkles } from 'lucide-react'
+import { FileInput, Brain, FileText, Wrench, Download, Sparkles, Cpu } from 'lucide-react'
 
 const ITEMS: { type: string; label: string; icon: JSX.Element }[] = [
   { type: 'input', label: '输入', icon: <FileInput size={18} /> },
   { type: 'llm', label: 'LLM 推理', icon: <Brain size={18} /> },
   { type: 'prompt_template', label: '提示词', icon: <FileText size={18} /> },
+  { type: 'agent', label: '智能体', icon: <Cpu size={18} /> },
   { type: 'skill', label: '技能', icon: <Wrench size={18} /> },
-  { type: 'output', label: '输出', icon: <Download size={18} /> },
   { type: 'render', label: '出图', icon: <Sparkles size={18} /> },
+  { type: 'output', label: '输出', icon: <Download size={18} /> },
 ]
 
 // 左侧悬浮工具条：拖拽到画布生成节点，或点击直接添加

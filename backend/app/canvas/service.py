@@ -10,6 +10,7 @@ from app import db
 OBJECT_TYPES = {
     "text", "image", "video", "audio", "file", "prompt", "ai_result",
     "frame", "group", "workflow", "agent", "skill", "note", "reference",
+    "input", "analyze", "asset", "output", "llm", "render",
 }
 
 
@@ -37,12 +38,17 @@ async def create_object(
     size: dict[str, Any] | None = None,
     layer: int = 0,
     metadata: dict[str, Any] | None = None,
+    oid: str | None = None,
 ) -> str:
     obj_type = obj_type if obj_type in OBJECT_TYPES else "text"
-    oid = new_object_id()
+    oid = oid or new_object_id()
     await db.execute(
         """INSERT INTO canvas_objects (id, project_id, type, content, position, size, layer, metadata)
-           VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7,$8::jsonb)""",
+           VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7,$8::jsonb)
+           ON CONFLICT (id) DO UPDATE SET
+             project_id=EXCLUDED.project_id, type=EXCLUDED.type, content=EXCLUDED.content,
+             position=EXCLUDED.position, size=EXCLUDED.size, layer=EXCLUDED.layer,
+             metadata=EXCLUDED.metadata, updated_at=NOW()""",
         oid, project_id, obj_type,
         json.dumps(content or {}, ensure_ascii=False),
         json.dumps(position or {"x": 0, "y": 0}, ensure_ascii=False),
@@ -108,3 +114,60 @@ async def batch_create(objects: list[dict[str, Any]], project_id: str) -> list[s
         )
         ids.append(oid)
     return ids
+
+
+# ==================== 连线（Edge）CRUD ====================
+
+def new_edge_id() -> str:
+    return "edge_" + uuid.uuid4().hex[:24]
+
+
+def _row_to_edge(row: Any) -> dict[str, Any]:
+    d = dict(row)
+    if isinstance(d.get("metadata"), str):
+        try:
+            d["metadata"] = json.loads(d["metadata"])
+        except Exception:
+            d["metadata"] = {}
+    return d
+
+
+async def list_edges(project_id: str) -> list[dict[str, Any]]:
+    rows = await db.fetch(
+        "SELECT * FROM canvas_edges WHERE project_id=$1 ORDER BY created_at ASC",
+        project_id,
+    )
+    return [_row_to_edge(r) for r in rows]
+
+
+async def create_edge(
+    project_id: str,
+    source: str,
+    target: str,
+    source_handle: str | None = None,
+    target_handle: str | None = None,
+    edge_type: str = "workflow",
+    metadata: dict[str, Any] | None = None,
+) -> str:
+    eid = new_edge_id()
+    await db.execute(
+        """INSERT INTO canvas_edges (id, project_id, source, target, source_handle, target_handle, type, metadata)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)""",
+        eid, project_id, source, target, source_handle, target_handle, edge_type,
+        json.dumps(metadata or {}, ensure_ascii=False),
+    )
+    return eid
+
+
+async def delete_edge(edge_id: str) -> None:
+    await db.execute("DELETE FROM canvas_edges WHERE id=$1", edge_id)
+
+
+async def delete_edges_by_nodes(node_ids: list[str]) -> None:
+    """删除节点时级联清理相关连线。"""
+    if not node_ids:
+        return
+    await db.execute(
+        "DELETE FROM canvas_edges WHERE source = ANY($1) OR target = ANY($1)",
+        node_ids,
+    )

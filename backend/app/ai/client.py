@@ -11,6 +11,12 @@ import httpx
 
 from app import token_usage
 from app.ai.config import _is_placeholder, active_profile, available, model_profiles
+from app.ai.errors import (
+    AIError,
+    http_status_to_error,
+    network_error,
+    timeout_error,
+)
 from app.config import settings
 
 _SEM = asyncio.Semaphore(3)
@@ -35,6 +41,7 @@ class ChatResult:
     content: str | None
     usage: dict | None
     ok: bool
+    error: dict | None = None  # V2.1 结构化错误：{code, message, retryable, provider}
 
 
 def _cache_key(model: str, system: str, user: str) -> str:
@@ -88,18 +95,24 @@ async def _do_chat(
     json_mode: bool = False,
     cache_ttl: int = 900,
     scenario: str = "general",
+    task_id: str = "",
+    workflow_id: str = "",
+    node_id: str = "",
 ) -> ChatResult:
-    """核心调用。返回 ChatResult（含 usage），供 Agent/Skill 透传 token 计量。"""
+    """核心调用。返回 ChatResult（含 usage），供 Agent/Skill 透传 token 计量。
+
+    task_id / workflow_id / node_id 用于把 Token 消耗关联到具体工作流节点（规格书 §32）。
+    """
     if not settings.ai_enabled:
-        return ChatResult(None, None, False)
+        return ChatResult(None, None, False, error=AIError("PROVIDER_ERROR", "AI 功能未启用").to_dict())
     profile = _pick_profile(model_profile)
     if not profile:
         stats["last_error"] = "没有可用的模型配置"
-        return ChatResult(None, None, False)
+        return ChatResult(None, None, False, error=AIError("PROVIDER_ERROR", "没有可用的模型配置").to_dict())
     key = (profile.get("api_key") or "").strip()
     if not key or _is_placeholder(key):
         stats["last_error"] = "API Key 无效或缺失"
-        return ChatResult(None, None, False)
+        return ChatResult(None, None, False, error=AIError("INVALID_API_KEY", "API Key 无效或缺失", provider=profile.get("provider", "")).to_dict())
 
     model_name = profile.get("model", settings.ai_model)
     cache_key = _cache_key(model_name, system, user)
@@ -115,6 +128,9 @@ async def _do_chat(
     if any(model_name.lower().startswith(p) for p in REASONING_PREFIXES):
         mtokens = max(mtokens, 4096)
         timeout_val = max(timeout_val, 150.0)
+    if json_mode:
+        # JSON 结构化生成（如工作流规划）通常更慢，给更长超时
+        timeout_val = max(timeout_val, 120.0)
 
     payload: dict[str, Any] = {
         "model": model_name,
@@ -163,28 +179,29 @@ async def _do_chat(
         stats["fail"] += 1
         stats["last_error"] = "连接失败：境外模型需配代理，国内模型检查网络"
         await token_usage.log_usage(model_name, profile.get("provider", ""), scenario, 0, 0, False, 0)
-        return ChatResult(None, None, False)
+        return ChatResult(None, None, False, error=network_error(Exception("连接失败"), profile.get("provider", "")).to_dict())
     except httpx.ConnectTimeout:
         stats["fail"] += 1
         stats["last_error"] = "连接超时：检查网络或代理"
         await token_usage.log_usage(model_name, profile.get("provider", ""), scenario, 0, 0, False, 0)
-        return ChatResult(None, None, False)
+        return ChatResult(None, None, False, error=timeout_error(profile.get("provider", "")).to_dict())
     except httpx.ReadTimeout:
         stats["fail"] += 1
         stats["last_error"] = "模型响应过慢，请稍后重试"
         await token_usage.log_usage(model_name, profile.get("provider", ""), scenario, 0, 0, False, 0)
-        return ChatResult(None, None, False)
+        return ChatResult(None, None, False, error=timeout_error(profile.get("provider", "")).to_dict())
     except Exception as exc:
         stats["fail"] += 1
         stats["last_error"] = f"请求异常: {exc}"
         await token_usage.log_usage(model_name, profile.get("provider", ""), scenario, 0, 0, False, 0)
-        return ChatResult(None, None, False)
+        return ChatResult(None, None, False, error=network_error(exc, profile.get("provider", "")).to_dict())
 
     if response.status_code != 200:
         stats["fail"] += 1
-        stats["last_error"] = _human_error(response.status_code, response.text)
+        err = http_status_to_error(response.status_code, response.text, profile.get("provider", ""))
+        stats["last_error"] = err.message
         await token_usage.log_usage(model_name, profile.get("provider", ""), scenario, 0, 0, False, 0)
-        return ChatResult(None, None, False)
+        return ChatResult(None, None, False, error=err.to_dict())
 
     try:
         data = response.json()
@@ -192,7 +209,7 @@ async def _do_chat(
         stats["fail"] += 1
         stats["last_error"] = f"解析响应失败: {exc}"
         await token_usage.log_usage(model_name, profile.get("provider", ""), scenario, 0, 0, False, 0)
-        return ChatResult(None, None, False)
+        return ChatResult(None, None, False, error=AIError("INVALID_RESPONSE", "解析响应失败", provider=profile.get("provider", "")).to_dict())
 
     choice = data.get("choices", [{}])[0] or {}
     message = choice.get("message", {}) or {}
@@ -219,6 +236,9 @@ async def _do_chat(
             completion_tokens,
             True,
             latency_ms,
+            task_id=task_id,
+            workflow_id=workflow_id,
+            node_id=node_id,
         )
     )
 
@@ -270,6 +290,9 @@ async def chat_full(
     json_mode: bool = False,
     cache_ttl: int = 900,
     scenario: str = "general",
+    task_id: str = "",
+    workflow_id: str = "",
+    node_id: str = "",
 ) -> ChatResult:
     """返回 ChatResult（含 usage），供 Agent/Skill 透传 token 计量。"""
     return await _do_chat(
@@ -280,6 +303,9 @@ async def chat_full(
         json_mode=json_mode,
         cache_ttl=cache_ttl,
         scenario=scenario,
+        task_id=task_id,
+        workflow_id=workflow_id,
+        node_id=node_id,
     )
 
 

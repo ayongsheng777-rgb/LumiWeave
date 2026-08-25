@@ -13,6 +13,13 @@ CREATE TABLE IF NOT EXISTS token_usage_log (
 CREATE INDEX IF NOT EXISTS idx_token_usage_ts    ON token_usage_log (ts);
 CREATE INDEX IF NOT EXISTS idx_token_usage_model ON token_usage_log (model, ts);
 
+-- V2.1：Token 关联 task/workflow/node + 计费预留（规格书 §32/§33）
+ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS task_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS workflow_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS node_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS cost NUMERIC(12,6) NOT NULL DEFAULT 0;
+ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'USD';
+
 CREATE TABLE IF NOT EXISTS app_kv (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL DEFAULT '',
@@ -40,6 +47,8 @@ CREATE TABLE IF NOT EXISTS agents (
     enabled     BOOLEAN NOT NULL DEFAULT TRUE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 已有 agents 表补 tools 字段（该 Agent 可调用的工具 id 列表）
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS tools JSONB NOT NULL DEFAULT '[]';
 
 -- Skills 中央仓库（Phase 3，平台级，非绑单 Agent）
 CREATE TABLE IF NOT EXISTS skills (
@@ -53,8 +62,11 @@ CREATE TABLE IF NOT EXISTS skills (
     tags        JSONB NOT NULL DEFAULT '[]',
     content     TEXT NOT NULL DEFAULT '',
     source      TEXT NOT NULL DEFAULT 'builtin',
+    params      JSONB NOT NULL DEFAULT '[]',
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 已有 skills 表补 params 列（幂等）
+ALTER TABLE skills ADD COLUMN IF NOT EXISTS params JSONB NOT NULL DEFAULT '[]';
 
 -- Renderers（ComfyUI 等，Phase 5）
 CREATE TABLE IF NOT EXISTS renderers (
@@ -143,6 +155,33 @@ CREATE TABLE IF NOT EXISTS canvas_objects (
 );
 CREATE INDEX IF NOT EXISTS idx_canvas_objects_project ON canvas_objects (project_id);
 
+-- Canvas 连线（V2.1 工作流画布：节点间的有向边，持久化）
+CREATE TABLE IF NOT EXISTS canvas_edges (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL DEFAULT '',
+    source          TEXT NOT NULL,
+    target          TEXT NOT NULL,
+    source_handle   TEXT,
+    target_handle   TEXT,
+    type            TEXT NOT NULL DEFAULT 'workflow',
+    animated        BOOLEAN NOT NULL DEFAULT TRUE,
+    metadata        JSONB NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_canvas_edges_project ON canvas_edges (project_id);
+CREATE INDEX IF NOT EXISTS idx_canvas_edges_source ON canvas_edges (source);
+CREATE INDEX IF NOT EXISTS idx_canvas_edges_target ON canvas_edges (target);
+
+-- Canvas 视口（保存画布缩放/平移状态）
+CREATE TABLE IF NOT EXISTS canvas_viewports (
+    project_id  TEXT PRIMARY KEY,
+    x           DOUBLE PRECISION NOT NULL DEFAULT 0,
+    y           DOUBLE PRECISION NOT NULL DEFAULT 0,
+    zoom        DOUBLE PRECISION NOT NULL DEFAULT 1,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Provider 商业接口（V2 Issue #006：LLM/Image/Video/TTS 等统一抽象）
 CREATE TABLE IF NOT EXISTS providers (
     id          TEXT PRIMARY KEY,
@@ -167,8 +206,25 @@ CREATE TABLE IF NOT EXISTS assets (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_assets_task ON assets (task_id);
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
 
 -- tasks 表补 V2 字段（project_id / type / cost）
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT '';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cost NUMERIC(12,6) NOT NULL DEFAULT 0;
+-- tasks 表补 V2.1 字段（workflow_id：结果可追溯到具体工作流）
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS workflow_id TEXT NOT NULL DEFAULT '';
+
+-- ============ V2.1 核心链路：工作流 DAG 持久化 ============
+
+-- 工作流（DAG）主表：把前端 React Flow 的 nodes + edges 完整落库，
+-- 打通「保存 → 刷新 → 重启 → 恢复」闭环（规格书 §5.5/§23）。
+CREATE TABLE IF NOT EXISTS workflows (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL DEFAULT '',
+    name        TEXT NOT NULL DEFAULT '',
+    graph       JSONB NOT NULL DEFAULT '{"nodes":[],"edges":[]}',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_workflows_project ON workflows (project_id);

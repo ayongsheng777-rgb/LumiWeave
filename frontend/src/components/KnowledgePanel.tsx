@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getKbList, kbAdd, kbAddSource, kbSearch, kbSync } from '../api'
+import { getKbList, kbAdd, kbAddSource, kbDelete, kbDeleteSource, kbSearch, kbSync } from '../api'
 
 interface Knowledge {
   id: string
@@ -96,6 +96,30 @@ export default function KnowledgePanel() {
     }
   }
 
+  const handleDeleteKnowledge = async (kid: string, title: string) => {
+    if (!window.confirm(`删除知识条目「${title}」？`)) return
+    setMessage('')
+    const res = await kbDelete(kid)
+    if (res.ok) {
+      setMessage('已删除')
+      await load()
+    } else {
+      setMessage(res.data.error || '删除失败')
+    }
+  }
+
+  const handleDeleteSource = async (sid: string, uri: string) => {
+    if (!window.confirm(`删除来源「${uri}」及其全部知识块？`)) return
+    setMessage('')
+    const res = await kbDeleteSource(sid)
+    if (res.ok) {
+      setMessage('已删除来源')
+      await load()
+    } else {
+      setMessage(res.data.error || '删除失败')
+    }
+  }
+
   return (
     <div className="panel">
       <div className="panel-head">
@@ -146,6 +170,7 @@ export default function KnowledgePanel() {
                 <div className="kb-item-head">
                   <b>{k.title}</b>
                   <span className="badge">{k.source}</span>
+                  <button className="ghost" onClick={() => handleDeleteKnowledge(k.id, k.title)}>删除</button>
                 </div>
                 <p className="muted">{k.content.length > 120 ? k.content.slice(0, 120) + '…' : k.content}</p>
               </div>
@@ -172,6 +197,7 @@ export default function KnowledgePanel() {
                 <div className="kb-item-head">
                   <b>{s.kind}</b>
                   <span className="badge">{s.status}</span>
+                  <button className="ghost" onClick={() => handleDeleteSource(s.id, s.uri)}>删除</button>
                 </div>
                 <p className="muted">{s.uri}</p>
               </div>
