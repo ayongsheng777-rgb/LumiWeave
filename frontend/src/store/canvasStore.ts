@@ -10,18 +10,30 @@ import {
   type Connection,
 } from '@xyflow/react'
 
+// =====================================================================
+// 影视创作节点系统 V2 — 画布工具条节点库（13节点）
+// 与 workflowStore.ts 的 NODE_DEFAULTS 完全对齐
+// =====================================================================
 export const OBJECT_LIBRARY: { type: string; label: string; defaultData: Record<string, unknown>; size: { width: number; height: number } }[] = [
-  { type: 'input', label: '故事输入', defaultData: { text: '' }, size: { width: 260, height: 180 } },
-  { type: 'analyze', label: 'AI 解析', defaultData: { text: '' }, size: { width: 260, height: 160 } },
-  { type: 'text', label: '文本', defaultData: { text: '' }, size: { width: 220, height: 120 } },
-  { type: 'note', label: '便签', defaultData: { text: '' }, size: { width: 200, height: 100 } },
-  { type: 'prompt', label: '提示词', defaultData: { text: '' }, size: { width: 240, height: 130 } },
-  { type: 'image', label: '图片', defaultData: { url: '', prompt: '' }, size: { width: 300, height: 260 } },
-  { type: 'asset', label: '资产', defaultData: { prompt: '', assetType: '资产' }, size: { width: 260, height: 220 } },
-  { type: 'video', label: '视频', defaultData: { prompt: '', url: '', duration: 6, ratio: '16:9', camera: 'static', style: 'cinematic', renderer_id: '' }, size: { width: 320, height: 300 } },
-  { type: 'skill', label: '技能', defaultData: { skill_id: '', args: {} }, size: { width: 240, height: 140 } },
-  { type: 'output', label: '输出', defaultData: { text: '' }, size: { width: 240, height: 120 } },
-  { type: 'ai_result', label: 'AI 结果', defaultData: { text: '', kind: 'text' }, size: { width: 240, height: 140 } },
+  // ── 创作入口 ──────────────────────────────────────────────
+  { type: 'story',       label: '故事输入',   defaultData: { text: '', genre: '科幻', style: '电影感', ratio: '16:9', duration: 30 }, size: { width: 300, height: 280 } },
+  // ── 资产生成 ──────────────────────────────────────────────
+  { type: 'character',   label: '角色',       defaultData: { name: '', prompt: '', style: '电影感', pose: '', expression: '' }, size: { width: 280, height: 320 } },
+  { type: 'scene',       label: '场景',       defaultData: { name: '', location: '', time: '白天', weather: '晴', camera: 'wide shot', description: '' }, size: { width: 280, height: 340 } },
+  { type: 'prop',        label: '道具',       defaultData: { name: '', prompt: '', bind_type: '', bind_id: '' }, size: { width: 260, height: 260 } },
+  // ── 分镜 ─────────────────────────────────────────────────
+  { type: 'storyboard',  label: '分镜',       defaultData: { shots: [], ratio: '16:9', total_duration: 0 }, size: { width: 320, height: 300 } },
+  // ── 媒体生成 ──────────────────────────────────────────────
+  { type: 'image',       label: '图片',       defaultData: { prompt: '', ratio: '16:9', style: '电影感', url: '' }, size: { width: 300, height: 280 } },
+  { type: 'video',       label: '视频',       defaultData: { prompt: '', images: [], camera: 'static', duration: 10, fps: 24, ratio: '16:9', video_url: '' }, size: { width: 320, height: 340 } },
+  // ── 后期 ─────────────────────────────────────────────────
+  { type: 'audio',       label: '声音',       defaultData: { type: 'narration', script: '', voice: '默认', audio_url: '' }, size: { width: 260, height: 240 } },
+  { type: 'subtitle',    label: '字幕',       defaultData: { video_url: '', audio_url: '', format: 'srt', burnt_in: false, subtitle_url: '' }, size: { width: 260, height: 240 } },
+  { type: 'layout',      label: '排版',       defaultData: { template: 'film_poster', ratio: '16:9', elements: [] }, size: { width: 260, height: 240 } },
+  { type: 'export',      label: '导出',       defaultData: { format: 'mp4', video_url: '', include_storyboard: true, include_subtitles: true }, size: { width: 260, height: 220 } },
+  // ── 通用辅助 ──────────────────────────────────────────────
+  { type: 'prompt',      label: '提示词',     defaultData: { template: '', query: '' }, size: { width: 240, height: 160 } },
+  { type: 'asset',       label: '资产',       defaultData: { prompt: '', assetType: '资产', url: '' }, size: { width: 260, height: 220 } },
 ]
 
 let seq = 0

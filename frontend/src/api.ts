@@ -432,3 +432,59 @@ export async function renameAsset(assetId: string, name: string) {
 export async function deleteAsset(assetId: string) {
   return request('DELETE', `/assets/${encodeURIComponent(assetId)}`)
 }
+
+// ==================== 影视创作 V2（MCP film 工具）=====================
+
+// MCP HTTP 调用封装（复用当前登录 token）
+async function mcpCall(toolName: string, params: Record<string, unknown>) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const t = getToken()
+  if (t) headers['Authorization'] = `Bearer ${t}`
+  const res = await fetch(`/mcp/call/${toolName}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(params),
+  })
+  return res.json().catch(() => ({ error: '网络错误' }))
+}
+
+export async function filmStoryParse(params: {
+  text: string; genre?: string; style?: string; ratio?: string; duration?: number
+}) {
+  return mcpCall('film.story_parse', params)
+}
+
+export async function filmStoryboardGenerate(params: {
+  characters_json?: string; scenes_json?: string;
+  genre?: string; style?: string; ratio?: string; total_duration?: number
+}) {
+  return mcpCall('film.storyboard_generate', params)
+}
+
+export async function filmCharacterGenerate(params: {
+  name: string; description: string; prompt: string;
+  style?: string; pose?: string; expression?: string;
+  reference_urls?: string[]; seed?: string
+}) {
+  return mcpCall('film.character_generate', params)
+}
+
+export async function filmSceneGenerate(params: {
+  name: string; location: string; time?: string; weather?: string;
+  camera?: string; description: string; style?: string; reference_urls?: string[]
+}) {
+  return mcpCall('film.scene_generate', params)
+}
+
+export async function filmSubtitleGenerate(params: {
+  video_url?: string; audio_url?: string; subtitle_content?: string; format?: string
+}) {
+  return mcpCall('film.subtitle_generate', params)
+}
+
+export async function filmExport(params: {
+  format?: string; video_url?: string; subtitle_url?: string;
+  include_storyboard?: boolean; include_subtitles?: boolean
+}) {
+  return mcpCall('film.export', params)
+}

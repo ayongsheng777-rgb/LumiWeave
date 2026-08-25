@@ -20,7 +20,8 @@ class Node(BaseModel):
     """DAG 节点：唯一 id + 类型 + 参数。"""
 
     id: str
-    type: str  # e.g., "input", "llm", "prompt_template", "skill", "output", "render"
+    type: str  # e.g., "story", "character", "scene", "prop", "storyboard", "image", "video",
+                # "audio", "subtitle", "layout", "export", "prompt", "asset", "llm", "skill", "output"
     params: Dict[str, Any] = Field(default_factory=dict)
 
 

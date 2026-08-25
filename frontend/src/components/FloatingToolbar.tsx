@@ -1,17 +1,32 @@
-import { defaultDataFor, makeNode, useWorkflowStore } from '../store/workflowStore'
-import { FileInput, Brain, FileText, Wrench, Download, Sparkles, Cpu } from 'lucide-react'
+// 影视创作节点系统 V2 — 左侧悬浮工具条
+// 13个影视节点图标，支持拖拽和点击添加
+import { BookOpen, User, Mountain, Package, Clapperboard,
+  ImageIcon, Film, Music, Type, Layout, Download,
+  FileText, Sparkles } from 'lucide-react'
+import { makeNode, defaultDataFor, useWorkflowStore } from '../store/workflowStore'
 
-const ITEMS: { type: string; label: string; icon: JSX.Element }[] = [
-  { type: 'input', label: '输入', icon: <FileInput size={18} /> },
-  { type: 'llm', label: 'LLM 推理', icon: <Brain size={18} /> },
-  { type: 'prompt_template', label: '提示词', icon: <FileText size={18} /> },
-  { type: 'agent', label: '智能体', icon: <Cpu size={18} /> },
-  { type: 'skill', label: '技能', icon: <Wrench size={18} /> },
-  { type: 'render', label: '出图', icon: <Sparkles size={18} /> },
-  { type: 'output', label: '输出', icon: <Download size={18} /> },
+const ITEMS: { type: string; label: string; icon: React.ReactNode; color: string }[] = [
+  // ── 创作入口 ──────────────────────────────────────────────
+  { type: 'story',       label: '故事',    icon: <BookOpen size={18} />,    color: 'text-violet-400' },
+  // ── 资产生成 ──────────────────────────────────────────────
+  { type: 'character',   label: '角色',    icon: <User size={18} />,        color: 'text-rose-400' },
+  { type: 'scene',       label: '场景',    icon: <Mountain size={18} />,    color: 'text-emerald-400' },
+  { type: 'prop',        label: '道具',    icon: <Package size={18} />,    color: 'text-amber-400' },
+  // ── 分镜 ─────────────────────────────────────────────────
+  { type: 'storyboard',  label: '分镜',    icon: <Clapperboard size={18} />, color: 'text-orange-400' },
+  // ── 媒体生成 ──────────────────────────────────────────────
+  { type: 'image',       label: '图片',    icon: <ImageIcon size={18} />,  color: 'text-sky-400' },
+  { type: 'video',       label: '视频',    icon: <Film size={18} />,        color: 'text-pink-400' },
+  // ── 后期 ─────────────────────────────────────────────────
+  { type: 'audio',       label: '声音',    icon: <Music size={18} />,       color: 'text-teal-400' },
+  { type: 'subtitle',    label: '字幕',    icon: <Type size={18} />,        color: 'text-indigo-400' },
+  { type: 'layout',      label: '排版',    icon: <Layout size={18} />,     color: 'text-cyan-400' },
+  { type: 'export',      label: '导出',    icon: <Download size={18} />,   color: 'text-green-400' },
+  // ── 通用 ─────────────────────────────────────────────────
+  { type: 'prompt',      label: '提示词',  icon: <FileText size={18} />,    color: 'text-gray-400' },
+  { type: 'skill',       label: '技能',    icon: <Sparkles size={18} />,   color: 'text-yellow-400' },
 ]
 
-// 左侧悬浮工具条：拖拽到画布生成节点，或点击直接添加
 export default function FloatingToolbar() {
   const add = (type: string) => {
     const node = makeNode(type, defaultDataFor(type))
@@ -31,9 +46,9 @@ export default function FloatingToolbar() {
             e.dataTransfer.effectAllowed = 'move'
           }}
           onClick={() => add(it.type)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-ink-2 transition hover:bg-brand-500/20 hover:text-brand-300 active:scale-95"
+          className={`flex h-10 w-10 items-center justify-center rounded-lg text-ink-2 transition hover:bg-hover hover:${it.color} active:scale-95`}
         >
-          {it.icon}
+          <span className={it.color}>{it.icon}</span>
         </button>
       ))}
     </div>

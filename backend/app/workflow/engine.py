@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+import uuid
 from typing import Any, Awaitable, Callable, Optional
 
 import networkx as nx
@@ -287,6 +288,198 @@ class WorkflowEngine:
                 node_id, {"kind": ntype, "url": media or "", "data": data},
             )
 
+        # ══════════════════════════════════════════════════════
+        # 影视创作节点（V2 film nodes）
+        # ══════════════════════════════════════════════════════
+
+        if ntype == "story":
+            # StoryNode：调用 AI 解析故事，输出角色/场景/道具/分镜结构
+            text = self._render(data.get("text", ""), outputs) or self._pick_str(upstream)
+            if not text:
+                raise ValueError("故事节点缺少输入文本")
+            from app.ai.client import chat_json
+            genre = str(data.get("genre", "科幻"))
+            style = str(data.get("style", "电影感"))
+            ratio = str(data.get("ratio", "16:9"))
+            duration = int(data.get("duration", 30))
+            parsed = await chat_json(
+                system=(
+                    "你是专业的影视/广告剧本解析助手。根据用户提供的文本，提取结构化信息。"
+                    "输出严格 JSON（不要多余文字）："
+                    '{"characters":[{"id":"character_01","name":"...","description":"...","prompt":"..."}],'
+                    '"scenes":[{"id":"scene_01","name":"...","location":"...","time":"...","weather":"...","camera":"...","description":"...","prompt":"..."}],'
+                    '"props":[{"id":"prop_01","name":"...","description":"...","prompt":"..."}],'
+                    '"shots":[{"shot":1,"camera":"...","duration":3,"description":"...","prompt":"..."}]}'
+                ),
+                user=text + f"\n\n类型：{genre}，风格：{style}，比例：{ratio}，总时长：{duration}秒",
+                temperature=0.3, max_tokens=4096, scenario="film_story_parse",
+            )
+            if not parsed or not isinstance(parsed, dict):
+                raise ValueError("剧本解析失败，模型未返回有效 JSON")
+            return NodeResult.success(node_id, parsed)
+
+        if ntype == "character":
+            # CharacterNode：调用 ComfyUI 生成角色图
+            from app.renderers.dispatcher import dispatch_render_task
+            name = str(data.get("name", ""))
+            desc = str(data.get("description", ""))
+            style = str(data.get("style", "电影感"))
+            pose = str(data.get("pose", ""))
+            expr = str(data.get("expression", ""))
+            seed = str(data.get("seed", "")) or str(data.get("character_id", "")) or str(uuid.uuid4().int)[:10]
+            refs = data.get("reference") or []
+            prompt_parts = [style, desc, pose, expr, "cinematic lighting, high detail"].filter(bool)
+            full_prompt = ", ".join(prompt_parts)
+            workflow = {
+                "prompt": full_prompt,
+                "negative_prompt": "blurry, low quality, deformed, ugly",
+                "seed": seed,
+                "steps": 30,
+                "cfg_scale": 7.5,
+            }
+            result = await dispatch_render_task(f"char_{node_id[:8]}", workflow, wait=True)
+            if isinstance(result, dict) and result.get("ok") is False:
+                raise RuntimeError(result.get("error") or "角色生成失败")
+            images = (result or {}).get("images") or []
+            url = images[0].get("url") if images else ""
+            return NodeResult.success(
+                node_id,
+                {"name": name, "seed": seed, "prompt": full_prompt, "url": url, "images": images},
+                artifacts=[{"kind": "image", "filename": img.get("filename", "")} for img in images],
+            )
+
+        if ntype == "scene":
+            # SceneNode：调用 ComfyUI 生成场景图
+            from app.renderers.dispatcher import dispatch_render_task
+            name = str(data.get("name", ""))
+            loc = str(data.get("location", ""))
+            time = str(data.get("time", "白天"))
+            weather = str(data.get("weather", "晴"))
+            camera = str(data.get("camera", "wide shot"))
+            desc = str(data.get("description", ""))
+            style = str(data.get("style", "电影感"))
+            full_prompt = f"{style}, {loc}, {time}, {weather}, {camera}, {desc}, cinematic atmosphere"
+            workflow = {
+                "prompt": full_prompt,
+                "negative_prompt": "blurry, low quality, deformed, text, watermark",
+                "seed": str(uuid.uuid4().int)[:10],
+                "steps": 30,
+                "cfg_scale": 7.5,
+            }
+            result = await dispatch_render_task(f"scene_{node_id[:8]}", workflow, wait=True)
+            if isinstance(result, dict) and result.get("ok") is False:
+                raise RuntimeError(result.get("error") or "场景生成失败")
+            images = (result or {}).get("images") or []
+            url = images[0].get("url") if images else ""
+            return NodeResult.success(
+                node_id,
+                {"name": name, "location": loc, "prompt": full_prompt, "url": url, "images": images},
+                artifacts=[{"kind": "image", "filename": img.get("filename", "")} for img in images],
+            )
+
+        if ntype == "prop":
+            # PropNode：道具图生成
+            from app.renderers.dispatcher import dispatch_render_task
+            name = str(data.get("name", ""))
+            desc = str(data.get("description", ""))
+            prompt = str(data.get("prompt", "")) or desc
+            full_prompt = f"{name}, {prompt}, high detail, cinematic lighting"
+            workflow = {
+                "prompt": full_prompt,
+                "negative_prompt": "blurry, low quality, deformed",
+                "seed": str(uuid.uuid4().int)[:10],
+                "steps": 25,
+                "cfg_scale": 7.0,
+            }
+            result = await dispatch_render_task(f"prop_{node_id[:8]}", workflow, wait=True)
+            if isinstance(result, dict) and result.get("ok") is False:
+                raise RuntimeError(result.get("error") or "道具生成失败")
+            images = (result or {}).get("images") or []
+            url = images[0].get("url") if images else ""
+            return NodeResult.success(
+                node_id,
+                {"name": name, "prompt": full_prompt, "url": url, "images": images},
+                artifacts=[{"kind": "image", "filename": img.get("filename", "")} for img in images],
+            )
+
+        if ntype == "storyboard":
+            # StoryboardNode：Shot-by-Shot 分镜生成（已有 shots 数据则透传，否则调用 AI 生成分镜）
+            shots = data.get("shots") or []
+            if not shots and upstream:
+                # 尝试从上游 story 节点注入分镜
+                story_data = self._pick_dict(upstream)
+                shots = story_data.get("shots") or []
+            return NodeResult.success(
+                node_id,
+                {"shots": shots, "total_duration": sum(s.get("duration", 3) for s in shots)},
+            )
+
+        if ntype == "audio":
+            # AudioNode：旁白/BGM/音效（当前占位，调用 TTS/BGM API）
+            audio_type = str(data.get("type", "narration"))
+            script = self._render(data.get("script", ""), outputs) or self._pick_str(upstream)
+            voice = str(data.get("voice", "默认"))
+            return NodeResult.success(
+                node_id,
+                {"type": audio_type, "script": script, "voice": voice, "audio_url": ""},
+            )
+
+        if ntype == "subtitle":
+            # SubtitleNode：字幕生成（当前占位，SRT 格式化）
+            video_url = str(data.get("video_url", ""))
+            audio_url = str(data.get("audio_url", ""))
+            fmt = str(data.get("format", "srt"))
+            content = str(data.get("content", ""))
+            if content:
+                lines = content.strip().split("\n")
+                if fmt == "srt":
+                    srt_lines = []
+                    for i, line in enumerate(lines, 1):
+                        start = f"00:{(i-1)*3:02d}:00,000"
+                        end = f"00:{i*3:02d}:00,000"
+                        srt_lines.append(f"{i}\n{start} --> {end}\n{line}\n")
+                    content = "\n".join(srt_lines)
+                return NodeResult.success(
+                    node_id,
+                    {"format": fmt, "subtitle_url": "", "content": content, "segments": len(lines)},
+                )
+            return NodeResult.success(
+                node_id,
+                {"format": fmt, "video_url": video_url, "audio_url": audio_url, "subtitle_url": "", "content": ""},
+            )
+
+        if ntype == "layout":
+            # LayoutNode：排版设计（复用 ComfyUI）
+            from app.renderers.dispatcher import dispatch_render_task
+            template = str(data.get("template", "film_poster"))
+            ratio = str(data.get("ratio", "16:9"))
+            elements = data.get("elements") or []
+            prompt = f"{template}, {ratio}, " + ", ".join(str(e) for e in (elements or [])[:5])
+            workflow = {"prompt": prompt, "seed": str(uuid.uuid4().int)[:10], "steps": 25}
+            result = await dispatch_render_task(f"layout_{node_id[:8]}", workflow, wait=True)
+            images = (result or {}).get("images") or []
+            url = images[0].get("url") if images else ""
+            return NodeResult.success(node_id, {"template": template, "url": url, "images": images})
+
+        if ntype == "export":
+            # ExportNode：导出请求记录
+            fmt = str(data.get("format", "mp4"))
+            video_url = str(data.get("video_url", ""))
+            sub_url = str(data.get("subtitle_url", ""))
+            inc_story = bool(data.get("include_storyboard", True))
+            inc_sub = bool(data.get("include_subtitles", True))
+            return NodeResult.success(
+                node_id,
+                {
+                    "format": fmt,
+                    "video_url": video_url,
+                    "subtitle_url": sub_url,
+                    "include_storyboard": inc_story,
+                    "include_subtitles": inc_sub,
+                    "status": "export_requested",
+                },
+            )
+
         if ntype == "output":
             if upstream:
                 text = self._pick_str(upstream)
@@ -347,6 +540,14 @@ class WorkflowEngine:
                 return str(value)
             return str(value)
         return ""
+
+    @staticmethod
+    def _pick_dict(upstream: dict[str, Any]) -> dict[str, Any]:
+        """从上游输出里取第一个 dict。"""
+        for value in upstream.values():
+            if isinstance(value, dict):
+                return value
+        return {}
 
     @staticmethod
     def _render(template: str, outputs: dict[str, Any]) -> str:

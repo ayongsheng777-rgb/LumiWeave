@@ -13,18 +13,178 @@ import { runWorkflow, workflowLoad, workflowSave } from '../api'
 
 export type NodeStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
 
-// 每种节点类型的默认 data，供工具条与画布落点复用
+// =====================================================================
+// 影视创作节点系统 V2 — 13种节点默认数据
+// 与后端 app/workflow/node_registry.py 的节点 type 完全对齐
+// =====================================================================
+
+export type FilmNodeType =
+  | 'story' | 'character' | 'scene' | 'prop'
+  | 'storyboard' | 'image' | 'video'
+  | 'audio' | 'subtitle' | 'layout' | 'export'
+  | 'prompt' | 'asset'
+
 export const NODE_DEFAULTS: Record<string, Record<string, unknown>> = {
+  // ── 创作入口 ──────────────────────────────────────────────
+  story: {
+    text: '',          // 故事原文
+    genre: '科幻',      // 类型：科幻/奇幻/爱情/战争/悬疑/喜剧/动作/动画
+    style: '电影感',    // 风格：电影感/动漫/写实/水彩/3D
+    ratio: '16:9',      // 比例：16:9 / 9:16 / 1:1 / 4:3
+    duration: 30,       // 目标时长（秒）
+    // 执行后填充
+    characters: [],    // {id, name, description, prompt}[]
+    scenes: [],         // {id, location, time, weather, description}[]
+    props: [],          // {id, name, description, prompt}[]
+    storyboard: [],     // {id, shot, description, camera, duration}[]
+  },
+
+  // ── 角色 ─────────────────────────────────────────────────
+  character: {
+    name: '',
+    description: '',
+    prompt: '',
+    reference: [],     // 参考图 URL[]
+    style: '电影感',
+    pose: '',
+    expression: '',
+    // 角色一致性种子（StoryNode 解析后写入，同一角色复用）
+    seed: '',
+    character_id: '',
+    status: 'idle',
+  },
+
+  // ── 场景 ─────────────────────────────────────────────────
+  scene: {
+    name: '',
+    location: '',       // 城市/森林/空间站/房间/战场/幻想世界/自定义
+    time: '白天',
+    weather: '晴',
+    camera: 'wide shot',
+    description: '',
+    prompt: '',
+    style: '电影感',
+    reference: [],
+    scene_id: '',
+    status: 'idle',
+  },
+
+  // ── 道具 ─────────────────────────────────────────────────
+  prop: {
+    name: '',
+    description: '',
+    prompt: '',
+    reference: [],
+    // 绑定
+    bind_type: '',      // 'character' | 'scene' | ''
+    bind_id: '',
+    prop_id: '',
+    status: 'idle',
+  },
+
+  // ── 分镜 ─────────────────────────────────────────────────
+  storyboard: {
+    shots: [],          // [{shot, camera, duration, description, character_id, scene_id, prompt}]
+    total_duration: 0,
+    ratio: '16:9',
+    style: '电影感',
+    status: 'idle',
+  },
+
+  // ── 图片 ─────────────────────────────────────────────────
+  image: {
+    prompt: '',
+    negative: '',
+    reference: [],      // 参考图
+    character_ids: [],   // 引用的角色 character_id[]
+    scene_id: '',
+    ratio: '16:9',
+    style: '电影感',
+    model: '',           // 'comfyui' | 'flux' | 'midjourney' | ...
+    url: '',
+    status: 'idle',
+  },
+
+  // ── 视频 ─────────────────────────────────────────────────
+  video: {
+    prompt: '',
+    images: [],          // 图片序列 URL[]
+    character_ids: [],
+    camera: 'static',    // static / dolly / pan-left / pan-right / handheld / orbit / zoom-in
+    duration: 10,        // 秒
+    fps: 24,
+    ratio: '16:9',
+    style: '电影感',
+    renderer_id: '',     // 渲染器 ID
+    video_url: '',
+    status: 'idle',
+  },
+
+  // ── 声音 ─────────────────────────────────────────────────
+  audio: {
+    type: 'narration',  // narration / voice_over / bgm / sfx
+    script: '',
+    voice: '默认',
+    music_url: '',
+    sfx_urls: [],
+    audio_url: '',
+    status: 'idle',
+  },
+
+  // ── 字幕 ─────────────────────────────────────────────────
+  subtitle: {
+    video_url: '',
+    audio_url: '',
+    format: 'srt',       // srt / ass / ssa
+    content: '',        // 字幕内容（执行后填充）
+    burnt_in: false,
+    subtitle_url: '',
+    status: 'idle',
+  },
+
+  // ── 排版 ─────────────────────────────────────────────────
+  layout: {
+    template: 'film_poster',  // film_poster / social_short / album_cover / poster_wide
+    elements: [],             // [{type, content, position}]
+    ratio: '16:9',
+    status: 'idle',
+  },
+
+  // ── 导出 ─────────────────────────────────────────────────
+  export: {
+    format: 'mp4',       // mp4 / mov / png / pdf / storyboard_json
+    video_url: '',
+    subtitle_url: '',
+    include_storyboard: true,
+    include_subtitles: true,
+    export_path: '',
+    status: 'idle',
+  },
+
+  // ── 保留通用节点 ─────────────────────────────────────────
+  prompt: {
+    template: '',
+    query: '',
+    status: 'idle',
+  },
+  asset: {
+    prompt: '',
+    assetType: '资产',
+    url: '',
+    status: 'idle',
+  },
+}
+
+// 兼容旧代码（外部可能传旧 type）
+const LEGACY_DEFAULTS: Record<string, Record<string, unknown>> = {
   input: { text: '' },
   llm: { prompt: '', temperature: 0.3 },
-  prompt_template: { template: '', query: '' },
-  skill: { skill_id: '', args: {} },
   output: { text: '' },
   render: { prompt: '', model: '' },
 }
 
 export function defaultDataFor(type: string): Record<string, unknown> {
-  return { ...(NODE_DEFAULTS[type] || {}) }
+  return { ...((NODE_DEFAULTS[type] || LEGACY_DEFAULTS[type]) ?? {}) }
 }
 
 // 后端返回的节点结果是 NodeResult 结构 {ok, output, error, ...}，这里提取纯 output
