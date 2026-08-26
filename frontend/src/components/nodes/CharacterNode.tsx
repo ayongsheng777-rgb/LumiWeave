@@ -114,36 +114,6 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
         <PromptTranslate prompt={prompt} />
         <PromptOptimize prompt={prompt} kind="character" model={model} nodeLabel="角色设计"
           onApply={(v) => update(id, { prompt: v })} />
-        {/* 视角预设：点选拼进提示词（已含则取消），可叠加 */}
-        <div className="mt-1 flex flex-wrap gap-1">
-          {VIEW_PRESETS.map((p) => {
-            const active = prompt.toLowerCase().includes(p.prompt.toLowerCase())
-            return (
-              <button
-                key={p.label}
-                type="button"
-                title={`${active ? '移除' : '追加'}：${p.prompt}`}
-                onClick={() => {
-                  if (active) {
-                    const next = prompt
-                      .replace(new RegExp(`,?\\s*${p.prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'), '')
-                      .replace(/^\s*,\s*/, '')
-                    update(id, { prompt: next })
-                  } else {
-                    update(id, { prompt: prompt ? `${prompt}, ${p.prompt}` : p.prompt })
-                  }
-                }}
-                className={`nodrag rounded-full border px-2 py-0.5 text-[10px] transition ${
-                  active
-                    ? 'border-brand-500 bg-brand-500/15 text-brand-300'
-                    : 'border-edge bg-soft text-ink-3 hover:bg-hover hover:text-ink'
-                }`}
-              >
-                {p.label}
-              </button>
-            )
-          })}
-        </div>
       </Field>
       <div className="grid grid-cols-2 gap-2">
         <Field label="风格">
@@ -166,17 +136,49 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
             {BACKGROUNDS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
         </Field>
-        <Field label="视角">
-          <select className={inputCls} value={views} onChange={(e) => update(id, { views: e.target.value })}>
-            {VIEWS.map((v) => <option key={v} value={v}>{v}</option>)}
-          </select>
-        </Field>
         {seed && (
           <div className="col-span-2 rounded bg-soft px-2 py-1 text-[10px] text-ink-3">
             角色种子：{seed}（同一角色复用此种子保持一致性）
           </div>
         )}
       </div>
+      {/* 视角 + 角度快捷标签：视角定义在左，角度预设快捷键在右 */}
+      <Field label="视角 / 角度（点标签拼进提示词，可叠加）">
+        <div className="flex items-start gap-2">
+          <select className={`${inputCls} w-24 shrink-0`} value={views} onChange={(e) => update(id, { views: e.target.value })}>
+            {VIEWS.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+            {VIEW_PRESETS.map((p) => {
+              const active = prompt.toLowerCase().includes(p.prompt.toLowerCase())
+              return (
+                <button
+                  key={p.label}
+                  type="button"
+                  title={`${active ? '移除' : '追加'}：${p.prompt}`}
+                  onClick={() => {
+                    if (active) {
+                      const next = prompt
+                        .replace(new RegExp(`,?\\s*${p.prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'), '')
+                        .replace(/^\s*,\s*/, '')
+                      update(id, { prompt: next })
+                    } else {
+                      update(id, { prompt: prompt ? `${prompt}, ${p.prompt}` : p.prompt })
+                    }
+                  }}
+                  className={`nodrag rounded-full border px-2 py-0.5 text-[10px] transition ${
+                    active
+                      ? 'border-brand-500 bg-brand-500/15 text-brand-300'
+                      : 'border-edge bg-soft text-ink-3 hover:bg-hover hover:text-ink'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </Field>
       {refs.length > 0 && (
         <div className="flex gap-1 overflow-x-auto py-1">
           {refs.map((r, i) => <img key={i} src={r} className="h-12 w-12 rounded-md object-cover" alt="ref" />)}

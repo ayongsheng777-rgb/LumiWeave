@@ -2,6 +2,7 @@ import { useUiStore } from '../store/uiStore'
 import TopHeader from './TopHeader'
 import FloatingToolbar from './FloatingToolbar'
 import SkillFloatingWindow from './SkillFloatingWindow'
+import NodeConfigDrawer from './NodeConfigDrawer'
 import WorkflowCanvas from './WorkflowCanvas'
 import ChatPanel from './ChatPanel'
 import Lightbox from './Lightbox'
@@ -35,6 +36,8 @@ export default function Workspace() {
       </div>
       {lightbox && <Lightbox />}
       {managementOpen && <SettingsModal />}
+      {/* 节点参数配置抽屉（齿轮按钮唤出），两个画布共用 */}
+      <NodeConfigDrawer />
       {/* 全局运行日志（右侧） + 分镜链信息框（左侧），两个画布共用 */}
       <LogPanel />
       <ShotChainPanel />

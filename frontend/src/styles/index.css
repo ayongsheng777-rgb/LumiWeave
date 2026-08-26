@@ -300,9 +300,9 @@ body {
 .canvas-body { flex: 1; display: flex; min-height: 0; }
 .canvas-flow { flex: 1; min-width: 0; position: relative; }
 
-/* 画布 80% 主导：浮动唤出按钮 + 抽屉面板（bottom 68px 让位右下角快捷技能圆钮） */
+/* 画布 80% 主导：浮动唤出按钮 + 抽屉面板（快捷技能已移至左侧，圆钮回右下角原位） */
 .canvas-fabs {
-  position: absolute; right: 16px; bottom: 68px; z-index: 15; display: flex; gap: 8px;
+  position: absolute; right: 16px; bottom: 16px; z-index: 15; display: flex; gap: 8px;
 }
 .canvas-fab {
   width: 38px; height: 38px; border-radius: 999px; border: 1px solid var(--lw-edge);

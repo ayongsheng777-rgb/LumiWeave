@@ -115,7 +115,8 @@ export function SkillFloatingWindow() {
   }
 
   return (
-    <div className="pointer-events-none absolute bottom-4 right-4 z-20">
+    // 挂在节点库圆钮正下方（左侧中部），面板向下展开——远离右侧 AI 对话发送键
+    <div className="pointer-events-none absolute left-3 top-[calc(50%+3.25rem)] z-20">
       <button
         className={`pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-edge bg-panel text-ink-2 shadow-node-dark transition hover:text-ink ${open ? 'bg-brand-500 !text-white' : ''}`}
         onClick={() => setOpen(!open)}
@@ -125,7 +126,7 @@ export function SkillFloatingWindow() {
       </button>
 
       {open && (
-        <div className="pointer-events-auto absolute bottom-[52px] right-0 w-64 overflow-hidden rounded-xl border border-edge bg-panel shadow-node-dark">
+        <div className="nowheel pointer-events-auto absolute left-0 top-full mt-2 max-h-[calc(50vh-5rem)] w-64 overflow-y-auto rounded-xl border border-edge bg-panel shadow-node-dark">
           <div className="flex items-center gap-2 border-b border-edge px-3 py-2.5">
             <Search size={13} className="shrink-0 text-ink-3" />
             <input

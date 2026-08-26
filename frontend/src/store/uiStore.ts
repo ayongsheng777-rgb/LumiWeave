@@ -9,6 +9,8 @@ interface UiState {
   drawerOpen: boolean // 右侧智能体控制台（Agent 抽屉）
   chatOpen: boolean // AI 助手侧栏
   managementOpen: boolean // 管理面板（模型/计费/技能…）
+  managementTab: string // 管理面板打开时直达的 tab（providers=接口配置）
+  nodeConfig: { open: boolean; nodeId: string } // 节点参数配置抽屉
   lightbox: string | null // 资产灯箱预览图地址
   setMode: (m: CanvasMode) => void
   toggleMode: () => void
@@ -20,6 +22,9 @@ interface UiState {
   setChatOpen: (v: boolean) => void
   toggleChat: () => void
   setManagementOpen: (v: boolean) => void
+  openManagement: (tab?: string) => void
+  openNodeConfig: (nodeId: string) => void
+  closeNodeConfig: () => void
   openLightbox: (src: string) => void
   closeLightbox: () => void
   initTheme: () => void
@@ -51,6 +56,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   drawerOpen: saved.drawerOpen ?? true,
   chatOpen: saved.chatOpen ?? true,
   managementOpen: false,
+  managementTab: 'model',
+  nodeConfig: { open: false, nodeId: '' },
   lightbox: null,
 
   setMode: (m) => {
@@ -75,6 +82,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   setChatOpen: (v) => persist(set, get, { chatOpen: v }),
   toggleChat: () => persist(set, get, { chatOpen: !get().chatOpen }),
   setManagementOpen: (v) => set({ managementOpen: v }),
+  openManagement: (tab) => set({ managementOpen: true, managementTab: tab || 'model' }),
+  openNodeConfig: (nodeId) => set({ nodeConfig: { open: true, nodeId } }),
+  closeNodeConfig: () => set({ nodeConfig: { open: false, nodeId: '' } }),
   openLightbox: (src) => set({ lightbox: src }),
   closeLightbox: () => set({ lightbox: null }),
 

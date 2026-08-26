@@ -29,7 +29,9 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 // 设置弹窗：承载各管理面板（模型/计费/技能/出图/知识库/接口/素材）
 export default function SettingsModal() {
   const close = () => useUiStore.getState().setManagementOpen(false)
-  const [tab, setTab] = useState<Tab>('model')
+  // 支持从其它入口直达指定 tab（如节点里「配置」直达接口页）
+  const directTab = useUiStore((s) => s.managementTab) as Tab
+  const [tab, setTab] = useState<Tab>(directTab || 'model')
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 animate-fade-in" onClick={close}>
