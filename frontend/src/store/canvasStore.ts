@@ -17,6 +17,7 @@ import { dagLayout } from '../canvas/layout'
 // =====================================================================
 export const OBJECT_LIBRARY: { type: string; label: string; defaultData: Record<string, unknown>; size: { width: number; height: number } }[] = [
   // ── 创作入口 ──────────────────────────────────────────────
+  { type: 'image_input', label: '图片上传',  defaultData: { url: '', filename: '', status: 'idle' }, size: { width: 240, height: 300 } },
   { type: 'story',       label: '故事输入',   defaultData: { text: '', genre: '科幻', style: '电影感', ratio: '16:9', duration: 30, video_mode: 'auto_full', characters: [], scenes: [], props: [], storyboard: [], shots: [], character_urls: {}, scene_urls: {}, prop_urls: {}, status: 'idle' }, size: { width: 280, height: 430 } },
   // ── 资产生成 ──────────────────────────────────────────────
   { type: 'character',   label: '角色',       defaultData: { name: '', description: '', prompt: '', reference: [], style: '电影感', pose: '', expression: '', seed: '', character_id: '' }, size: { width: 280, height: 620 } },

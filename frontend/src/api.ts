@@ -223,6 +223,23 @@ export async function renderMedia(payload: {
   return request('POST', '/renderers/media/generate', payload)
 }
 
+// 图片上传（V2.3 图片一等公民）：multipart 直传，返回 {id, url}
+export async function uploadImage(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  const token = getToken()
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(`${API_BASE}/assets/upload`, { method: 'POST', headers, body: form })
+  if (res.status === 401) {
+    clearToken()
+    window.location.reload()
+    throw new Error('未授权')
+  }
+  const data = await res.json().catch(() => ({}))
+  return { ok: res.ok, status: res.status, data }
+}
+
 // 提示词优化：知识库+技能库优先，AI 兜底
 export async function promptOptimize(payload: { prompt: string; kind?: string; model?: string }) {
   return request('POST', '/ai/prompt-optimize', payload)
@@ -230,6 +247,11 @@ export async function promptOptimize(payload: { prompt: string; kind?: string; m
 
 export async function rendererCancel(rendererId: string, promptId: string) {
   return request('POST', `/renderers/${rendererId}/cancel`, { prompt_id: promptId })
+}
+
+// 视频抽帧（V2.3 尾帧->首帧接龙）：mode first|last
+export async function extractVideoFrame(videoUrl: string, mode: 'first' | 'last' = 'last') {
+  return request('POST', '/assets/video/extract-frame', { video_url: videoUrl, mode })
 }
 
 // ==================== 知识库 Prompt KB ====================

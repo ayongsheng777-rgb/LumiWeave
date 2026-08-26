@@ -87,7 +87,7 @@ export function PropNode({ id, data, selected }: NodeProps) {
   }
 
   return (
-    <NodeShell id={id} selected={selected} title="关键道具" icon={<Package size={15} />}>
+    <NodeShell id={id} selected={selected} title="关键道具" icon={<Package size={15} />} resultView={url ? <ResultMedia url={url} /> : undefined}>
       <Field label="道具名">
         <input className={inputCls} value={name} placeholder="如：能源核心、未来武器"
           onChange={(e) => update(id, { name: e.target.value })} />

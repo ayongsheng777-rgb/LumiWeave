@@ -8,6 +8,7 @@ import { SceneNode }            from './SceneNode'
 import { PropNode }             from './PropNode'
 import { StoryboardNode }       from './StoryboardNode'
 import { ImageNode }            from './ImageNode'
+import { ImageInputNode }       from './ImageInputNode'
 import { FilmVideoNode }        from './FilmVideoNode'
 import { AudioNode }            from './AudioNode'
 import { SubtitleNode }         from './SubtitleNode'
@@ -25,6 +26,7 @@ import { RenderNode }           from './RenderNode'
 export const nodeTypes = {
   // ── 13 个影视创作节点 ─────────────────────────────────────────
   story:       StoryNode,
+  image_input: ImageInputNode,
   character:   CharacterNode,
   scene:       SceneNode,
   prop:        PropNode,

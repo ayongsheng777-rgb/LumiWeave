@@ -1,6 +1,7 @@
 import { useUiStore } from '../store/uiStore'
 import TopHeader from './TopHeader'
 import FloatingToolbar from './FloatingToolbar'
+import SkillFloatingWindow from './SkillFloatingWindow'
 import WorkflowCanvas from './WorkflowCanvas'
 import ChatPanel from './ChatPanel'
 import Lightbox from './Lightbox'
@@ -19,7 +20,10 @@ export default function Workspace() {
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-canvas text-ink">
       <TopHeader />
       <div className="relative flex flex-1 overflow-hidden">
+        {/* 节点库浮层（默认收起），两个画布共用 */}
         <FloatingToolbar />
+        {/* 快捷技能浮窗：一键生成带连线的工作流 */}
+        <SkillFloatingWindow />
         <div className="relative flex-1">
           {mode === 'workflow' ? <WorkflowCanvas /> : <CanvasCore />}
         </div>

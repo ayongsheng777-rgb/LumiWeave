@@ -27,6 +27,11 @@ export type FilmNodeType =
 
 export const NODE_DEFAULTS: Record<string, Record<string, unknown>> = {
   // ── 创作入口 ──────────────────────────────────────────────
+  image_input: {
+    url: '',           // 上传后由后端返回 /uploads/xxx
+    filename: '',
+    status: 'idle',
+  },
   story: {
     text: '',          // 故事原文
     genre: '科幻',      // 类型：科幻/奇幻/爱情/战争/悬疑/喜剧/动作/动画

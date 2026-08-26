@@ -87,6 +87,12 @@ _BUILTIN: list[NodeDefinition] = [
         {"characters": "array", "scenes": "array", "props": "array", "shots": "array"},
     ),
     NodeDefinition(
+        "image_input", "图片上传", "创作入口",
+        "本地上传图片作为工作流输入，url 透传给下游生图/生视频节点",
+        {"url": "string"},
+        {"kind": "string", "url": "string"},
+    ),
+    NodeDefinition(
         "character", "角色设计", "资产生成",
         "角色生成，支持换装/表情/姿态，一致性种子保持角色连续性",
         {"name": "string", "description": "string", "prompt": "string", "style": "string", "pose": "string", "expression": "string", "seed": "string"},

@@ -73,7 +73,7 @@ export function SceneNode({ id, data, selected }: NodeProps) {
   }
 
   return (
-    <NodeShell id={id} selected={selected} title="场景设计" icon={<Mountain size={15} />}>
+    <NodeShell id={id} selected={selected} title="场景设计" icon={<Mountain size={15} />} resultView={url ? <ResultMedia url={url} /> : undefined}>
       <Field label="场景名">
         <input className={inputCls} value={name} placeholder="如：未来都市夜景"
           onChange={(e) => update(id, { name: e.target.value })} />

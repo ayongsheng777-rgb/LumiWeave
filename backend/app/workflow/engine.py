@@ -288,6 +288,11 @@ class WorkflowEngine:
                 node_id, {"kind": ntype, "url": media or "", "data": data},
             )
 
+        if ntype == "image_input":
+            # 图片输入节点（V2.3 图片一等公民）：本地上传图片，透传 url 给下游
+            media = data.get("url") or (self._pick_media(upstream) if upstream else "")
+            return NodeResult.success(node_id, {"kind": "image", "url": str(media or ""), "data": data})
+
         if ntype == "image":
             # 图片节点：render_mode=cloud 走云端 provider，comfyui 走 ComfyUI，否则透传
             render_mode = str(data.get("render_mode", ""))

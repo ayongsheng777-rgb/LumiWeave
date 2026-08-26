@@ -298,7 +298,35 @@ body {
 }
 .lib-btn:hover { background: var(--lw-hover); color: var(--lw-ink); }
 .canvas-body { flex: 1; display: flex; min-height: 0; }
-.canvas-flow { flex: 1; min-width: 0; }
+.canvas-flow { flex: 1; min-width: 0; position: relative; }
+
+/* 画布 80% 主导：浮动唤出按钮 + 抽屉面板 */
+.canvas-fabs {
+  position: absolute; right: 16px; bottom: 16px; z-index: 15; display: flex; gap: 8px;
+}
+.canvas-fab {
+  width: 38px; height: 38px; border-radius: 999px; border: 1px solid var(--lw-edge);
+  background: var(--lw-panel); color: var(--lw-ink-2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14); transition: all 0.15s ease;
+}
+.canvas-fab:hover { color: var(--lw-ink); transform: translateY(-1px); }
+.canvas-fab.active { background: #8b5cf6; border-color: #8b5cf6; color: #fff; }
+.canvas-drawer {
+  position: absolute; top: 0; right: 0; z-index: 20;
+  height: 100%; display: flex; flex-direction: column;
+  background: var(--lw-panel); border-left: 1px solid var(--lw-edge);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18);
+  animation: drawer-in 0.18s ease;
+}
+@keyframes drawer-in { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.drawer-layer { width: 230px; }
+.drawer-inspector { width: 300px; overflow-y: auto; padding: 12px; }
+.drawer-close {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  background: transparent; border: none; color: var(--lw-ink-3); cursor: pointer; padding: 4px;
+}
+.drawer-close:hover { color: var(--lw-ink); }
 .layer-panel {
   width: 190px; flex-shrink: 0; background: var(--lw-panel); border-left: 1px solid var(--lw-edge);
   overflow-y: auto; padding: 8px;

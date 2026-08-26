@@ -288,6 +288,7 @@ function AiResultNode({ id, data, selected }: NodeProps) {
 export const objectNodeTypes = {
   // ── 影视节点：直接复用工作流画布组件（两套画布同步最新形态）─────────
   story: filmNodeTypes.story,
+  image_input: filmNodeTypes.image_input,
   character: filmNodeTypes.character,
   scene: filmNodeTypes.scene,
   prop: filmNodeTypes.prop,

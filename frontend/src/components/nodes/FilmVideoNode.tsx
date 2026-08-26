@@ -92,7 +92,7 @@ export function FilmVideoNode({ id, data, selected }: NodeProps) {
   }
 
   return (
-    <NodeShell id={id} selected={selected} title="视频生成" icon={<Film size={15} />}>
+    <NodeShell id={id} selected={selected} title="视频生成" icon={<Film size={15} />} resultView={videoUrl ? <ResultMedia url={videoUrl} type="video" /> : undefined}>
       <Field label="视频提示词">
         <textarea className={inputCls} rows={2} value={prompt} placeholder="描述视频动作/运镜……（原文引用）"
           onChange={(e) => update(id, { prompt: e.target.value })} />

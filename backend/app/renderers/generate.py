@@ -66,27 +66,40 @@ async def render_media(
 
     # ── 云端 API ────────────────────────────────────────────────
     if render_mode == "cloud":
-        if not provider_id:
-            return {"ok": False, "error": "请先在「生成方式」里选择一个云端接口", "logs": logs}
+        # 智能路由：provider_id 为空或 "auto" 时，按能力+质量/速度/成本评分自动选路
+        actual_provider_id = provider_id
+        if not provider_id or provider_id == "auto":
+            logs.append({"step": "route", "message": "智能路由：自动匹配最佳云端 Provider"})
+            from app.providers.service import route as provider_route
+            task_type = "image" if kind == "image" else "video"
+            try:
+                chain = await provider_route(task_type, quality=1.0, speed=1.0, cost=1.0, limit=1)
+            except Exception as exc:  # noqa: BLE001
+                return {"ok": False, "error": f"智能路由查询失败：{exc}", "logs": logs}
+            if not chain:
+                return {"ok": False, "error": f"未找到可用的云端 {task_type} Provider，请先在「Provider 管理」中配置并启用", "logs": logs}
+            actual_provider_id = str(chain[0].get("id") or "")
+            logs.append({"step": "route", "message": f"智能路由选中：{chain[0].get('name') or actual_provider_id}（评分 {chain[0].get('_score')}）", "provider_id": actual_provider_id})
+        else:
+            logs.append({"step": "route", "message": f"路由：云端 API（{actual_provider_id}）"})
         prompt = str(params.get("prompt") or "").strip()
         if not prompt:
             return {"ok": False, "error": "提示词为空", "logs": logs}
         negative = str(params.get("negative") or "")
         ratio = str(params.get("ratio") or "16:9")
-        logs.append({"step": "route", "message": "路由：云端 API"})
         if kind == "image":
             from app.providers.cloud_gen import cloud_image_generate
             size = str(params.get("size") or "1024x1024")
             steps = int(params.get("steps") or 20)
             res = await cloud_image_generate(
-                provider_id, prompt, negative=negative, size=size, steps=steps,
+                actual_provider_id, prompt, negative=negative, size=size, steps=steps,
                 model=model, reference_images=refs,
             )
         else:
             from app.providers.cloud_gen import cloud_video_generate
             first = image_url or (refs[0] if refs else "")
             res = await cloud_video_generate(
-                provider_id, prompt,
+                actual_provider_id, prompt,
                 image_url=first,
                 duration=int(params.get("duration") or 10),
                 ratio=ratio, negative=negative, model=model,

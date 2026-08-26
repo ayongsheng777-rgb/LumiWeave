@@ -87,7 +87,7 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
   }
 
   return (
-    <NodeShell id={id} selected={selected} title="角色设计" icon={<User size={15} />}>
+    <NodeShell id={id} selected={selected} title="角色设计" icon={<User size={15} />} resultView={url ? <ResultMedia url={url} /> : undefined}>
       <Field label="角色名">
         <input className={inputCls} value={name} placeholder="如：赛博女战士"
           onChange={(e) => update(id, { name: e.target.value })} />

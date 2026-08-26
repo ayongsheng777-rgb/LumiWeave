@@ -75,7 +75,7 @@ export function ImageNode({ id, data, selected }: NodeProps) {
   }
 
   return (
-    <NodeShell id={id} selected={selected} title="图片生成" icon={<ImageIcon size={15} />}>
+    <NodeShell id={id} selected={selected} title="图片生成" icon={<ImageIcon size={15} />} resultView={url ? <ResultMedia url={url} /> : undefined}>
       <Field label="正向提示词">
         <textarea className={inputCls} rows={2} value={prompt} placeholder="描述画面内容……（原文引用）"
           onChange={(e) => update(id, { prompt: e.target.value })} />

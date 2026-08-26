@@ -9,15 +9,17 @@ import {
   useReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import type { Connection } from '@xyflow/react'
 import { defaultDataFor, useWorkflowStore } from '../store/workflowStore'
 import { useUiStore } from '../store/uiStore'
 import { canvasFromWorkflow } from '../api'
 import { nodeTypes } from './nodes'
+import { maybeChainVideoFrame } from './videoChain'
 
 const DND_KEY = 'application/lumiweave-node'
 
 function WorkflowCanvasInner() {
-  const { nodes, edges, running, runError, onNodesChange, onEdgesChange, onConnect, addNode, clearAll, setRunError, save, workflowId, projectId, applyAutoLayout } =
+  const { nodes, edges, running, runError, onNodesChange, onEdgesChange, addNode, clearAll, setRunError, save, workflowId, projectId, applyAutoLayout } =
     useWorkflowStore()
   const theme = useUiStore((s) => s.theme)
   const { screenToFlowPosition } = useReactFlow()
@@ -64,6 +66,21 @@ function WorkflowCanvasInner() {
     [screenToFlowPosition, addNode],
   )
 
+  // 连线拦截：video → video 自动取上游尾帧作下游首帧（V2.3 视频接龙）
+  const handleConnect = useCallback(
+    (conn: Connection) => {
+      const { nodes: allNodes, onConnect: baseConnect } = useWorkflowStore.getState()
+      maybeChainVideoFrame(
+        conn,
+        () => allNodes.find((n) => n.id === conn.source),
+        () => allNodes.find((n) => n.id === conn.target),
+        (id, data) => useWorkflowStore.getState().updateNodeData(id, data),
+      )
+      baseConnect(conn)
+    },
+    [],
+  )
+
   return (
     <div
       className={`relative h-full w-full bg-canvas ${dragOver ? 'ring-2 ring-inset ring-brand-500/60' : ''}`}
@@ -80,7 +97,7 @@ function WorkflowCanvasInner() {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
+        onConnect={handleConnect}
         nodeTypes={nodeTypes}
         fitView
         deleteKeyCode={['Backspace', 'Delete']}

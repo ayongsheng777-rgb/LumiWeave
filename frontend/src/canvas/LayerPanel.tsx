@@ -16,7 +16,7 @@ export default function LayerPanel() {
       {ordered.map((o) => (
         <div
           key={o.id}
-          className={`layer-item ${selectedIds.includes(o.id) ? 'active' : ''}`}
+          className={`layer-item ${selectedIds.includes(o.id) ? 'selected' : ''}`}
           onClick={() => setSelected([o.id])}
         >
           <span className="layer-type">{label(o.type as string)}</span>
