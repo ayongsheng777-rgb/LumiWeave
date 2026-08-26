@@ -569,3 +569,46 @@ export async function filmExport(params: {
 }) {
   return mcpCall('film.export', params)
 }
+
+// ==================== V2.5 Render API（规格书 §4）========================
+
+export interface RenderRequest {
+  /** VisualIntent 字典，直接对应后端 VisualIntent 模型 */
+  visual_intent: Record<string, unknown>
+  capability_required?: string[]
+}
+
+export interface RenderResponse {
+  job_id: string
+  status: string
+}
+
+export interface RenderJob {
+  id: string
+  canvas_id: string
+  node_id: string
+  render_plan: Record<string, unknown>
+  engine: string
+  model: string
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  progress: number
+  cost: number
+  created_at: string
+}
+
+/** POST /api/render/create — 规格书 §4 渲染提交 */
+export async function submitRender(payload: RenderRequest): Promise<RenderResponse> {
+  const res = await request('POST', '/render/create', payload)
+  return res.data as RenderResponse
+}
+
+/** GET /api/render/status/{job_id} — 规格书 §4 任务状态轮询 */
+export async function queryRenderJob(jobId: string): Promise<RenderJob> {
+  const res = await request('GET', `/render/status/${encodeURIComponent(jobId)}`)
+  return res.data as RenderJob
+}
+
+/** POST /api/render/cancel/{job_id} — 规格书 §4 任务取消 */
+export async function cancelRenderJob(jobId: string) {
+  return request('POST', `/render/cancel/${encodeURIComponent(jobId)}`)
+}

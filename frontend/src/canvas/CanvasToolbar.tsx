@@ -3,16 +3,30 @@ import { aiBuildWorkflow, canvasApplyLayout, canvasSaveGraph, canvasToWorkflow, 
 import { useCanvasStore } from '../store/canvasStore'
 import { canvasToWorkflow as toWfGraph } from './workflowAdapter'
 import { dagLayout } from './layout'
-import { Play, Save, Undo2, Redo2, Trash2, Wand2, Workflow, LayoutGrid } from 'lucide-react'
+import { Play, Save, Undo2, Redo2, Trash2, Wand2, Workflow, LayoutGrid, MessageSquare, Image, Camera, Sun, Zap, Box } from 'lucide-react'
 import { emitLog } from '../components/LogPanel'
 
+// V2.5 标准 6 节点快捷添加（规格书 §2）
+const V2_NODES = [
+  { type: 'prompt',    label: '提示词', icon: MessageSquare, color: '#6366f1' },
+  { type: 'reference', label: '参考图', icon: Image,        color: '#8b5cf6' },
+  { type: 'camera',    label: '镜头',   icon: Camera,       color: '#06b6d4' },
+  { type: 'lighting',  label: '灯光',   icon: Sun,          color: '#f59e0b' },
+  { type: 'motion',    label: '运动',   icon: Zap,          color: '#10b981' },
+  { type: 'render',    label: '渲染',   icon: Box,          color: '#ef4444' },
+] as const
+
 export default function CanvasToolbar() {
-  const { undo, redo, clear, projectId, objects, edges, updateNodeStatus, load, applyAutoLayout } = useCanvasStore()
+  const { undo, redo, clear, projectId, objects, edges, updateNodeStatus, load, applyAutoLayout, addObject } = useCanvasStore()
   const [running, setRunning] = useState(false)
   const [building, setBuilding] = useState(false)
   const [buildPrompt, setBuildPrompt] = useState('')
   const [saved, setSaved] = useState(false)
   const [converting, setConverting] = useState(false)
+
+  const addV2Node = (type: string) => {
+    addObject(type as never, { x: 400 + Math.random() * 100, y: 200 + Math.random() * 80 })
+  }
 
   const run = async () => {
     if (!objects.length || running) return
@@ -118,6 +132,22 @@ export default function CanvasToolbar() {
 
   return (
     <div className="canvas-toolbar">
+      {/* V2.5 规格书 6 标准节点快捷按钮 */}
+      <div className="flex items-center gap-1 border-r border-[var(--lw-ink-1)] pr-3 mr-2">
+        {V2_NODES.map(({ type, label, icon: Icon, color }) => (
+          <button
+            key={type}
+            className="ghost"
+            title={`添加 ${label} 节点`}
+            onClick={() => addV2Node(type)}
+            style={{ color }}
+          >
+            <Icon size={13} />
+            <span className="text-[10px]">{label}</span>
+          </button>
+        ))}
+      </div>
+
       <button className="toolbar-run" onClick={run} disabled={running || objects.length === 0}>
         <Play size={14} /> {running ? '执行中…' : '运行工作流'}
       </button>

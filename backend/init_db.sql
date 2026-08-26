@@ -228,3 +228,53 @@ CREATE TABLE IF NOT EXISTS workflows (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_workflows_project ON workflows (project_id);
+
+-- ============ V2.5 Render Kernel：模型能力注册表 ============
+-- 记录各渲染引擎/模型支持的 capability 标签，用于智能路由（规格书 §5）。
+CREATE TABLE IF NOT EXISTS model_capabilities (
+    id           TEXT PRIMARY KEY,
+    engine       TEXT NOT NULL,            -- comfyui | cloud | minimax-video
+    model_name   TEXT NOT NULL DEFAULT '',
+    capability   TEXT NOT NULL,            -- video_generation | ip_adapter | controlnet | ...
+    max_resolution TEXT TEXT,               -- "1024x1024" 等
+    video_duration_max REAL,               -- 视频最大时长（秒），NULL=不支持
+    cost_per_1k_tokens REAL,               -- 计费用
+    priority     INTEGER NOT NULL DEFAULT 100,
+    enabled      BOOLEAN NOT NULL DEFAULT true,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_capabilities_engine ON model_capabilities (engine);
+CREATE INDEX IF NOT EXISTS idx_capabilities_cap ON model_capabilities (capability);
+
+-- 预置记录（可按需增删）
+INSERT INTO model_capabilities (id, engine, model_name, capability, max_resolution, video_duration_max, cost_per_1k_tokens, priority)
+VALUES
+    ('minimax-h3-cloud',    'cloud',          'MiniMax-H3',         'video_generation', '1280x720',  60, 0.001,  90),
+    ('minimax-h3-cloud-img', 'cloud',          'MiniMax-H3',         'image_generation', '1024x1024', NULL, 0.0005, 80),
+    ('comfyui-sdxl',         'comfyui',        'SDXL',               'image_generation', '2048x2048', NULL, 0.001,  70),
+    ('comfyui-sdxl-ip',      'comfyui',        'SDXL+IP-Adapter',    'ip_adapter',       '2048x2048', NULL, 0.0015, 65),
+    ('comfyui-sdxl-cn',      'comfyui',        'SDXL+ControlNet',   'controlnet',       '2048x2048', NULL, 0.0015, 65),
+    ('comfyui-animatediff',  'comfyui',        'SDXL+AnimateDiff',  'video_generation', '1024x1024', 30,  0.002,  60)
+ON CONFLICT (id) DO NOTHING;
+
+-- ============ V2.5 Render Kernel：渲染任务表 ============
+-- 记录每次渲染提交的 RenderJob 生命周期（规格书 §4 + §6）。
+CREATE TABLE IF NOT EXISTS render_jobs (
+    job_id       TEXT PRIMARY KEY,
+    plan_id      TEXT NOT NULL DEFAULT '',
+    canvas_id    TEXT NOT NULL DEFAULT '',
+    node_id      TEXT NOT NULL DEFAULT '',
+    engine       TEXT NOT NULL DEFAULT 'cloud',
+    status       TEXT NOT NULL DEFAULT 'queued',  -- queued|running|completed|failed|cancelled
+    progress     REAL NOT NULL DEFAULT 0.0,
+    output_urls  JSONB NOT NULL DEFAULT '[]',
+    error        TEXT,
+    plan_data    JSONB,                              -- RenderPlan 完整快照
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    started_at   TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_render_jobs_canvas ON render_jobs (canvas_id);
+CREATE INDEX IF NOT EXISTS idx_render_jobs_status ON render_jobs (status);
+CREATE INDEX IF NOT EXISTS idx_render_jobs_created ON render_jobs (created_at DESC);

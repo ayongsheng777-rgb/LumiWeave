@@ -16,6 +16,13 @@ import { dagLayout } from '../canvas/layout'
 // 与 workflowStore.ts 的 NODE_DEFAULTS 完全对齐
 // =====================================================================
 export const OBJECT_LIBRARY: { type: string; label: string; defaultData: Record<string, unknown>; size: { width: number; height: number } }[] = [
+  // ── V2.5 标准节点（规格书 §2）────────────────────────────────
+  { type: 'prompt',     label: '提示词',     defaultData: { text: '', negative: '', style: '' }, size: { width: 280, height: 320 } },
+  { type: 'reference',  label: '参考图',     defaultData: { images: [], strength: 0.85 }, size: { width: 280, height: 260 } },
+  { type: 'camera',     label: '镜头',       defaultData: { lens: 85, shot: 'medium', angle: 'eye' }, size: { width: 260, height: 280 } },
+  { type: 'lighting',   label: '灯光',       defaultData: { direction: 'left', temperature: 4200, intensity: 0.8 }, size: { width: 260, height: 300 } },
+  { type: 'motion',     label: '运动',       defaultData: { type: 'static', speed: 0.3, duration: 5 }, size: { width: 260, height: 260 } },
+  { type: 'render',     label: '渲染',       defaultData: { engine: 'comfyui', model: '', output_format: 'png', width: 1024, height: 1024 }, size: { width: 280, height: 420 } },
   // ── 创作入口 ──────────────────────────────────────────────
   { type: 'image_input', label: '图片上传',  defaultData: { url: '', filename: '', status: 'idle' }, size: { width: 240, height: 300 } },
   { type: 'story',       label: '故事输入',   defaultData: { text: '', genre: '科幻', style: '电影感', ratio: '16:9', duration: 30, video_mode: 'auto_full', characters: [], scenes: [], props: [], storyboard: [], shots: [], character_urls: {}, scene_urls: {}, prop_urls: {}, status: 'idle' }, size: { width: 280, height: 430 } },
@@ -34,7 +41,7 @@ export const OBJECT_LIBRARY: { type: string; label: string; defaultData: Record<
   { type: 'layout',      label: '排版',       defaultData: { template: 'film_poster', elements: [], ratio: '16:9' }, size: { width: 280, height: 260 } },
   { type: 'export',      label: '导出',       defaultData: { format: 'mp4', video_url: '', subtitle_url: '', include_storyboard: true, include_subtitles: true, export_path: '' }, size: { width: 260, height: 220 } },
   // ── 通用辅助 ──────────────────────────────────────────────
-  { type: 'prompt',      label: '提示词',     defaultData: { template: '', query: '' }, size: { width: 260, height: 200 } },
+  { type: 'prompt',      label: '提示词模板', defaultData: { template: '', query: '' }, size: { width: 260, height: 200 } },
   { type: 'asset',       label: '资产',       defaultData: { prompt: '', assetType: '资产', url: '' }, size: { width: 260, height: 220 } },
 ]
 

@@ -28,6 +28,7 @@ from app.tools import register_canvas_tools
 from app.token_usage.routes import router as token_router
 from app.api_v2 import router as api_v2_router
 from app.mcp.call_routes import router as mcp_call_router
+from app.mcp.tools.render_kernel_tools import router as render_kernel_router, websocket_router
 
 PUBLIC_EXACT = {"/api/health"}
 # /uploads/ 为静态图片（<img> 标签无法携带 Bearer 头，故放行；仅本机/内网使用）
@@ -165,6 +166,8 @@ app.include_router(renderer_router, prefix="/api/renderers")
 app.include_router(prompt_kb_router, prefix="/api/prompt-kb")
 app.include_router(api_v2_router, prefix="/api/v2")
 app.include_router(mcp_call_router, prefix="/api/mcp/call")
+app.include_router(render_kernel_router, prefix="/api/render")
+app.include_router(render_kernel_ws_router, prefix="/api/render")
 
 # 本地上传图片静态服务（V2.3 图片一等公民）
 from app.config import DATA_DIR  # noqa: E402
