@@ -213,6 +213,8 @@ function toGraph(nodes: Node[], edges: Edge[]) {
       id: n.id,
       type: (n.type || 'input') as string,
       data: (n.data || {}) as Record<string, unknown>,
+      // position 必须落库：丢了坐标 React Flow 渲染时读 position.x 会直接崩掉整个应用（白板）
+      position: n.position ?? { x: 0, y: 0 },
     })),
     edges: edges.map((e) => ({
       id: e.id,
@@ -392,8 +394,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         return
       }
       const g = res.data.graph as { nodes: Node[]; edges: Edge[] }
+      let nodes: Node[] = g.nodes || []
+      // 兜底：旧版本保存时没存 position，缺坐标的节点交给 DAG 布局补齐，
+      // 否则 React Flow 渲染时读 position.x 直接抛 TypeError，整个应用白板
+      if (nodes.some((n) => !n.position || typeof n.position.x !== 'number' || typeof n.position.y !== 'number')) {
+        nodes = dagLayout(nodes, g.edges || [])
+      }
       set({
-        nodes: g.nodes || [],
+        nodes,
         edges: g.edges || [],
         workflowId,
         projectId: (res.data.project_id as string) || get().projectId,
