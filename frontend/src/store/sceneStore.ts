@@ -36,6 +36,7 @@ import {
   sceneRestoreVersion,
   sceneListAssets,
   scenePlans,
+  sceneSetPlan,
   sceneMarketingTemplates,
   sceneApplyTemplate,
   sceneTaskProgress,
@@ -232,6 +233,7 @@ interface SceneState {
   restoreVersion: (id: string) => Promise<void>
   // 商业化套餐（§73 / P2-03）
   loadPlans: () => Promise<void>
+  setPlan: (planId: string) => Promise<void>
   // 营销模板（§26 / P2-01）
   loadMarketingTemplates: (category?: string) => Promise<void>
   applyMarketingTemplate: (templateId: string) => Promise<void>
@@ -716,6 +718,14 @@ export const useSceneStore = create<SceneState>((set, get) => ({
         plans: (res.data?.plans || []) as Plan[],
         currentPlan: (res.data?.current || null) as Plan | null,
       })
+    }
+  },
+
+  setPlan: async (planId) => {
+    const res = await sceneSetPlan(planId)
+    if (res.ok) {
+      set({ currentPlan: (res.data?.current || null) as Plan | null })
+      await get().loadPlans()
     }
   },
 

@@ -156,7 +156,10 @@ async def run_film_analysis(scene_id: str, video_url: str) -> dict:
         frame_url = ""
         if _extract_frame(path, mid, str(fpath)):
             frame_url = f"/uploads/{fname}"
-        analysis = await _vision_analyze(frame_url, f"镜头{i + 1}") if frame_url else {}
+        analysis = {}
+        if frame_url:
+            from app.film.vision import vision_analyze
+            analysis = await vision_analyze(frame_url, f"镜头{i + 1}")
         shot_data = {
             "shot_no": i + 1,
             "start": round(s, 2), "end": round(e, 2), "duration": round(e - s, 2),

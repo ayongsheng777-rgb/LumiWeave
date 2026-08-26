@@ -47,10 +47,13 @@ function SceneCanvasInner() {
   const [filmBusy, setFilmBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // 响应式（§49 / P2-02）：窄屏自动收起 Inspector，窗口变窄时跟随
+  // 响应式（§49/§50 / 深度增强 #6）：窄屏自动收起 Inspector、布局改底部抽屉
+  const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 1100)
   useEffect(() => {
     const onResize = () => {
-      if (window.innerWidth < 1100) setShowInspector(false)
+      const narrow = window.innerWidth < 1100
+      setIsNarrow(narrow)
+      if (narrow) setShowInspector(false)
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
@@ -212,9 +215,15 @@ function SceneCanvasInner() {
               <Settings2 size={17} />
             </button>
 
-            {/* 右侧 Inspector 抽屉 */}
+            {/* 右侧 Inspector 抽屉（窄屏变底部面板） */}
             {showInspector && (
-              <div className="absolute right-3 top-14 z-20 flex h-[calc(100%-8rem)] w-64 flex-col overflow-hidden rounded-2xl border border-edge bg-panel/95 shadow-node-dark backdrop-blur-md">
+              <div
+                className={`absolute z-20 flex flex-col overflow-hidden rounded-2xl border border-edge bg-panel/95 shadow-node-dark backdrop-blur-md ${
+                  isNarrow
+                    ? 'inset-x-3 bottom-24 top-auto h-56'
+                    : 'right-3 top-14 h-[calc(100%-8rem)] w-64'
+                }`}
+              >
                 <button
                   className="absolute right-2 top-2 z-10 rounded p-0.5 text-ink-3 transition hover:text-ink"
                   onClick={() => setShowInspector(false)}

@@ -408,15 +408,89 @@ async def _act_batch_sku(scene_id: str, obj_ids: list[str], params: dict) -> dic
 # RAG 检索注入（P1-04 / §43）
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _cosine(a: list[float], b: list[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    import math
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a)) or 1.0
+    nb = math.sqrt(sum(y * y for y in b)) or 1.0
+    return dot / (na * nb)
+
+
+async def _embed(text: str) -> list[float] | None:
+    """调用 embedding Provider 获取向量（深度增强 #2：RAG 真向量）。"""
+    try:
+        import httpx
+        from app.providers.service import best_provider
+        prov = await best_provider("embedding")
+        if not prov:
+            return None
+        endpoint = (prov.get("endpoint") or "").rstrip("/")
+        if not endpoint:
+            return None
+        models = prov.get("models") or []
+        if isinstance(models, str):
+            try:
+                models = json.loads(models)
+            except Exception:  # noqa: BLE001
+                models = []
+        model = str(models[0]) if models else "text-embedding-v3"
+        headers = {"Authorization": f"Bearer {prov.get('api_key', '')}", "Content-Type": "application/json"}
+        async with httpx.AsyncClient(timeout=30.0) as c:
+            r = await c.post(f"{endpoint}/embeddings",
+                             json={"model": model, "input": text[:800]}, headers=headers)
+            if r.status_code == 200:
+                emb = (r.json().get("data") or [{}])[0].get("embedding")
+                if isinstance(emb, list) and emb:
+                    return [float(x) for x in emb]
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 async def _rag_retrieve(query: str, limit: int = 3) -> list[str]:
+    """语义检索优先（embedding 余弦），无向量则回退 ILIKE 关键词（§43 深度）。"""
     if not query:
         return []
+    qv = await _embed(query)
+    if qv:
+        try:
+            rows = await db.fetch(
+                "SELECT title, content, embedding FROM prompt_knowledge WHERE embedding IS NOT NULL LIMIT 300"
+            )
+            scored = []
+            for r in rows:
+                ev = r.get("embedding")
+                if not ev:
+                    continue
+                try:
+                    ev = [float(x) for x in ev]
+                except Exception:  # noqa: BLE001
+                    continue
+                sim = _cosine(qv, ev)
+                if sim > 0.3:
+                    scored.append((sim, r["title"], str(r["content"])))
+            scored.sort(key=lambda x: -x[0])
+            if scored:
+                return [f"【{t}】{c[:200]}" for _, t, c in scored[:limit]]
+        except Exception:  # noqa: BLE001
+            pass
+    # 2) 回退：关键词 ILIKE（拆词 OR 匹配，任意词命中即返回）
     try:
+        words = [w for w in re.split(r"[\s,，。、;；:：]+", query) if len(w) >= 2][:8]
+        conds: list[str] = []
+        args: list[Any] = []
+        for w in words:
+            args.extend([f"%{w}%", f"%{w}%"])
+            conds.append(f"(content ILIKE ${len(args) - 1} OR title ILIKE ${len(args)})")
+        if not conds:
+            return []
+        args.append(limit)
         rows = await db.fetch(
-            """SELECT title, content FROM prompt_knowledge
-               WHERE content ILIKE '%' || $1 || '%' OR title ILIKE '%' || $1 || '%'
-               ORDER BY created_at DESC LIMIT $2""",
-            query[:40], limit,
+            f"SELECT title, content FROM prompt_knowledge WHERE {' OR '.join(conds)} "
+            f"ORDER BY created_at DESC LIMIT ${len(args)}",
+            *args,
         )
         return [f"【{r['title']}】{str(r['content'])[:200]}" for r in rows]
     except Exception:  # noqa: BLE001
@@ -612,9 +686,35 @@ async def _run_action(scene_id: str, action: str, object_ids: list[str] | None =
         return {"ok": False, "error": f"动作执行异常：{exc}"}
 
 
+async def _run_action_task(scene_id: str, action: str, object_ids: list[str] | None,
+                          params: dict, tid: str) -> None:
+    """后台执行单个动作（深度增强 #3：AI 动作全异步）。"""
+    try:
+        result = await _run_action(scene_id, action, object_ids, params)
+        await db.execute(
+            "UPDATE tasks SET status=$1, done=1, total=1 WHERE id=$2",
+            "completed" if result.get("ok") else "failed", tid,
+        )
+    except Exception:  # noqa: BLE001
+        try:
+            await db.execute("UPDATE tasks SET status='failed' WHERE id=$1", tid)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 async def execute_action(scene_id: str, action: str, object_ids: list[str] | None = None,
                         params: dict | None = None) -> dict:
-    """动作分发入口（P1-05 / §53：成功/失败在 tasks 表留痕）。"""
+    """动作分发入口（P1-05 §53 留痕 + 深度增强 #3：async_mode 全异步）。"""
+    params = params or {}
+    if params.get("async_mode"):
+        tid = "task_" + uuid.uuid4().hex[:16]
+        await db.execute(
+            """INSERT INTO tasks (id, canvas_id, project_id, type, status, done, total)
+               VALUES ($1,$2,'default',$3,'running',0,1)""",
+            tid, scene_id, action,
+        )
+        asyncio.create_task(_run_action_task(scene_id, action, object_ids, params, tid))
+        return {"ok": True, "async": True, "task_id": tid, "message": "动作已异步执行"}
     result = await _run_action(scene_id, action, object_ids, params)
     await _log_task(scene_id, action, "completed" if result.get("ok") else "failed")
     return result

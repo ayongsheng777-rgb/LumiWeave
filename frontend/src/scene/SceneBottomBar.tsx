@@ -46,6 +46,7 @@ export default function SceneBottomBar() {
   const addAssetToCanvas = useSceneStore((s) => s.addAssetToCanvas)
 
   const [aiPrompt, setAiPrompt] = useState('')
+  const [asyncMode, setAsyncMode] = useState(false)
 
   const timelineEnabled = typeDef?.timeline_enabled
 
@@ -131,13 +132,22 @@ export default function SceneBottomBar() {
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
                 />
+                <label className="flex items-center gap-1.5 text-[10px] text-ink-3">
+                  <input
+                    type="checkbox"
+                    checked={asyncMode}
+                    onChange={(e) => setAsyncMode(e.target.checked)}
+                    className="accent-[#8b5cf6]"
+                  />
+                  异步执行（后台运行，可继续操作画布）
+                </label>
                 <div className="flex flex-wrap gap-1.5">
                   {(typeDef?.actions || []).map((a) => (
                     <button
                       key={a}
                       className="flex items-center gap-1 rounded-lg border border-edge bg-canvas px-2 py-1 text-[10px] text-ink-2 transition hover:border-brand-500 hover:text-ink disabled:opacity-40"
                       disabled={!!busy}
-                      onClick={() => void runAction(a, selectedIds, { prompt: aiPrompt })}
+                      onClick={() => void runAction(a, selectedIds, { prompt: aiPrompt, async_mode: asyncMode })}
                     >
                       {busy === a ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
                       {ACTION_LABELS[a] || a}

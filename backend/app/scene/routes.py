@@ -90,7 +90,17 @@ async def scene_templates():
 @router.get("/plans")
 async def get_plans():
     """商业化套餐（§73 / P2-03）。"""
-    return _ok(plans=plans.list_plans(), current=plans.current_plan())
+    return _ok(plans=plans.list_plans(), current=await plans.current_plan())
+
+
+@router.post("/plans")
+async def set_plan(request: Request):
+    """切换当前套餐（深度增强 #4：套餐可配置，持久化 app_kv）。"""
+    data = await request.json()
+    pid = str(data.get("plan") or "")
+    if not await plans.set_plan(pid):
+        return _err(f"未知套餐: {pid}")
+    return _ok(current=await plans.current_plan())
 
 
 @router.get("/{scene_id}")

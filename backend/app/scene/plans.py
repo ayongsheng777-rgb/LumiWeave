@@ -34,13 +34,36 @@ PLANS: dict[str, dict[str, Any]] = {
     },
 }
 
-# 当前生效套餐（默认 free；将来接用户订阅后按用户查）
-_CURRENT_PLAN = "free"
+# 当前生效套餐（默认 free；可经 POST /api/scenes/plans 切换，持久化在 app_kv —— 深度增强 #4）
+_PLAN_KV_KEY = "current_plan"
+_DEFAULT_PLAN = "free"
 
 
-def current_plan() -> dict:
-    plan = PLANS.get(_CURRENT_PLAN, PLANS["free"])
-    return {"id": _CURRENT_PLAN, **plan}
+async def current_plan() -> dict:
+    """读 app_kv 里的当前套餐（重启不丢）。"""
+    pid = _DEFAULT_PLAN
+    try:
+        from app import db
+        row = await db.fetchrow("SELECT value FROM app_kv WHERE key=$1", _PLAN_KV_KEY)
+        if row and row["value"] in PLANS:
+            pid = row["value"]
+    except Exception:  # noqa: BLE001
+        pass
+    plan = PLANS.get(pid, PLANS["free"])
+    return {"id": pid, **plan}
+
+
+async def set_plan(pid: str) -> bool:
+    """切换当前套餐（持久化 app_kv）。"""
+    if pid not in PLANS:
+        return False
+    from app import db
+    await db.execute(
+        """INSERT INTO app_kv (key, value, updated_at) VALUES ($1,$2,NOW())
+           ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()""",
+        _PLAN_KV_KEY, pid,
+    )
+    return True
 
 
 def list_plans() -> list[dict]:
@@ -48,22 +71,22 @@ def list_plans() -> list[dict]:
 
 
 async def check_scene_quota(project_id: str) -> tuple[bool, str]:
-    """新建场景前检查配额（免费版上限 10 个场景）。"""
-    plan = PLANS.get(_CURRENT_PLAN, PLANS["free"])
-    limit = int(plan["limits"].get("scenes", 10))
+    """新建场景前检查配额（按当前套餐）。"""
+    p = await current_plan()
+    limit = int(p["limits"].get("scenes", 10))
     from app.scene import service
     count = len(await service.list_scenes(project_id))
     if count >= limit:
-        return False, f"{plan['name']}场景数已达上限（{limit} 个），请升级套餐"
+        return False, f"{p['name']}场景数已达上限（{limit} 个），请升级套餐"
     return True, ""
 
 
 async def check_object_quota(scene_id: str) -> tuple[bool, str]:
     """场景内对象数软限制。"""
-    plan = PLANS.get(_CURRENT_PLAN, PLANS["free"])
-    limit = int(plan["limits"].get("objects_per_scene", 300))
+    p = await current_plan()
+    limit = int(p["limits"].get("objects_per_scene", 300))
     from app.scene import service
     count = len(await service.list_objects(scene_id))
     if count >= limit:
-        return False, f"{plan['name']}单场景对象数已达上限（{limit}）"
+        return False, f"{p['name']}单场景对象数已达上限（{limit}）"
     return True, ""

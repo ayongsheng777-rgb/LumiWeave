@@ -21,7 +21,8 @@ const SCENE_ACCENT: Record<string, string> = {
 }
 
 export default function SceneSidebar() {
-  const [collapsed, setCollapsed] = useState(false)
+  // 窄屏初始收起（深度增强 #6：响应式全量）
+  const [collapsed, setCollapsed] = useState(() => window.innerWidth < 1100)
   const types = useSceneStore((s) => s.types)
   const scenes = useSceneStore((s) => s.scenes)
   const currentSceneId = useSceneStore((s) => s.currentSceneId)

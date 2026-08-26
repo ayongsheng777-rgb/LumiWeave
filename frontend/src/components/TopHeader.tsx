@@ -22,6 +22,7 @@ export default function TopHeader() {
   const plans = useSceneStore((s) => s.plans)
   const currentPlan = useSceneStore((s) => s.currentPlan)
   const loadPlans = useSceneStore((s) => s.loadPlans)
+  const setPlan = useSceneStore((s) => s.setPlan)
 
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -117,7 +118,19 @@ export default function TopHeader() {
                 {plans.map((p) => (
                   <div key={p.id} className="flex items-center justify-between px-2.5 py-1 text-[10px] text-ink-3">
                     <span>{p.name}</span>
-                    <span>{p.price > 0 ? `¥${p.price}/月` : p.id === 'free' ? '免费' : '洽谈'}</span>
+                    <span className="flex items-center gap-2">
+                      <span>{p.price > 0 ? `¥${p.price}/月` : p.id === 'free' ? '免费' : '洽谈'}</span>
+                      <button
+                        className={`rounded px-1.5 py-0.5 transition ${
+                          currentPlan?.id === p.id
+                            ? 'bg-brand-500 text-white'
+                            : 'border border-edge text-ink-2 hover:text-ink'
+                        }`}
+                        onClick={() => void setPlan(p.id)}
+                      >
+                        {currentPlan?.id === p.id ? '当前' : '启用'}
+                      </button>
+                    </span>
                   </div>
                 ))}
               </div>

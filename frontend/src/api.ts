@@ -842,6 +842,10 @@ export async function scenePlans() {
   return request('GET', '/scenes/plans')
 }
 
+export async function sceneSetPlan(planId: string) {
+  return request('POST', '/scenes/plans', { plan: planId })
+}
+
 // ── 营销模板（§26 / P2-01）───────────────────────────────────────────────
 export interface MarketingTemplate {
   id: string
