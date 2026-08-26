@@ -230,8 +230,8 @@ export function StoryNode({ id, data, selected }: NodeProps) {
         {busy && genStep === 'parsing' ? 'AI 解析中…' : '① AI 解析生成流程'}
       </button>
 
-      {/* ── 第二步：全流程生成（解析后才出现） ── */}
-      {isParsed && genStep !== 'parsing' && (
+      {/* ── 第二步：全流程生成（始终显示；未解析时置灰） ── */}
+      {genStep !== 'parsing' && (
         <div className="mt-2 space-y-1.5">
           {/* 模式选择 */}
           <div className="relative">
@@ -281,13 +281,20 @@ export function StoryNode({ id, data, selected }: NodeProps) {
             </div>
           )}
 
-          {/* 生成按钮 */}
-          <button className="nodrag w-full rounded-lg bg-brand-600 px-3 py-2 text-sm text-white transition hover:bg-brand-500 disabled:opacity-50"
-            onClick={isGenerating ? undefined : runFullGenerate} disabled={isGenerating}>
-            {isGenerating
-              ? `② ${stepLabel[genStep]}`
-              : `② 全流程生成（${videoMode === 'auto_full' ? '全量参考' : videoMode === 'auto_firstframe' ? '首帧参考' : '纯文生'}）`}
-          </button>
+          {/* 生成按钮：未解析时置灰并提示 */}
+          {!isParsed ? (
+            <button className="nodrag w-full cursor-not-allowed rounded-lg bg-soft px-3 py-2 text-sm text-ink-3"
+              disabled title="请先完成 ① AI 解析">
+              ② 全流程生成（请先完成①解析）
+            </button>
+          ) : (
+            <button className="nodrag w-full rounded-lg bg-brand-600 px-3 py-2 text-sm text-white transition hover:bg-brand-500 disabled:opacity-50"
+              onClick={isGenerating ? undefined : runFullGenerate} disabled={isGenerating}>
+              {isGenerating
+                ? `② ${stepLabel[genStep]}`
+                : `② 全流程生成（${videoMode === 'auto_full' ? '全量参考' : videoMode === 'auto_firstframe' ? '首帧参考' : '纯文生'}）`}
+            </button>
+          )}
         </div>
       )}
 
