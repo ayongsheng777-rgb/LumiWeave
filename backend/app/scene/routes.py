@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request, File, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.config import DATA_DIR
-from app.scene import service
+from app.scene import service, plans, templates
 from app.scene.actions import execute_action
 from app.scene.registry import OBJECT_LIBRARY, registry
 
@@ -48,6 +48,10 @@ async def create_scene(request: Request):
     scene_type = str(data.get("scene_type") or data.get("type") or "").strip()
     if not scene_type:
         return _err("scene_type 必填")
+    # 商业化配额（§73 / P2-03）：免费版场景数上限
+    ok, msg = await plans.check_scene_quota(_pid(request))
+    if not ok:
+        return _err(msg)
     sdef = registry.get(scene_type)
     name = str(data.get("name") or (sdef.name if sdef else scene_type))
     sid = await service.create_scene(_pid(request), scene_type, name, data.get("data") or {})
@@ -81,6 +85,12 @@ async def scene_templates():
             "timeline": s.timeline_enabled,
         })
     return _ok(templates=tpls)
+
+
+@router.get("/plans")
+async def get_plans():
+    """商业化套餐（§73 / P2-03）。"""
+    return _ok(plans=plans.list_plans(), current=plans.current_plan())
 
 
 @router.get("/{scene_id}")
@@ -121,6 +131,10 @@ async def list_objects(scene_id: str):
 async def create_object(scene_id: str, request: Request):
     data = await request.json()
     obj_type = str(data.get("type") or "text")
+    # 商业化配额（§73 / P2-03）：单场景对象数上限
+    ok, msg = await plans.check_object_quota(scene_id)
+    if not ok:
+        return _err(msg)
     meta = OBJECT_LIBRARY.get(obj_type, {})
     default_data = dict(meta.get("default_data") or {})
     default_data.update(data.get("data") or {})
@@ -234,6 +248,41 @@ async def analyze_film(scene_id: str, request: Request):
     if not result.get("ok"):
         return _err(result.get("error", "拆镜失败"))
     return _ok(**result)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 营销模板（§26 / P2-01）
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/{scene_id}/templates")
+async def scene_marketing_templates(scene_id: str, request: Request):
+    category = request.query_params.get("category", "")
+    return _ok(templates=templates.list_templates(category))
+
+
+@router.post("/{scene_id}/templates/{template_id}/apply")
+async def apply_marketing_template(scene_id: str, template_id: str):
+    try:
+        created = await templates.apply_template(scene_id, template_id)
+    except ValueError as exc:
+        return _err(str(exc))
+    return _ok(created=created, message=f"套用模板成功（{len(created)} 个对象）")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 异步任务进度（§54 / P2-06）
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/{scene_id}/tasks/{task_id}")
+async def get_task_progress(scene_id: str, task_id: str):
+    from app import db
+    row = await db.fetchrow(
+        "SELECT id, status, done, total, type FROM tasks WHERE id=$1 AND canvas_id=$2",
+        task_id, scene_id,
+    )
+    if not row:
+        return _err("任务不存在", 404)
+    return _ok(task=dict(row))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

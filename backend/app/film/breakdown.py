@@ -170,6 +170,9 @@ async def run_film_analysis(scene_id: str, video_url: str) -> dict:
             "action": analysis.get("action", ""),
             "frame_url": frame_url,
         }
+        # 视觉分析汇总成可读文本（§68 深度：AI 文字分析）
+        if analysis:
+            shot_data["analysis"] = "、".join(f"{k}：{v}" for k, v in analysis.items() if v)
         sid = await service.create_object(
             scene_id, "shot",
             x=(i % 4) * 340, y=(i // 4) * 320, width=300, height=240, data=shot_data,

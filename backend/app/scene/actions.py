@@ -9,6 +9,7 @@ Scene Action 可由 Skill / Workflow / Renderer 实现。这里用现有基础�
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import subprocess
@@ -537,6 +538,31 @@ async def _act_compose_final(scene_id: str, obj_ids: list[str], params: dict) ->
     return {"ok": True, "created": [nid], "message": f"合成成片（{len(local)} 段拼接）"}
 
 
+async def _run_batch_async(scene_id: str, obj_ids: list[str], params: dict, tid: str) -> None:
+    """后台执行批量：逐商品更新 done/total，完成后任务标记 completed/failed。"""
+    try:
+        products = obj_ids or [o["id"] for o in await service.list_objects(scene_id)
+                               if o["object_type"] == "product"]
+        total = len(products)
+        await db.execute("UPDATE tasks SET total=$1 WHERE id=$2", max(total, 1), tid)
+        done = 0
+        for pid in products:
+            try:
+                await _gen_image(scene_id, [pid], {**params, "size": "1024x1024"}, "main")
+                await _gen_image(scene_id, [pid], {**params, "size": "1024x1024"}, "scene")
+                await _gen_image(scene_id, [pid], {**params, "size": "1024x1024"}, "poster")
+            except Exception:  # noqa: BLE001
+                pass
+            done += 1
+            await db.execute("UPDATE tasks SET done=$1 WHERE id=$2", done, tid)
+        await db.execute("UPDATE tasks SET status='completed' WHERE id=$1", tid)
+    except Exception:  # noqa: BLE001
+        try:
+            await db.execute("UPDATE tasks SET status='failed' WHERE id=$1", tid)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 async def _run_action(scene_id: str, action: str, object_ids: list[str] | None = None,
                         params: dict | None = None) -> dict:
     params = params or {}
@@ -556,7 +582,15 @@ async def _run_action(scene_id: str, action: str, object_ids: list[str] | None =
         if action in ("generate_story", "generate_characters", "generate_scenes", "generate_storyboard"):
             return await _act_llm_scene(scene_id, obj_ids, params, action)
         if action == "batch_generate":
-            return await _act_batch_sku(scene_id, obj_ids, params)
+            # 真异步批量（§54 / P2-06）：后台执行 + tasks 表进度，立即返回 task_id
+            tid = "task_" + uuid.uuid4().hex[:16]
+            await db.execute(
+                """INSERT INTO tasks (id, canvas_id, project_id, type, status, done, total)
+                   VALUES ($1,$2,'default','batch_generate','running',0,1)""",
+                tid, scene_id,
+            )
+            asyncio.create_task(_run_batch_async(scene_id, obj_ids, params, tid))
+            return {"ok": True, "async": True, "task_id": tid, "message": "批量生成已开始（后台执行）"}
         if action == "generate_detail_page":
             return await _act_generate_detail_page(scene_id, obj_ids, params)
         if action == "generate_shots":

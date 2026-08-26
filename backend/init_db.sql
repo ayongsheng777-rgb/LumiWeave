@@ -352,3 +352,7 @@ CREATE INDEX IF NOT EXISTS idx_scene_versions_scene ON scene_versions (scene_id)
 -- 素材库补 scene_id 列（规格书 §37/§38：Asset 与 Canvas Object 解耦，按场景检索）
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS scene_id TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_assets_scene ON assets (scene_id);
+
+-- 任务进度列（规格书 §54 / P2-06：异步批量进度）
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS done INT NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS total INT NOT NULL DEFAULT 0;

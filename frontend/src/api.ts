@@ -828,3 +828,40 @@ export async function sceneFilmUpload(sceneId: string, file: File) {
 export async function sceneFilmAnalyze(sceneId: string, videoUrl: string) {
   return request('POST', `/scenes/${encodeURIComponent(sceneId)}/film/analyze`, { video_url: videoUrl })
 }
+
+// ── 商业化套餐（§73 / P2-03）──────────────────────────────────────────────
+export interface Plan {
+  id: string
+  name: string
+  price: number
+  limits: Record<string, number>
+  features: string[]
+}
+
+export async function scenePlans() {
+  return request('GET', '/scenes/plans')
+}
+
+// ── 营销模板（§26 / P2-01）───────────────────────────────────────────────
+export interface MarketingTemplate {
+  id: string
+  name: string
+  category: string
+  description: string
+  object_types: string[]
+  actions: string[]
+}
+
+export async function sceneMarketingTemplates(sceneId: string, category = '') {
+  const q = category ? `?category=${encodeURIComponent(category)}` : ''
+  return request('GET', `/scenes/${encodeURIComponent(sceneId)}/templates${q}`)
+}
+
+export async function sceneApplyTemplate(sceneId: string, templateId: string) {
+  return request('POST', `/scenes/${encodeURIComponent(sceneId)}/templates/${encodeURIComponent(templateId)}/apply`)
+}
+
+// ── 异步任务进度（§54 / P2-06）───────────────────────────────────────────
+export async function sceneTaskProgress(sceneId: string, taskId: string) {
+  return request('GET', `/scenes/${encodeURIComponent(sceneId)}/tasks/${encodeURIComponent(taskId)}`)
+}

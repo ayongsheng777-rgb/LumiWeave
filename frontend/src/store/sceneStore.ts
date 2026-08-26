@@ -35,6 +35,10 @@ import {
   sceneListVersions,
   sceneRestoreVersion,
   sceneListAssets,
+  scenePlans,
+  sceneMarketingTemplates,
+  sceneApplyTemplate,
+  sceneTaskProgress,
   type SceneTypeDef,
   type SceneInstance,
   type SceneObjectDTO,
@@ -42,6 +46,8 @@ import {
   type SceneObjectMeta,
   type SceneVersion,
   type SceneAsset,
+  type Plan,
+  type MarketingTemplate,
 } from '../api'
 
 // ── 动作中文名（§19 动作面板展示用）──────────────────────────────────────
@@ -180,6 +186,11 @@ interface SceneState {
   assets: SceneAsset[]
   // 场景版本（§35）
   versions: SceneVersion[]
+  // 商业化套餐（§73 / P2-03）
+  plans: Plan[]
+  currentPlan: Plan | null
+  // 营销模板（§26 / P2-01）
+  marketingTemplates: MarketingTemplate[]
 
   init: () => Promise<void>
   reloadScenes: () => Promise<void>
@@ -219,6 +230,11 @@ interface SceneState {
   saveVersion: (label: string) => Promise<void>
   loadVersions: () => Promise<void>
   restoreVersion: (id: string) => Promise<void>
+  // 商业化套餐（§73 / P2-03）
+  loadPlans: () => Promise<void>
+  // 营销模板（§26 / P2-01）
+  loadMarketingTemplates: (category?: string) => Promise<void>
+  applyMarketingTemplate: (templateId: string) => Promise<void>
 }
 
 // 把当前画布压入历史栈（在「会改动画布」的操作之前调用）
@@ -305,6 +321,9 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   canRedo: false,
   assets: [],
   versions: [],
+  plans: [],
+  currentPlan: null,
+  marketingTemplates: [],
 
   // ── 初始化：注册表 + 场景列表，并自动打开上次场景 ──────────────────
   init: async () => {
@@ -541,11 +560,20 @@ export const useSceneStore = create<SceneState>((set, get) => ({
         for (const id of targetIds) next[id] = ok ? 'completed' : 'failed'
         return { objectStatus: next }
       })
-      // 批量结果（§54 / P1-06）
+      // 批量结果（§54 / P1-06 同步版；P2-06 真异步轮询）
       const results = res.data?.results as Array<{ skus?: unknown[] }> | undefined
       if (Array.isArray(results)) {
         const okCount = results.filter((r) => Array.isArray(r?.skus) && r.skus.length).length
         set({ batchResult: { total: results.length, ok: okCount, failed: results.length - okCount } })
+      } else if (res.data?.async && res.data?.task_id) {
+        const taskId = String(res.data.task_id)
+        for (let i = 0; i < 200; i++) {
+          await new Promise((r) => setTimeout(r, 1500))
+          const pr = await sceneTaskProgress(sceneId, taskId)
+          const t = pr.data?.task as { status?: string; done?: number; total?: number } | undefined
+          if (t) set({ batchResult: { total: t.total || 1, ok: t.done || 0, failed: 0 } })
+          if (t?.status === 'completed' || t?.status === 'failed') break
+        }
       } else {
         set({ batchResult: null })
       }
@@ -677,6 +705,35 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     if (res.ok) {
       await get().openScene(sceneId)
       await get().loadVersions()
+    }
+  },
+
+  // ── 商业化套餐（§73 / P2-03）─────────────────────────────────────────
+  loadPlans: async () => {
+    const res = await scenePlans()
+    if (res.ok) {
+      set({
+        plans: (res.data?.plans || []) as Plan[],
+        currentPlan: (res.data?.current || null) as Plan | null,
+      })
+    }
+  },
+
+  // ── 营销模板（§26 / P2-01）───────────────────────────────────────────
+  loadMarketingTemplates: async (category) => {
+    const sceneId = get().currentSceneId
+    if (!sceneId) return
+    const res = await sceneMarketingTemplates(sceneId, category || '')
+    if (res.ok) set({ marketingTemplates: (res.data?.templates || []) as MarketingTemplate[] })
+  },
+
+  applyMarketingTemplate: async (templateId) => {
+    const sceneId = get().currentSceneId
+    if (!sceneId) return
+    const res = await sceneApplyTemplate(sceneId, templateId)
+    if (res.ok) {
+      await get().openScene(sceneId)
+      await get().loadAssets()
     }
   },
 }))

@@ -43,9 +43,18 @@ function SceneCanvasInner() {
   const loadVersions = useSceneStore((s) => s.loadVersions)
   const { screenToFlowPosition } = useReactFlow()
 
-  const [showInspector, setShowInspector] = useState(true)
+  const [showInspector, setShowInspector] = useState(() => window.innerWidth >= 1100)
   const [filmBusy, setFilmBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // 响应式（§49 / P2-02）：窄屏自动收起 Inspector，窗口变窄时跟随
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth < 1100) setShowInspector(false)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   // 切换场景时加载素材库与版本列表（§35/§38）
   useEffect(() => {
