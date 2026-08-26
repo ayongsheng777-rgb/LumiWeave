@@ -102,6 +102,15 @@ function WorkflowCanvasInner() {
         fitView
         deleteKeyCode={['Backspace', 'Delete']}
         proOptions={{ hideAttribution: true }}
+        // 上下文感知 Inspector：单选节点自动滑出右侧参数抽屉（商业画布方案）
+        onSelectionChange={({ nodes: sel }) => {
+          const uc = useUiStore.getState()
+          if (sel.length === 1) {
+            uc.openNodeConfig(sel[0].id)
+          } else if (uc.nodeConfig.open) {
+            uc.closeNodeConfig()
+          }
+        }}
         defaultEdgeOptions={{
           type: 'smoothstep',
           animated: true,

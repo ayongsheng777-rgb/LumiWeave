@@ -1,7 +1,7 @@
 import { Handle, Position, NodeResizer } from '@xyflow/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
-import { Lock, LockOpen, Trash2, Settings2, ChevronUp, ChevronDown } from 'lucide-react'
+import { Lock, LockOpen, Trash2, Settings2, ChevronUp, ChevronDown, Loader2 } from 'lucide-react'
 import type { NodeStatus } from '../../store/workflowStore'
 import { useNodeAdapter } from '../../store/nodeAdapter'
 import { useUiStore } from '../../store/uiStore'
@@ -58,9 +58,9 @@ export function NodeShell({
   const locked = getLocked(id)
   const summary = summarize(output)
 
-  // 三级形态：expanded(配置全展开) / collapsed(极简标题) / result-only(仅结果)
-  // 默认：已完成 → 只看结果；否则展开
-  const [viewMode, setViewMode] = useState<NodeViewMode>(status === 'completed' ? 'result-only' : 'expanded')
+  // 三级形态：expanded(配置全展开) / collapsed(极简标题卡片) / result-only(仅结果)
+  // 卡片化默认（商业画布方案）：未生成 → 极简标题卡；已生成 → 只看结果；参数走右侧抽屉
+  const [viewMode, setViewMode] = useState<NodeViewMode>(status === 'completed' ? 'result-only' : 'collapsed')
 
   // 展开配置：同时松开外壳固定高度（此前缩放过的节点高度被钉死，表单会塞进看不见的滚动区）
   const expandConfig = () => {
@@ -144,15 +144,22 @@ export function NodeShell({
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">{children}</div>
       )}
 
-      {/* 结果状态：仅显示结果媒体/摘要 */}
+      {/* 结果状态：仅显示结果媒体/摘要（卡片化主形态） */}
       {viewMode === 'result-only' && (
-        <div className="flex items-center justify-center bg-soft p-2">
+        <div className="flex min-h-[64px] items-center justify-center bg-soft/40 p-2">
           {status === 'completed' && (resultView || (summary && (
             <div className="max-h-28 w-full overflow-y-auto whitespace-pre-wrap break-words rounded-md px-2 py-1.5 text-left text-[11px] leading-relaxed text-ink-2">
               {summary}
             </div>
           )))}
-          {status !== 'completed' && <span className="text-[10px] text-ink-3">点 ⚙ 或标题展开配置</span>}
+          {status === 'running' && (
+            <span className="flex items-center gap-1.5 text-[11px] text-blue-300">
+              <Loader2 size={12} className="animate-spin" />AI 正在创作中…
+            </span>
+          )}
+          {(status === 'idle' || status === 'failed') && !summary && (
+            <span className="text-[10px] text-ink-3">点 ⚙ 配置参数 · 点 ↑ 展开生成</span>
+          )}
         </div>
       )}
 

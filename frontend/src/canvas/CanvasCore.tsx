@@ -10,6 +10,7 @@ import '@xyflow/react/dist/style.css'
 import type { Connection } from '@xyflow/react'
 import { useCanvasStore } from '../store/canvasStore'
 import { NodeAdapterProvider } from '../store/nodeAdapter'
+import { useUiStore } from '../store/uiStore'
 import { canvasGetGraph } from '../api'
 import { objectNodeTypes } from './objectNodes'
 import CanvasToolbar from './CanvasToolbar'
@@ -112,7 +113,16 @@ function CanvasCoreInner() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={handleConnect}
-            onSelectionChange={({ nodes: sel }) => setSelected(sel.map((n) => n.id))}
+            onSelectionChange={({ nodes: sel }) => {
+              setSelected(sel.map((n) => n.id))
+              // 上下文感知 Inspector：单选节点自动滑出右侧参数抽屉（商业画布方案）
+              const uc = useUiStore.getState()
+              if (sel.length === 1) {
+                uc.openNodeConfig(sel[0].id)
+              } else if (uc.nodeConfig.open) {
+                uc.closeNodeConfig()
+              }
+            }}
             onNodeDragStop={snapshot}
             nodeTypes={objectNodeTypes}
             fitView

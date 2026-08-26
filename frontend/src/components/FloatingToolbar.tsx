@@ -41,7 +41,7 @@ export default function FloatingToolbar() {
     <div className="pointer-events-none absolute left-3 top-1/2 z-20 -translate-y-1/2">
       {/* 收起态：单圆钮 */}
       <button
-        className={`pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-edge bg-panel text-ink-2 shadow-node-dark transition hover:text-ink ${open ? 'bg-brand-500 !text-white' : ''}`}
+        className={`pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-edge bg-panel/90 text-ink-2 shadow-node-dark backdrop-blur-md transition hover:text-ink ${open ? 'bg-brand-500 !text-white' : ''}`}
         onClick={() => setOpen(!open)}
         title={open ? '收起节点库' : '展开节点库'}
       >
@@ -50,7 +50,7 @@ export default function FloatingToolbar() {
 
       {/* 展开态：浮动图标列（从圆钮向上展开，限高可视区；nowheel 让滚轮滚动面板而不是画布） */}
       {open && (
-        <div className="nowheel pointer-events-auto absolute bottom-full left-0 mb-2 flex max-h-[calc(50vh-3rem)] w-14 flex-col items-center gap-1 overflow-y-auto rounded-xl border border-edge bg-panel py-2 shadow-node-dark">
+        <div className="nowheel pointer-events-auto absolute bottom-full left-0 mb-2 flex max-h-[calc(50vh-3rem)] w-14 flex-col items-center gap-1 overflow-y-auto rounded-2xl border border-edge bg-panel/90 py-2 shadow-node-dark backdrop-blur-md">
           <div className="mb-1 text-[10px] text-ink-3">节点</div>
           {ITEMS.map((it) => (
             <button
