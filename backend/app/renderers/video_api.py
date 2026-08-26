@@ -82,6 +82,10 @@ class VideoApiConnector(BaseRenderer):
         path, payload = self._build_submit(p)
         if not path:
             return {"ok": False, "error": f"未支持的视频服务商: {self.provider}"}
+        # 模型专属字段（native：camera_control/camera_movement/height 等）直接合并
+        native = p.get("native")
+        if isinstance(native, dict):
+            payload.update(native)
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
                 resp = await client.post(self._base() + path, headers=self._headers(), json=payload)

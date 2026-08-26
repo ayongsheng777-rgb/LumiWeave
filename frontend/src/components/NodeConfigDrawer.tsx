@@ -1,10 +1,12 @@
 // 节点参数配置抽屉（V2.3 交互修复）：齿轮按钮点开，右侧滑出该节点的完整参数面板
 // 双画布通用：按 uiStore.mode 读 workflowStore / canvasStore
+// 灵境节点（lj_*）路由到 LjPropertyPanel（字段化属性编辑 + 版本资源管理）
 import { X, Settings2 } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import { useUiStore } from '../store/uiStore'
 import { useWorkflowStore } from '../store/workflowStore'
 import { useCanvasStore } from '../store/canvasStore'
+import LjPropertyPanel from './LjPropertyPanel'
 
 const SKIP_KEYS = new Set(['status', 'result', 'error', 'locked', 'taskId', '__meta', 'seed'])
 const TEXTAREA_KEYS = new Set(['text', 'prompt', 'message', 'description', 'system', 'template', 'content', 'negative', 'script'])
@@ -39,6 +41,27 @@ export default function NodeConfigDrawer() {
   const data = (node.data || {}) as Record<string, unknown>
   const editable = Object.keys(data).filter((k) => !SKIP_KEYS.has(k))
   const status = String(data.status || 'idle')
+
+  // 灵境复刻节点：走专用属性面板（字段化编辑 + 版本管理 + 输入展示）
+  if (String(node.type ?? '').startsWith('lj_')) {
+    return (
+      <div className="fixed right-0 top-0 z-[45] flex h-full w-[380px] flex-col border-l border-edge bg-panel shadow-xl animate-fade-in">
+        <DrawerHead onClose={close} title={`属性 · ${String(data.label || node.type || '')}`} />
+        <div className="nowheel min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="mb-3 flex items-center gap-2 text-[11px] text-ink-3">
+            <span className={`rounded-full px-2 py-0.5 ${
+              status === 'completed' ? 'bg-green-500/15 text-green-400'
+              : status === 'failed' ? 'bg-red-500/15 text-red-400'
+              : status === 'running' ? 'bg-blue-500/15 text-blue-400'
+              : 'bg-soft text-ink-3'
+            }`}>{status}</span>
+            <span>类型：{String(node.type)}</span>
+          </div>
+          <LjPropertyPanel node={node} />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed right-0 top-0 z-[45] flex h-full w-80 flex-col border-l border-edge bg-panel shadow-xl animate-fade-in">

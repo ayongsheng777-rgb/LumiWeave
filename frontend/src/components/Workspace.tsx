@@ -8,6 +8,7 @@ import ChatPanel from './ChatPanel'
 import Lightbox from './Lightbox'
 import SettingsModal from './SettingsModal'
 import CanvasCore from '../canvas/CanvasCore'
+import SceneCanvas from '../scene/SceneCanvas'
 import { LogPanel } from './LogPanel'
 import { ShotChainPanel } from './ShotChainPanel'
 
@@ -27,12 +28,22 @@ export default function Workspace() {
       {/* 100% 占满的主画布区（顶栏悬浮其上） */}
       <div className="absolute inset-0 top-14">
         <div className="relative flex h-full">
-          {/* 节点库浮层（默认收起），两个画布共用 */}
-          <FloatingToolbar />
-          {/* 快捷技能浮窗：一键生成带连线的工作流 */}
-          <SkillFloatingWindow />
-          <div className="relative flex-1">
-            {mode === 'workflow' ? <WorkflowCanvas /> : <CanvasCore />}
+          {/* 节点库浮层 + 快捷技能浮窗：仅工作流/无限画布使用。
+              专业场景画布有自己的动态工具条（SceneToolbar），避免两套工具条打架。 */}
+          {mode !== 'scene' && (
+            <>
+              <FloatingToolbar />
+              <SkillFloatingWindow />
+            </>
+          )}
+          <div className="relative min-w-0 flex-1">
+            {mode === 'workflow' ? (
+              <WorkflowCanvas />
+            ) : mode === 'scene' ? (
+              <SceneCanvas />
+            ) : (
+              <CanvasCore />
+            )}
           </div>
           {chatOpen && (
             <aside className="w-[400px] shrink-0 border-l border-edge bg-panel">

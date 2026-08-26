@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { deleteRenderer, getRendererHealth, getRenderers, upsertRenderer } from '../api'
-import { Plus, Trash2, Pencil } from 'lucide-react'
+import { deleteRenderer, getRendererHealth, getRendererWorkflows, getRenderers, upsertRenderer } from '../api'
+import { Plus, Trash2, Pencil, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 
 interface Renderer {
   id: string
@@ -22,6 +22,9 @@ const EMPTY_FORM = { id: '', name: '', type: 'comfyui', endpoint: '', api_key: '
 export default function RendererPanel() {
   const [renderers, setRenderers] = useState<Renderer[]>([])
   const [health, setHealth] = useState<Record<string, Record<string, unknown> | null>>({})
+  const [caps, setCaps] = useState<Record<string, Record<string, unknown> | null>>({})
+  const [capOpen, setCapOpen] = useState<Record<string, boolean>>({})
+  const [capBusy, setCapBusy] = useState<Record<string, boolean>>({})
   const [form, setForm] = useState(EMPTY_FORM)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -40,6 +43,20 @@ export default function RendererPanel() {
       h[r.id] = res.ok ? res.data : null
     }
     setHealth(h)
+  }
+
+  // 获取该 ComfyUI 的模型与工作流设置（checkpoints/loras/samplers/vaes/模板/节点包/系统状态）
+  const fetchCaps = async (id: string) => {
+    setCapBusy((m) => ({ ...m, [id]: true }))
+    setCapOpen((m) => ({ ...m, [id]: true }))
+    try {
+      const res = await getRendererWorkflows(id)
+      setCaps((m) => ({ ...m, [id]: res.ok ? res.data : { ok: false, error: res.data?.error || '获取失败' } }))
+    } catch {
+      setCaps((m) => ({ ...m, [id]: { ok: false, error: '网络异常' } }))
+    } finally {
+      setCapBusy((m) => ({ ...m, [id]: false }))
+    }
   }
 
   useEffect(() => {
@@ -202,6 +219,22 @@ export default function RendererPanel() {
             {health[r.id] && health[r.id]!.reason != null && (
               <div className="mt-1 text-[11px] text-ink-3">原因：{String(health[r.id]!.reason)}</div>
             )}
+            {r.type === 'comfyui' && (
+              <div className="mt-2 border-t border-edge pt-2">
+                <button
+                  onClick={() => (capOpen[r.id] ? setCapOpen((m) => ({ ...m, [r.id]: false })) : fetchCaps(r.id))}
+                  disabled={capBusy[r.id]}
+                  className="flex items-center gap-1.5 rounded-md border border-edge px-2 py-1 text-[11px] text-ink-2 transition hover:bg-soft disabled:opacity-50"
+                >
+                  <RefreshCw size={11} className={capBusy[r.id] ? 'animate-spin' : ''} />
+                  {capOpen[r.id] ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                  {capBusy[r.id] ? '获取中…' : '获取模型与工作流'}
+                </button>
+                {capOpen[r.id] && (
+                  <CapabilitiesView data={caps[r.id]} />
+                )}
+              </div>
+            )}
           </div>
         ))}
         {renderers.length === 0 && (
@@ -210,6 +243,62 @@ export default function RendererPanel() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/** ComfyUI 模型与工作流设置展示 */
+function CapabilitiesView({ data }: { data: Record<string, unknown> | null | undefined }) {
+  if (!data) return <div className="mt-2 text-[11px] text-ink-3">尚未获取，点击上方按钮拉取。</div>
+  if (data.ok === false) {
+    return <div className="mt-2 rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] text-red-400">获取失败：{String(data.error ?? '未知错误')}</div>
+  }
+  const arr = (v: unknown) => (Array.isArray(v) ? (v as unknown[]) : [])
+  const sys = (data.system as Record<string, unknown>) ?? {}
+  const device = String(sys.device ?? '')
+  const vram = Number(sys.vram_total_mb ?? 0)
+  const extras = (data.extras as Record<string, boolean>) ?? {}
+  const templates = arr(data.templates)
+  const section = (label: string, list: unknown[], limit = 30) => {
+    if (!list.length) return null
+    return (
+      <div className="mb-2">
+        <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-ink-3">{label}（{list.length}）</div>
+        <div className="flex flex-wrap gap-1">
+          {list.slice(0, limit).map((v, i) => (
+            <span key={i} className="rounded bg-soft px-1.5 py-0.5 text-[10px] text-ink-2">{String(v)}</span>
+          ))}
+          {list.length > limit && <span className="text-[10px] text-ink-3">…等 {list.length} 项</span>}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="mt-2 rounded-md border border-edge bg-panel-2 p-2.5">
+      {(device || vram) && (
+        <div className="mb-2 flex flex-wrap gap-1.5 text-[10px] text-ink-2">
+          {device && <span className="rounded bg-soft px-1.5 py-0.5">🖥 {device}</span>}
+          {vram ? <span className="rounded bg-soft px-1.5 py-0.5">显存 {Math.round(vram / 1024)}G</span> : null}
+          <span className="rounded bg-soft px-1.5 py-0.5">节点类型 {String(data.node_types ?? 0)} 种</span>
+          {extras.ltx_video && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-400">LTX 视频</span>}
+          {extras.wan_video && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-400">Wan 视频</span>}
+        </div>
+      )}
+      {section('Checkpoints 大模型', arr(data.checkpoints), 20)}
+      {section('Loras 风格模型', arr(data.loras), 30)}
+      {section('Samplers 采样器', arr(data.samplers), 20)}
+      {section('VAE', arr(data.vaes), 20)}
+      {section('Schedulers 调度器', arr(data.schedulers), 20)}
+      {templates.length > 0 && (
+        <div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-ink-3">工作流模板</div>
+          <div className="flex flex-wrap gap-1">
+            {templates.map((t, i) => (
+              <span key={i} className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[10px] text-brand-400">{(t as Record<string, unknown>).label as string}</span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

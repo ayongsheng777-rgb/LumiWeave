@@ -19,20 +19,9 @@ import LayerPanel from './LayerPanel'
 import CanvasInspector from './CanvasInspector'
 import NodePalette from './NodePalette'
 import { objectNodeTypes } from './objectNodes'
-import { PromptNode, ReferenceNode, CameraNode, LightingNode, MotionNode, RenderNode } from '../nodes'
 
-// ── V2.5 标准节点注册表 ──────────────────────────────────────────────────────
-const V2NodeTypes = {
-  prompt:    PromptNode,
-  reference: ReferenceNode,
-  camera:    CameraNode,
-  lighting:  LightingNode,
-  motion:    MotionNode,
-  render:    RenderNode,
-}
-
-// 合并：原有影视节点 + V2.5 标准节点
-const allNodeTypes = { ...objectNodeTypes, ...V2NodeTypes }
+// 节点类型 = 影视节点（参数已收敛进主节点悬浮弹窗，不再有独立参数节点）
+const allNodeTypes = objectNodeTypes
 
 function CanvasCoreInner() {
   // canvasStore 使用 objects 字段，不是 nodes

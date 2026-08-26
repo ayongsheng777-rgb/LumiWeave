@@ -289,3 +289,50 @@ CREATE TABLE IF NOT EXISTS render_job_events (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_render_events_job ON render_job_events (job_id, created_at);
+
+-- ============ V2.5 Scene Engine：场景实例 ============
+-- 对应规格书 §33。id 用带前缀 TEXT（与 canvas_objects 一致，避免 uuid 扩展依赖）。
+CREATE TABLE IF NOT EXISTS scenes (
+    id           TEXT PRIMARY KEY,
+    project_id   TEXT NOT NULL DEFAULT 'default',
+    scene_type   TEXT NOT NULL,                       -- ecommerce-material | ecommerce-drama | film-analysis
+    name         TEXT NOT NULL,
+    version      INTEGER NOT NULL DEFAULT 1,
+    data         JSONB NOT NULL DEFAULT '{}',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_scenes_project ON scenes (project_id);
+
+-- ============ V2.5 Scene Engine：场景内专业对象 ============
+-- 对应规格书 §34。CanvasObject 模型（§9）落库形态。
+CREATE TABLE IF NOT EXISTS scene_objects (
+    id           TEXT PRIMARY KEY,
+    scene_id     TEXT NOT NULL,
+    object_type  TEXT NOT NULL,
+    x            DOUBLE PRECISION NOT NULL DEFAULT 0,
+    y            DOUBLE PRECISION NOT NULL DEFAULT 0,
+    width        DOUBLE PRECISION NOT NULL DEFAULT 300,
+    height       DOUBLE PRECISION NOT NULL DEFAULT 200,
+    rotation     DOUBLE PRECISION NOT NULL DEFAULT 0,
+    z_index      INTEGER NOT NULL DEFAULT 0,
+    locked       BOOLEAN NOT NULL DEFAULT FALSE,
+    hidden       BOOLEAN NOT NULL DEFAULT FALSE,
+    data         JSONB NOT NULL DEFAULT '{}',
+    metadata     JSONB NOT NULL DEFAULT '{}',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_scene_objects_scene ON scene_objects (scene_id);
+
+-- ============ V2.5 Scene Engine：场景内连线 ============
+CREATE TABLE IF NOT EXISTS scene_edges (
+    id           TEXT PRIMARY KEY,
+    scene_id     TEXT NOT NULL,
+    source_id    TEXT NOT NULL,
+    target_id    TEXT NOT NULL,
+    edge_type    TEXT NOT NULL DEFAULT 'default',
+    data         JSONB NOT NULL DEFAULT '{}',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_scene_edges_scene ON scene_edges (scene_id);

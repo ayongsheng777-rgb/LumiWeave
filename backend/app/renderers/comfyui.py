@@ -88,6 +88,8 @@ class ComfyUIConnector(BaseRenderer):
         checkpoints = _options("CheckpointLoaderSimple", "ckpt_name")
         loras = _options("LoraLoader", "lora_name")[:80]
         samplers = _options("KSampler", "sampler_name")[:60]
+        vaes = _options("VAELoader", "vae_name")[:40]
+        schedulers = _options("KSampler", "scheduler")[:40]
         extras = {
             "ltx_video": any("LTX" in k for k in keys),
             "wan_video": any(k.startswith("Wan") or "WanVideo" in k for k in keys),
@@ -97,13 +99,32 @@ class ComfyUIConnector(BaseRenderer):
             {"id": "text2video", "label": "文生视频（内置模板）"},
             {"id": "ltx-video", "label": "LTX 视频（内置模板，需 LTX 节点包）"},
         ]
+        # 系统状态：设备 / 显存 / 队列（后端容器直连该 ComfyUI 实例）
+        sys_info: dict[str, Any] = {}
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+                sresp = await client.get(f"{self.cfg.endpoint.rstrip('/')}/system_stats", headers=self._headers())
+            if sresp.status_code == 200:
+                st = sresp.json()
+                sys_info = {
+                    "device": (st.get("devices") or [{}])[0].get("name", ""),
+                    "vram_total_mb": (st.get("devices") or [{}])[0].get("vram_total", 0),
+                    "queue_running": len((st.get("system") or {}).get("system", {}).get("system_stats", {}).get("pending", [])),
+                }
+        except Exception:  # noqa: BLE001 系统状态取不到不影响主流程
+            pass
         return {
             "ok": True,
+            "endpoint": self.cfg.endpoint.rstrip("/"),
             "checkpoints": checkpoints,
             "loras": loras,
             "samplers": samplers,
+            "vaes": vaes,
+            "schedulers": schedulers,
+            "node_types": len(keys),
             "extras": extras,
             "templates": templates,
+            "system": sys_info,
         }
 
     async def health(self) -> dict[str, Any]:

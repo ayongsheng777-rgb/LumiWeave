@@ -1,6 +1,6 @@
 import { useUiStore } from '../store/uiStore'
 import { logout } from '../api'
-import { Sun, Moon, Network, LayoutGrid, LogOut, Settings } from 'lucide-react'
+import { Sun, Moon, Network, LayoutGrid, LogOut, Settings, Clapperboard } from 'lucide-react'
 
 export default function TopHeader() {
   const projectName = useUiStore((s) => s.projectName)
@@ -43,6 +43,15 @@ export default function TopHeader() {
           }`}
         >
           <LayoutGrid size={14} /> 无限画布
+        </button>
+        <button
+          onClick={() => setMode('scene')}
+          title="V2.5 专业场景画布：电商物料 / 电商短剧 / 影视拉片"
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
+            mode === 'scene' ? 'bg-brand-600 text-white' : 'text-ink-2 hover:text-ink'
+          }`}
+        >
+          <Clapperboard size={14} /> 专业场景
         </button>
       </div>
 

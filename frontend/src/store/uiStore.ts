@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
-export type CanvasMode = 'workflow' | 'infinite'
+/** scene = V2.5 专业场景画布（电商物料 / 电商短剧 / 影视拉片） */
+export type CanvasMode = 'workflow' | 'infinite' | 'scene'
 
 interface UiState {
   mode: CanvasMode
@@ -64,7 +65,9 @@ export const useUiStore = create<UiState>((set, get) => ({
     persist(set, get, { mode: m })
   },
   toggleMode: () => {
-    const next: CanvasMode = get().mode === 'workflow' ? 'infinite' : 'workflow'
+    // 三态循环：工作流 → 无限画布 → 专业场景 → 工作流
+    const order: CanvasMode[] = ['workflow', 'infinite', 'scene']
+    const next = order[(order.indexOf(get().mode) + 1) % order.length]
     persist(set, get, { mode: next })
   },
   setTheme: (t) => {

@@ -1,70 +1,73 @@
 import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
-import { ImageIcon } from 'lucide-react'
 import { useNodeAdapter } from '../../store/nodeAdapter'
-import { getProviders, getRenderers, renderMedia } from '../../api'
-import { NodeShell, Field, inputCls } from './NodeShell'
-import { GenerationModeField, type ProviderInfo, type RendererInfo } from './GenerationModeField'
+import type { NodeStatus } from '../../store/workflowStore'
+import { getProviders, renderMedia } from '../../api'
+import { IMAGE_PRESETS, imagePreset, matchProvider, buildNative } from '../../data/mediaModels'
+import { MediaNodeShell, type LightingState, type LensState } from './media/MediaNodeShell'
 import { PromptTranslate } from './PromptTranslate'
 import { PromptOptimize } from './PromptOptimize'
-import { ResultMedia } from './ResultMedia'
 import { emitLog, emitRenderLogs } from '../LogPanel'
 
-const RATIOS = ['16:9', '9:16', '1:1', '4:3', '3:4']
-const STYLES = ['电影感', '动漫', '写实', '水彩', '3D', '赛博朋克', '古风']
+const DEFAULT_LIGHT: LightingState = { brightness: 50, colorTemp: 5000, direction: 'front' }
+const DEFAULT_LENS: LensState = { body: '', lens: '', focal: '', aperture: '' }
 
 export function ImageNode({ id, data, selected }: NodeProps) {
-  const { update } = useNodeAdapter()
+  const { update, getStatus } = useNodeAdapter()
   const d = data as Record<string, unknown>
-  const [providers, setProviders] = useState<ProviderInfo[]>([])
-  const [renderers, setRenderers] = useState<RendererInfo[]>([])
+  const [providers, setProviders] = useState<{ id: string; name: string; type: string; endpoint: string }[]>([])
 
   useEffect(() => {
     getProviders().then((r) => {
       if (r.ok) setProviders((r.data.providers || []).filter((p: { type: string }) => p.type === 'image'))
     })
-    getRenderers().then((r) => {
-      if (r.ok) setRenderers((r.data.renderers || []).filter((rr: { type: string }) => rr.type === 'comfyui'))
-    })
   }, [])
 
-  const prompt  = String(d.prompt ?? '')
-  const negative = String(d.negative ?? '')
-  const ratio   = String(d.ratio ?? '16:9')
-  const style   = String(d.style ?? '电影感')
-  const refs    = (d.reference as string[]) || []
-  const charIds = (d.character_ids as string[]) || []
-  const url     = String(d.url ?? '')
-  const renderMode = String(d.render_mode ?? 'comfyui')
-  const providerId = String(d.provider_id ?? '')
-  const rendererId = String(d.renderer_id ?? '')
-  const model    = String(d.model ?? '')
+  const prompt     = String(d.prompt ?? '')
+  const negative   = String(d.negative ?? '')
+  const modelKey   = String(d.model_key ?? 'flux-dev')
+  const resolution = String(d.resolution ?? '1K')
+  const ratio      = String(d.ratio ?? '16:9')
+  const light      = (d.light as LightingState) || DEFAULT_LIGHT
+  const lens       = (d.lens as LensState) || DEFAULT_LENS
+  const url        = String(d.url ?? '')
+  const status     = ((d.status as NodeStatus) || getStatus(id) || 'idle') as NodeStatus
+
+  const preset = imagePreset(modelKey) || IMAGE_PRESETS[0]
+  const costText = preset.estPerImage ? `≈${preset.estPerImage}点` : ''
 
   const run = async () => {
-    if (!prompt.trim()) { update(id, { status: 'failed', error: '请先输入提示词' }); return }
-    update(id, { status: 'running' })
-    emitLog({ nodeId: id, nodeLabel: '图片生成', nodeType: 'image', status: 'running', message: `开始生成 · ${renderMode === 'cloud' ? `云端(${providerId || '未选'})` : 'ComfyUI'}` })
+    if (!prompt.trim()) { update(id, { status: 'failed', error: '请先输入图片提示词' }); return }
+    update(id, { status: 'running', error: '' })
+    emitLog({ nodeId: id, nodeLabel: '图片生成', nodeType: 'image', status: 'running', message: `开始生成 · ${preset.name} · ${preset.renderMode === 'cloud' ? '云端' : 'ComfyUI'}` })
     const t0 = Date.now()
     try {
-      const finalPrompt = style && !prompt.includes(style) ? `${style}，${prompt}` : prompt
+      const { prompt: finalPrompt, native } = buildNative(preset, {
+        prompt,
+        lightDirection: light.direction, lightBrightness: light.brightness, colorTemp: light.colorTemp,
+        lens: lens.lens, focal: lens.focal, aperture: lens.aperture, cameraBody: lens.body,
+        resolution, ratio,
+      })
+      const params: Record<string, unknown> = { prompt: finalPrompt, negative, ratio, native }
+      const providerId = matchProvider(preset, providers)
       const res = await renderMedia({
         kind: 'image',
-        render_mode: renderMode,
+        render_mode: preset.renderMode,
         provider_id: providerId,
-        model,
-        renderer_id: rendererId,
-        params: { prompt: finalPrompt, negative, ratio },
+        model: preset.modelId,
+        renderer_id: String(d.renderer_id ?? ''),
+        params,
       })
-      const data = res.data as Record<string, unknown> | undefined
-      if (res.ok && data?.ok !== false) {
-        emitRenderLogs(data?.logs, id, '图片生成', 'image')
-        const images = (data?.images as { url?: string }[] | undefined) || []
-        const url = images[0]?.url || (data?.url as string) || ''
-        update(id, { status: 'completed', url })
+      const rdata = res.data as Record<string, unknown> | undefined
+      if (res.ok && rdata?.ok !== false) {
+        emitRenderLogs(rdata?.logs, id, '图片生成', 'image')
+        const images = (rdata?.images as { url?: string }[] | undefined) || []
+        const u = images[0]?.url || (rdata?.url as string) || ''
+        update(id, { status: 'completed', url: u })
         emitLog({ nodeId: id, nodeLabel: '图片生成', nodeType: 'image', status: 'completed', message: '图片生成完成', duration: Date.now() - t0 })
       } else {
-        const err = String(data?.error || '生成失败')
-        emitRenderLogs(data?.logs, id, '图片生成', 'image')
+        const err = String(rdata?.error || '生成失败')
+        emitRenderLogs(rdata?.logs, id, '图片生成', 'image')
         update(id, { status: 'failed', error: err })
         emitLog({ nodeId: id, nodeLabel: '图片生成', nodeType: 'image', status: 'failed', message: `生成失败 · ${err.slice(0, 80)}`, detail: err })
       }
@@ -74,59 +77,33 @@ export function ImageNode({ id, data, selected }: NodeProps) {
     }
   }
 
-  return (
-    <NodeShell id={id} selected={selected} title="图片生成" icon={<ImageIcon size={15} />} resultView={url ? <ResultMedia url={url} /> : undefined}>
-      <Field label="正向提示词">
-        <textarea className={inputCls} rows={2} value={prompt} placeholder="描述画面内容……（原文引用）"
-          onChange={(e) => update(id, { prompt: e.target.value })} />
-        <PromptTranslate prompt={prompt} />
-        <PromptOptimize prompt={prompt} kind="image" model={model} nodeLabel="图片生成"
-          onApply={(v) => update(id, { prompt: v })} />
-      </Field>
-      <Field label="负向提示词">
-        <input className={inputCls} value={negative} placeholder="不想出现的元素"
-          onChange={(e) => update(id, { negative: e.target.value })} />
-      </Field>
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="比例">
-          <select className={inputCls} value={ratio} onChange={(e) => update(id, { ratio: e.target.value })}>
-            {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </Field>
-        <Field label="风格">
-          <select className={inputCls} value={style} onChange={(e) => update(id, { style: e.target.value })}>
-            {STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </Field>
-      </div>
-      <GenerationModeField
-        mode={renderMode}
-        providerId={providerId}
-        providers={providers}
-        rendererId={rendererId}
-        renderers={renderers}
-        model={model}
-        onModeChange={(v) => update(id, { render_mode: v })}
-        onProviderChange={(v) => update(id, { provider_id: v })}
-        onRendererChange={(v) => update(id, { renderer_id: v })}
-        onModelChange={(v) => update(id, { model: v })}
+  const onChange = (patch: Record<string, unknown>) => update(id, patch)
+
+  const promptPanel = (
+    <div>
+      <div className="mb-1 text-xs font-medium text-ink-2">图片提示词</div>
+      <textarea
+        rows={3}
+        className="nodrag nowheel w-full rounded-lg border border-edge bg-input px-2.5 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
+        value={prompt}
+        placeholder="描述画面内容……"
+        onChange={(e) => update(id, { prompt: e.target.value })}
       />
-      {charIds.length > 0 && (
-        <div className="rounded bg-soft px-2 py-1 text-[10px] text-ink-3">
-          引用角色：{charIds.join(', ')}
-        </div>
-      )}
-      {refs.length > 0 && (
-        <div className="flex gap-1 overflow-x-auto py-1">
-          {refs.map((r, i) => <img key={i} src={r} className="h-12 w-12 rounded-md object-cover" alt="ref" />)}
-        </div>
-      )}
-      {url ? <ResultMedia url={url} />
-        : <div className="flex h-24 items-center justify-center rounded-md bg-soft text-[11px] text-ink-3">点击生成获取图片</div>}
-      <button className="nodrag w-full rounded-lg bg-brand-500 px-3 py-2 text-sm text-white transition hover:bg-brand-600 disabled:opacity-50"
-        onClick={run}>
-        生成图片
-      </button>
-    </NodeShell>
+      <PromptTranslate prompt={prompt} />
+      <PromptOptimize prompt={prompt} kind="image" model={preset.modelId} nodeLabel="图片生成" onApply={(v) => update(id, { prompt: v })} />
+    </div>
+  )
+
+  return (
+    <MediaNodeShell
+      id={id} selected={selected} kind="image" status={status} url={url}
+      error={String(d.error ?? '')}
+      presets={IMAGE_PRESETS} modelKey={modelKey}
+      resolutions={preset.resolutions || ['1K']} ratios={preset.ratios}
+      durationValue={0} resolutionValue={resolution} ratioValue={ratio}
+      camera="static" light={light} lens={lens} costText={costText}
+      promptPreview={prompt} promptPanel={promptPanel}
+      onChange={onChange} onGenerate={run}
+    />
   )
 }

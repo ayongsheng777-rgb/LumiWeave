@@ -34,28 +34,31 @@ export default function SettingsModal() {
   const [tab, setTab] = useState<Tab>(directTab || 'model')
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 animate-fade-in" onClick={close}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-sm p-6 animate-fade-in" onClick={close}>
       <div
-        className="flex h-[80vh] w-[min(94vw,64rem)] flex-col overflow-hidden rounded-2xl border border-edge bg-panel shadow-node-dark"
+        // 亮色毛玻璃主壳：半透明白 + 高斯模糊 + 精细阴影（V2.4 规范）
+        className="flex h-[80vh] w-[min(94vw,64rem)] flex-col overflow-hidden rounded-3xl border border-white/40 bg-white/85 backdrop-blur-2xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.15)]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 头部 */}
-        <div className="flex shrink-0 items-center justify-between border-b border-edge px-5 py-3">
-          <div className="text-sm font-semibold text-ink">设置与管理</div>
-          <button onClick={close} className="text-ink-3 transition hover:text-ink">
+        {/* 头部：细微底边替代生硬 border */}
+        <div className="flex shrink-0 items-center justify-between border-b border-black/5 px-6 py-4 bg-white/40">
+          <div className="text-base font-semibold text-slate-800">设置与管理</div>
+          <button onClick={close} className="p-1.5 rounded-full text-slate-400 hover:bg-black/5 hover:text-slate-700 transition-colors">
             <X size={18} />
           </button>
         </div>
 
         <div className="flex min-h-0 flex-1">
-          {/* 左侧 tab */}
-          <div className="w-36 shrink-0 border-r border-edge bg-panel-2 p-2">
+          {/* 左侧 tab：柔和选中态（紫色实底） */}
+          <div className="w-40 shrink-0 border-r border-black/5 bg-white/30 p-3">
             {TABS.map((t) => (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
-                  tab === t.key ? 'bg-brand-500/15 text-brand-300' : 'text-ink-2 hover:bg-soft'
+                className={`mb-1.5 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                  tab === t.key
+                    ? 'bg-violet-500 text-white shadow-md shadow-violet-500/20'
+                    : 'text-slate-500 hover:bg-black/5 hover:text-slate-800'
                 }`}
               >
                 {t.icon}
@@ -64,8 +67,8 @@ export default function SettingsModal() {
             ))}
           </div>
 
-          {/* 右侧内容 */}
-          <div className="min-w-0 flex-1 overflow-y-auto p-5">
+          {/* 右侧内容区 */}
+          <div className="min-w-0 flex-1 overflow-y-auto p-6 bg-transparent">
             {tab === 'model' && <ModelPanel />}
             {tab === 'token' && <TokenPanel />}
             {tab === 'skills' && <SkillPanel />}

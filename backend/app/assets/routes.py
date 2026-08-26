@@ -47,11 +47,13 @@ async def upload_asset(file: UploadFile = File(...)):
 
 @router.post("/video/extract-frame")
 async def extract_video_frame(request: Request):
-    """视频抽帧（V2.3 尾帧->首帧接龙）：body {video_url, mode: first|last}"""
+    """视频抽帧：body {video_url, mode: first|last|current, time_seconds?}"""
     data = await request.json()
+    ts = data.get("time_seconds")
     return await video_service.extract_frame(
         str(data.get("video_url", "")),
         str(data.get("mode", "last")),
+        float(ts) if ts is not None else None,
     )
 
 

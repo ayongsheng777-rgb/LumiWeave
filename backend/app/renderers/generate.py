@@ -87,13 +87,14 @@ async def render_media(
             return {"ok": False, "error": "提示词为空", "logs": logs}
         negative = str(params.get("negative") or "")
         ratio = str(params.get("ratio") or "16:9")
+        native = params.get("native") if isinstance(params.get("native"), dict) else {}
         if kind == "image":
             from app.providers.cloud_gen import cloud_image_generate
             size = str(params.get("size") or "1024x1024")
             steps = int(params.get("steps") or 20)
             res = await cloud_image_generate(
                 actual_provider_id, prompt, negative=negative, size=size, steps=steps,
-                model=model, reference_images=refs,
+                model=model, reference_images=refs, native=native,
             )
         else:
             from app.providers.cloud_gen import cloud_video_generate
@@ -102,7 +103,7 @@ async def render_media(
                 actual_provider_id, prompt,
                 image_url=first,
                 duration=int(params.get("duration") or 10),
-                ratio=ratio, negative=negative, model=model,
+                ratio=ratio, negative=negative, model=model, native=native,
             )
         res["logs"] = logs + (res.get("logs") or [])
         return res

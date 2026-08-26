@@ -16,6 +16,9 @@ backend/dist/
 frontend/_trash_*/
 frontend/.npm-cache/
 
+# 本地一次性脚本/验证产物
+tmp/
+
 # 数据与密钥（绝不提交）
 backend/data/
 backend/.env
@@ -29,3 +32,9 @@ backend/.env
 
 # 日志
 *.log
+
+# 灵境参考档案（含账号生成记录，仅本地）
+docs/reference/
+
+# 灵境参考画布数据（含账号生成记录，仅本地）
+frontend/public/lingjing/

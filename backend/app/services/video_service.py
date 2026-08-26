@@ -21,12 +21,17 @@ def _err(msg: str) -> dict[str, Any]:
     return {"ok": False, "error": msg}
 
 
-async def extract_frame(video_url: str, mode: str = "last") -> dict[str, Any]:
-    """抽取视频首帧/尾帧，保存为 JPG 并返回 /uploads/ URL。"""
+async def extract_frame(video_url: str, mode: str = "last", time_seconds: float | None = None) -> dict[str, Any]:
+    """抽取视频首帧/尾帧/指定时间点帧，保存为 JPG 并返回 /uploads/ URL。
+
+    mode: first | last | current
+    time_seconds: 指定时间点（秒）。仅 mode=current 时生效，优先于 first/last。
+    """
     video_url = (video_url or "").strip()
     if not video_url:
         return _err("缺少视频地址")
-    mode = "first" if mode == "first" else "last"
+    if mode not in ("first", "last", "current"):
+        mode = "last"
 
     try:
         import cv2  # noqa: 懒加载，见模块注释
@@ -54,7 +59,9 @@ async def extract_frame(video_url: str, mode: str = "last") -> dict[str, Any]:
             return _err("无法读取视频")
 
         try:
-            if mode == "last":
+            if mode == "current" and time_seconds is not None and time_seconds > 0:
+                cap.set(cv2.CAP_PROP_POS_MSEC, time_seconds * 1000)
+            elif mode == "last":
                 total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 # 尾帧定位留少量余量，部分编码器最后几帧读不出
                 cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, total - 2))
@@ -65,7 +72,8 @@ async def extract_frame(video_url: str, mode: str = "last") -> dict[str, Any]:
             cap.release()
 
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        fname = f"frame_{mode}_{uuid.uuid4().hex[:12]}.jpg"
+        tag = "cur" if mode == "current" else mode
+        fname = f"frame_{tag}_{uuid.uuid4().hex[:12]}.jpg"
         ok = cv2.imwrite(str(UPLOAD_DIR / fname), frame)
         if not ok:
             return _err("保存截帧图片失败")

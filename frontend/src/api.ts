@@ -254,9 +254,9 @@ export async function rendererCancel(rendererId: string, promptId: string) {
   return request('POST', `/renderers/${rendererId}/cancel`, { prompt_id: promptId })
 }
 
-// 视频抽帧（V2.3 尾帧->首帧接龙）：mode first|last
-export async function extractVideoFrame(videoUrl: string, mode: 'first' | 'last' = 'last') {
-  return request('POST', '/assets/video/extract-frame', { video_url: videoUrl, mode })
+// 视频抽帧：mode first|last|current，timeSeconds 仅 current 模式使用
+export async function extractVideoFrame(videoUrl: string, mode: 'first' | 'last' | 'current' = 'last', timeSeconds?: number) {
+  return request('POST', '/assets/video/extract-frame', { video_url: videoUrl, mode, ...(timeSeconds != null ? { time_seconds: timeSeconds } : {}) })
 }
 
 // ==================== 知识库 Prompt KB ====================
@@ -611,4 +611,168 @@ export async function queryRenderJob(jobId: string): Promise<RenderJob> {
 /** POST /api/render/cancel/{job_id} — 规格书 §4 任务取消 */
 export async function cancelRenderJob(jobId: string) {
   return request('POST', `/render/cancel/${encodeURIComponent(jobId)}`)
+}
+
+// ==================== V2.5 Scene Engine API（规格书 §58）==================
+
+export interface SceneObjectMeta {
+  label: string
+  color: string
+  icon?: string
+  default_data?: Record<string, unknown>
+  fields?: Record<string, string>
+}
+
+export interface SceneTypeDef {
+  id: string
+  name: string
+  category: string
+  description: string
+  version: string
+  object_types: string[]
+  actions: string[]
+  toolbar: string[]
+  inspector: string[]
+  timeline_enabled: boolean
+  object_library: Record<string, SceneObjectMeta>
+}
+
+export interface SceneInstance {
+  id: string
+  project_id: string
+  scene_type: string
+  name: string
+  version: number
+  data: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SceneObjectDTO {
+  id: string
+  scene_id: string
+  object_type: string
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation: number
+  z_index: number
+  locked: boolean
+  hidden: boolean
+  data: Record<string, unknown>
+  metadata?: Record<string, unknown>
+}
+
+export interface SceneEdgeDTO {
+  id: string
+  scene_id: string
+  source_id: string
+  target_id: string
+  edge_type: string
+  data: Record<string, unknown>
+}
+
+/** GET /api/scenes/types — 场景注册表（工具条 / Inspector 动态渲染依据） */
+export async function sceneTypes() {
+  return request('GET', '/scenes/types')
+}
+
+/** GET /api/scenes/templates — 场景模板列表（§39） */
+export async function sceneTemplates() {
+  return request('GET', '/scenes/templates')
+}
+
+/** GET /api/scenes?project_id= — 该项目下的场景实例 */
+export async function sceneList(projectId = 'default') {
+  return request('GET', `/scenes?project_id=${encodeURIComponent(projectId)}`)
+}
+
+/** POST /api/scenes — 新建场景实例 */
+export async function sceneCreate(
+  payload: { scene_type: string; name?: string; data?: Record<string, unknown> },
+  projectId = 'default',
+) {
+  return request('POST', `/scenes?project_id=${encodeURIComponent(projectId)}`, payload)
+}
+
+/** GET /api/scenes/{id} — 场景全量（含 objects + edges） */
+export async function sceneGet(sceneId: string) {
+  return request('GET', `/scenes/${encodeURIComponent(sceneId)}`)
+}
+
+export async function sceneUpdate(sceneId: string, payload: Record<string, unknown>) {
+  return request('PUT', `/scenes/${encodeURIComponent(sceneId)}`, payload)
+}
+
+export async function sceneDelete(sceneId: string) {
+  return request('DELETE', `/scenes/${encodeURIComponent(sceneId)}`)
+}
+
+/** POST /api/scenes/{id}/objects — 新建专业对象 */
+export async function sceneObjectCreate(sceneId: string, payload: Record<string, unknown>) {
+  return request('POST', `/scenes/${encodeURIComponent(sceneId)}/objects`, payload)
+}
+
+export async function sceneObjectUpdate(
+  sceneId: string,
+  objectId: string,
+  payload: Record<string, unknown>,
+) {
+  return request(
+    'PUT',
+    `/scenes/${encodeURIComponent(sceneId)}/objects/${encodeURIComponent(objectId)}`,
+    payload,
+  )
+}
+
+export async function sceneObjectDelete(sceneId: string, objectId: string) {
+  return request(
+    'DELETE',
+    `/scenes/${encodeURIComponent(sceneId)}/objects/${encodeURIComponent(objectId)}`,
+  )
+}
+
+export async function sceneEdgeCreate(
+  sceneId: string,
+  payload: { source: string; target: string; edge_type?: string },
+) {
+  return request('POST', `/scenes/${encodeURIComponent(sceneId)}/edges`, payload)
+}
+
+export async function sceneEdgeDelete(sceneId: string, edgeId: string) {
+  return request(
+    'DELETE',
+    `/scenes/${encodeURIComponent(sceneId)}/edges/${encodeURIComponent(edgeId)}`,
+  )
+}
+
+/** POST /api/scenes/{id}/actions — 执行场景动作（分析 / 生成 / 批量） */
+export async function sceneRunAction(
+  sceneId: string,
+  payload: { action: string; object_ids?: string[]; parameters?: Record<string, unknown> },
+) {
+  return request('POST', `/scenes/${encodeURIComponent(sceneId)}/actions`, payload)
+}
+
+export async function sceneAnalyze(
+  sceneId: string,
+  objectIds: string[] = [],
+  parameters: Record<string, unknown> = {},
+) {
+  return request('POST', `/scenes/${encodeURIComponent(sceneId)}/analyze`, {
+    object_ids: objectIds,
+    parameters,
+  })
+}
+
+export async function sceneBatch(
+  sceneId: string,
+  objectIds: string[] = [],
+  parameters: Record<string, unknown> = {},
+) {
+  return request('POST', `/scenes/${encodeURIComponent(sceneId)}/batch`, {
+    object_ids: objectIds,
+    parameters,
+  })
 }

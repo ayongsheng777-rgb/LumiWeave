@@ -36,11 +36,18 @@ export default {
           completed: '#10b981',
           failed: '#ef4444',
         },
+        // 亮色毛玻璃（Light Glassmorphism，V2.4 设置面板重构）
+        'glass-bg': 'rgba(255, 255, 255, 0.75)',
+        'glass-border': 'rgba(0, 0, 0, 0.08)',
+        'glass-ink': '#333333',
+        'glass-muted': '#888888',
+        'glass-brand': '#8b5cf6',
       },
       boxShadow: {
         node: '0 2px 8px rgba(0,0,0,0.08)',
         'node-dark': '0 2px 10px rgba(0,0,0,0.35)',
         drawer: '-8px 0 24px rgba(0,0,0,0.12)',
+        'glass-shadow': '0 8px 32px -4px rgba(0, 0, 0, 0.08)',
       },
       fontFamily: {
         sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],

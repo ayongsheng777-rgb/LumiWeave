@@ -11,6 +11,7 @@ import { PromptOptimize } from '../components/nodes/PromptOptimize'
 import { ResultMedia } from '../components/nodes/ResultMedia'
 import { RefImagePicker } from '../components/nodes/RefImagePicker'
 import { emitLog, emitRenderLogs } from '../components/LogPanel'
+import { lingjingNodeTypes } from './lingjingNodes'
 
 type ObjData = Record<string, unknown>
 
@@ -309,4 +310,6 @@ export const objectNodeTypes = {
   text: makeTextNode('文本', '#8b5cf6', '双击编辑文本', 3),
   note: makeTextNode('便签', '#f59e0b', '记一笔…', 2),
   ai_result: AiResultNode,
+  // ── 灵境复刻节点（原版画布导入用）──────────────────────────────────
+  ...lingjingNodeTypes,
 }

@@ -1,0 +1,214 @@
+"""场景引擎 REST API（V2.5 规格书 §58）。
+
+路由前缀 /api/scenes（在 main.py 挂载）。
+project_id 通过查询参数传递，默认 "default"。
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+
+from app.scene import service
+from app.scene.actions import execute_action
+from app.scene.registry import OBJECT_LIBRARY, registry
+
+router = APIRouter()
+
+
+def _ok(data: Any = None, **kw: Any) -> dict:
+    return {"ok": True, **(data if isinstance(data, dict) else {"data": data}), **kw}
+
+
+def _err(msg: str, code: int = 400) -> JSONResponse:
+    return JSONResponse(status_code=code, content={"ok": False, "error": msg})
+
+
+def _pid(request: Request) -> str:
+    return str(request.query_params.get("project_id") or "default")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scene 实例 CRUD
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("")
+async def list_scenes(request: Request):
+    scenes = await service.list_scenes(_pid(request))
+    return _ok(scenes=scenes)
+
+
+@router.post("")
+async def create_scene(request: Request):
+    data = await request.json()
+    scene_type = str(data.get("scene_type") or data.get("type") or "").strip()
+    if not scene_type:
+        return _err("scene_type 必填")
+    sdef = registry.get(scene_type)
+    name = str(data.get("name") or (sdef.name if sdef else scene_type))
+    sid = await service.create_scene(_pid(request), scene_type, name, data.get("data") or {})
+    return _ok(scene=await service.get_scene(sid))
+
+
+@router.get("/types")
+async def scene_types():
+    """注册表里的场景定义（前端动态渲染工具条/Inspector 用）。"""
+    defs = []
+    for s in registry.list():
+        d = s.model_dump()
+        d["object_library"] = {ot: OBJECT_LIBRARY.get(ot, {"label": ot, "color": "#64748b"}) for ot in s.object_types}
+        defs.append(d)
+    return _ok(types=defs, object_library=OBJECT_LIBRARY)
+
+
+@router.get("/templates")
+async def scene_templates():
+    """场景模板（§39）。一个场景类型即一个模板。"""
+    tpls = []
+    for s in registry.list():
+        tpls.append({
+            "id": s.id,
+            "version": s.version,
+            "name": s.name,
+            "category": s.category,
+            "canvas": {"type": "infinite"},
+            "objects": s.object_types,
+            "actions": s.actions,
+            "timeline": s.timeline_enabled,
+        })
+    return _ok(templates=tpls)
+
+
+@router.get("/{scene_id}")
+async def get_scene(scene_id: str):
+    scene = await service.get_scene(scene_id)
+    if not scene:
+        return _err("场景不存在", 404)
+    objects = await service.list_objects(scene_id)
+    edges = await service.list_edges(scene_id)
+    return _ok(scene=scene, objects=objects, edges=edges)
+
+
+@router.put("/{scene_id}")
+async def update_scene(scene_id: str, request: Request):
+    data = await request.json()
+    scene = await service.update_scene(scene_id, **data)
+    if not scene:
+        return _err("场景不存在", 404)
+    return _ok(scene=scene)
+
+
+@router.delete("/{scene_id}")
+async def delete_scene(scene_id: str):
+    await service.delete_scene(scene_id)
+    return _ok()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SceneObject CRUD
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/{scene_id}/objects")
+async def list_objects(scene_id: str):
+    return _ok(objects=await service.list_objects(scene_id))
+
+
+@router.post("/{scene_id}/objects")
+async def create_object(scene_id: str, request: Request):
+    data = await request.json()
+    obj_type = str(data.get("type") or "text")
+    meta = OBJECT_LIBRARY.get(obj_type, {})
+    default_data = dict(meta.get("default_data") or {})
+    default_data.update(data.get("data") or {})
+    oid = await service.create_object(
+        scene_id, obj_type,
+        x=float(data.get("x", 0)), y=float(data.get("y", 0)),
+        width=float(data.get("width", 300)), height=float(data.get("height", 200)),
+        rotation=float(data.get("rotation", 0)), z_index=int(data.get("z_index", 0)),
+        data=default_data, oid=(str(data["id"]) if data.get("id") else None),
+    )
+    return _ok(object=await service.get_object(oid))
+
+
+@router.put("/{scene_id}/objects/{object_id}")
+async def update_object(scene_id: str, object_id: str, request: Request):
+    data = await request.json()
+    obj = await service.update_object(object_id, **data)
+    if not obj:
+        return _err("对象不存在", 404)
+    return _ok(object=obj)
+
+
+@router.delete("/{scene_id}/objects/{object_id}")
+async def delete_object(scene_id: str, object_id: str):
+    await service.delete_object(object_id)
+    return _ok()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SceneEdge（连线）
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/{scene_id}/edges")
+async def create_edge(scene_id: str, request: Request):
+    data = await request.json()
+    eid = await service.create_edge(
+        scene_id, str(data.get("source", "")), str(data.get("target", "")),
+        edge_type=str(data.get("edge_type") or data.get("type") or "default"),
+        data=data.get("data") or {},
+    )
+    return _ok(edge={"id": eid})
+
+
+@router.delete("/{scene_id}/edges/{edge_id}")
+async def delete_edge(scene_id: str, edge_id: str):
+    await service.delete_edge(edge_id)
+    return _ok()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 动作 / 分析 / 生成 / 批量
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/{scene_id}/actions")
+async def run_action(scene_id: str, request: Request):
+    data = await request.json()
+    action = str(data.get("action") or "").strip()
+    if not action:
+        return _err("action 必填")
+    result = await execute_action(scene_id, action, data.get("object_ids") or [], data.get("parameters") or {})
+    if not result.get("ok"):
+        return _err(result.get("error", "动作执行失败"))
+    return _ok(**result)
+
+
+@router.post("/{scene_id}/analyze")
+async def analyze(scene_id: str, request: Request):
+    data = await request.json()
+    # analyze 默认走 analyze_product / analyze_shot，由场景类型决定
+    scene = await service.get_scene(scene_id)
+    action = "analyze_shot" if (scene and scene.get("scene_type") == "film-analysis") else "analyze_product"
+    result = await execute_action(scene_id, action, data.get("object_ids") or [], data.get("parameters") or {})
+    if not result.get("ok"):
+        return _err(result.get("error", "分析失败"))
+    return _ok(**result)
+
+
+@router.post("/{scene_id}/generate")
+async def generate(scene_id: str, request: Request):
+    data = await request.json()
+    action = str(data.get("action") or "generate_main_image")
+    result = await execute_action(scene_id, action, data.get("object_ids") or [], data.get("parameters") or {})
+    if not result.get("ok"):
+        return _err(result.get("error", "生成失败"))
+    return _ok(**result)
+
+
+@router.post("/{scene_id}/batch")
+async def batch_generate(scene_id: str, request: Request):
+    data = await request.json()
+    result = await execute_action(scene_id, "batch_generate", data.get("object_ids") or [], data.get("parameters") or {})
+    if not result.get("ok"):
+        return _err(result.get("error", "批量生成失败"))
+    return _ok(**result)

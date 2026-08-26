@@ -54,8 +54,10 @@ async def cloud_image_generate(
     steps: int = 20,
     model: str = "",
     reference_images: list[str] | None = None,
+    native: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """云端出图（同步）。带 reference_images 时走图生图/多图参考合成（Qwen-Image-Edit）。
+    native 为模型专属字段（如 image_size/guidance_scale），直接合并进请求体。
     返回 {ok, images:[{url,filename}], logs, error}。"""
     logs: list[dict[str, Any]] = []
     p = await _get_provider(provider_id)
@@ -96,6 +98,10 @@ async def cloud_image_generate(
             payload["negative_prompt"] = negative
         logs.append({"step": "submit", "message": f"提交到 {endpoint}/images/generations", "prompt": prompt[:200]})
 
+    # 模型专属字段（native）覆盖：前端按模型能力算好的字段，直接合并
+    if native:
+        payload.update(native)
+
     t0 = _ts()
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=15.0)) as client:
@@ -130,8 +136,11 @@ async def cloud_video_generate(
     ratio: str = "16:9",
     negative: str = "",
     model: str = "",
+    native: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """云端文生视频（异步：提交→轮询→取结果）。返回 {ok, videos, logs, error}。"""
+    """云端文生视频（异步：提交→轮询→取结果）。
+    native 为模型专属字段（如 height/camera_control/camera_movement），直接合并进请求体。
+    返回 {ok, videos, logs, error}。"""
     logs: list[dict[str, Any]] = []
     p = await _get_provider(provider_id)
     if not p:
@@ -158,6 +167,8 @@ async def cloud_video_generate(
         payload["negative_prompt"] = negative
     if image_url:
         payload["image_url"] = image_url
+    if native:
+        payload.update(native)
     h = _headers(key)
 
     t0 = _ts()
