@@ -199,3 +199,124 @@ def _row_to_edge(row: Any) -> dict:
     d = dict(row)
     d["data"] = _parse_json(d.get("data"))
     return d
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scene Version（场景版本管理，§35）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def new_version_id() -> str:
+    return "sver_" + uuid.uuid4().hex[:24]
+
+
+async def create_version(scene_id: str, label: str, snapshot: dict | None = None) -> str:
+    """保存当前场景快照为新版本。snapshot 缺省时自动抓取当前 objects/edges/data。"""
+    if not snapshot:
+        scene = await get_scene(scene_id)
+        objs = await list_objects(scene_id)
+        edges = await list_edges(scene_id)
+        snapshot = {
+            "objects": [ {k: o[k] for k in ("id", "object_type", "x", "y", "width", "height", "rotation", "z_index", "locked", "hidden", "data") if k in o} for o in objs ],
+            "edges": [ {k: e[k] for k in ("id", "source_id", "target_id", "edge_type", "data") if k in e} for e in edges ],
+            "data": (scene or {}).get("data", {}),
+        }
+    # 版本号 = 已有最大 +1
+    rows = await db.fetch("SELECT COALESCE(MAX(version),0) AS m FROM scene_versions WHERE scene_id=$1", scene_id)
+    ver = (rows[0]["m"] if rows else 0) + 1
+    vid = new_version_id()
+    await db.execute(
+        """INSERT INTO scene_versions (id, scene_id, version, label, snapshot)
+           VALUES ($1,$2,$3,$4,$5::jsonb)""",
+        vid, scene_id, ver, label or f"v{ver}", json.dumps(snapshot or {}, ensure_ascii=False),
+    )
+    return vid
+
+
+async def list_versions(scene_id: str) -> list[dict]:
+    rows = await db.fetch(
+        "SELECT id, scene_id, version, label, created_at FROM scene_versions WHERE scene_id=$1 ORDER BY version DESC",
+        scene_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def get_version(vid: str) -> dict | None:
+    row = await db.fetchrow("SELECT * FROM scene_versions WHERE id=$1", vid)
+    if not row:
+        return None
+    d = dict(row)
+    d["snapshot"] = _parse_json(d.get("snapshot"))
+    return d
+
+
+async def restore_version(scene_id: str, vid: str) -> dict | None:
+    """用快照覆盖当前场景的 objects/edges（保留场景基本信息）。"""
+    v = await get_version(vid)
+    if not v:
+        return None
+    snap = v.get("snapshot") or {}
+    # 清掉现有对象与连线
+    await db.execute("DELETE FROM scene_objects WHERE scene_id=$1", scene_id)
+    await db.execute("DELETE FROM scene_edges WHERE scene_id=$1", scene_id)
+    for o in snap.get("objects", []):
+        oid = o.get("id") or new_object_id()
+        await db.execute(
+            """INSERT INTO scene_objects
+               (id, scene_id, object_type, x, y, width, height, rotation, z_index, locked, hidden, data)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
+               ON CONFLICT (id) DO UPDATE SET
+                 object_type=EXCLUDED.object_type, x=EXCLUDED.x, y=EXCLUDED.y,
+                 width=EXCLUDED.width, height=EXCLUDED.height, rotation=EXCLUDED.rotation,
+                 z_index=EXCLUDED.z_index, locked=EXCLUDED.locked, hidden=EXCLUDED.hidden,
+                 data=EXCLUDED.data, updated_at=NOW()""",
+            oid, scene_id, o.get("object_type", "text"),
+            float(o.get("x", 0)), float(o.get("y", 0)), float(o.get("width", 300)), float(o.get("height", 200)),
+            float(o.get("rotation", 0)), int(o.get("z_index", 0)),
+            bool(o.get("locked", False)), bool(o.get("hidden", False)),
+            json.dumps(o.get("data", {}) or {}, ensure_ascii=False),
+        )
+    for e in snap.get("edges", []):
+        await db.execute(
+            """INSERT INTO scene_edges (id, scene_id, source_id, target_id, edge_type, data)
+               VALUES ($1,$2,$3,$4,$5,$6::jsonb)
+               ON CONFLICT (id) DO NOTHING""",
+            e.get("id") or new_edge_id(), scene_id,
+            str(e.get("source_id", "")), str(e.get("target_id", "")),
+            str(e.get("edge_type", "default")), json.dumps(e.get("data", {}) or {}, ensure_ascii=False),
+        )
+    if snap.get("data") is not None:
+        await update_scene(scene_id, data=snap["data"])
+    return await get_scene(scene_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Asset（素材库，§37/§38 复用 V2 assets 表，按 scene_id 检索）
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def add_asset_for_scene(scene_id: str, asset_type: str, url: str,
+                              name: str = "", metadata: dict | None = None) -> str:
+    aid = "asset_" + uuid.uuid4().hex[:24]
+    await db.execute(
+        """INSERT INTO assets (id, task_id, type, url, name, scene_id, metadata)
+           VALUES ($1,'', $2,$3,$4,$5,$6::jsonb)""",
+        aid, asset_type, url, name, scene_id, json.dumps(metadata or {}, ensure_ascii=False),
+    )
+    return aid
+
+
+async def list_scene_assets(scene_id: str, asset_type: str = "") -> list[dict]:
+    if asset_type:
+        rows = await db.fetch(
+            "SELECT * FROM assets WHERE scene_id=$1 AND type=$2 ORDER BY created_at DESC",
+            scene_id, asset_type,
+        )
+    else:
+        rows = await db.fetch(
+            "SELECT * FROM assets WHERE scene_id=$1 ORDER BY created_at DESC", scene_id,
+        )
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["metadata"] = _parse_json(d.get("metadata"))
+        out.append(d)
+    return out

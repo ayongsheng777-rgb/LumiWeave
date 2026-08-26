@@ -49,6 +49,16 @@ def _label(obj_type: str) -> str:
     return OBJECT_LIBRARY.get(obj_type, {}).get("label", obj_type)
 
 
+async def _register_asset(scene_id: str, asset_type: str, url: str, name: str = "", meta: dict | None = None) -> None:
+    """生成结果自动进素材库（§37/§38：Asset 与 Canvas Object 解耦，可复用）。"""
+    if not url:
+        return
+    try:
+        await service.add_asset_for_scene(scene_id, asset_type, url, name, meta or {})
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 动作实现
 # ─────────────────────────────────────────────────────────────────────────────
@@ -100,6 +110,7 @@ async def _gen_image(scene_id: str, obj_ids: list[str], params: dict, kind: str)
                                               width=280, height=280,
                                               data={"prompt": p, "url": u, "model": prov.get("name"), "source_object_id": oid})
             created.append(nid)
+            await _register_asset(scene_id, "image", u, name=f"{_label(obj['object_type'])}·{kind}", meta={"kind": kind, "source_object_id": oid})
         # 回写原对象
         await service.update_object(oid, data={**d, f"{kind}_image": urls[0] if urls else d.get(f"{kind}_image")})
     return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 张图"}
@@ -188,6 +199,7 @@ async def _act_generate_video(scene_id: str, obj_ids: list[str], params: dict) -
                                               width=320, height=260,
                                               data={"prompt": p, "url": u, "model": prov.get("name"), "source_object_id": oid})
             created.append(nid)
+            await _register_asset(scene_id, "video", u, name=f"{_label(obj['object_type'])}视频", meta={"source_object_id": oid})
     return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 个视频"}
 
 
@@ -231,8 +243,127 @@ async def _act_llm_scene(scene_id: str, obj_ids: list[str], params: dict, action
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 电商：详情页（§67）
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _act_generate_detail_page(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] == "product"]
+    created = []
+    for oid in targets:
+        obj = await service.get_object(oid)
+        if not obj:
+            continue
+        d = obj["data"]
+        ctx = (f"商品：{d.get('name','')}；品牌：{d.get('brand','')}；类目：{d.get('category','')}；"
+               f"卖点：{', '.join(d.get('selling_points', []) or [])}；描述：{d.get('description','')}")
+        sys = ("你是电商详情页策划。基于商品信息生成一套详情页文案，输出 JSON："
+               '{"title":"详情页标题","sections":[{"title":"模块标题","body":"模块正文"}],"slogan":"一句话卖点标语"}'
+               "。中文，专业且有转化力。")
+        r = await _llm_json(sys, ctx)
+        if not r:
+            continue
+        text = f"# {r.get('title','')}\n\n> {r.get('slogan','')}\n\n" + "\n\n".join(f"## {s.get('title','')}\n{s.get('body','')}" for s in r.get("sections", []))
+        nid = await service.create_object(scene_id, "text", x=400, y=float(obj.get("y") or 0) + 320,
+                                          width=420, height=520,
+                                          data={"name": "详情页", "text": text, "detail_page": True,
+                                                "source_object_id": oid})
+        created.append(nid)
+    return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 个详情页"}
+
+
+async def _act_generate_shots(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """电商短剧：由分镜 storyboard 生成镜头 shot 对象（§69）。"""
+    targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] == "storyboard"]
+    created = []
+    existing = await service.list_objects(scene_id)
+    base_y = max([float(o.get("y") or 0) + float(o.get("height") or 0) for o in existing] or [0]) + 80
+    for oid in targets:
+        obj = await service.get_object(oid)
+        if not obj:
+            continue
+        d = obj["data"]
+        shot_data = {
+            "shot_no": d.get("shot", 1), "scene": d.get("scene", 1),
+            "duration": d.get("duration", 4), "description": d.get("description", ""),
+            "dialogue": d.get("dialogue", ""), "camera": d.get("camera", ""),
+            "motion": d.get("motion", ""), "shot_size": d.get("camera", ""),
+        }
+        nid = await service.create_object(scene_id, "shot", x=base_y and (len(created) % 4) * 340,
+                                          y=base_y + (len(created) // 4) * 300,
+                                          width=300, height=240, data=shot_data)
+        created.append(nid)
+    return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 个镜头"}
+
+
+async def _act_generate_images(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """电商短剧：为场景/分镜批量出图（§69）。"""
+    prov = await _image_provider()
+    if not prov:
+        return {"ok": False, "error": "未配置可用图像 Provider"}
+    targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] in ("storyboard", "scene")]
+    created = []
+    for oid in targets:
+        obj = await service.get_object(oid)
+        if not obj:
+            continue
+        d = obj["data"]
+        p = params.get("prompt") or d.get("description") or d.get("prompt") or ""
+        if not p:
+            continue
+        from app.providers.cloud_gen import cloud_image_generate
+        res = await cloud_image_generate(prov["id"], p, size=params.get("size", "1024x1024"))
+        if not res.get("ok"):
+            return {"ok": False, "error": res.get("error", "出图失败")}
+        urls = [i["url"] for i in res.get("images", []) if i.get("url")]
+        base_x, base_y = float(obj.get("x") or 0), float(obj.get("y") or 0)
+        for idx, u in enumerate(urls):
+            nid = await service.create_object(scene_id, "image", x=base_x + 340, y=base_y + idx * 300,
+                                              width=280, height=280,
+                                              data={"prompt": p, "url": u, "model": prov.get("name"), "source_object_id": oid})
+            created.append(nid)
+            await _register_asset(scene_id, "image", u, name=f"{_label(obj['object_type'])}配图", meta={"source_object_id": oid})
+    return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 张图"}
+
+
+async def _act_film_analysis(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """影视拉片：上传视频 → 解析 → 镜头检测 → 抽帧 → 视觉分析 → 建镜头/帧对象（§14/§15/§68）。"""
+    video_url = params.get("video_url") or ""
+    if not video_url:
+        return {"ok": False, "error": "缺少 video_url（请先上传视频后传入 /uploads/xxx.mp4）"}
+    from app.film.breakdown import run_film_analysis
+    return await run_film_analysis(scene_id, video_url)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 分发入口
 # ─────────────────────────────────────────────────────────────────────────────
+
+async def _act_batch_sku(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """批量 SKU（§27/§67）：对每个商品（及其 SKU 变体）生成主图+场景图+海报。"""
+    targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] == "product"]
+    results = []
+    for oid in targets:
+        obj = await service.get_object(oid)
+        if not obj:
+            continue
+        d = obj["data"]
+        skus = d.get("sku") or [{"name": d.get("name", "默认")}]
+        sku_urls = []
+        for sku in skus:
+            sku_name = sku.get("name") if isinstance(sku, dict) else str(sku)
+            # 把 SKU 名注入卖点上下文，让出图有区分度
+            r_main = await _gen_image(scene_id, [oid], {**params, "size": "1024x1024", "prompt": params.get("prompt", "") or f"{sku_name} 商品主图"}, "main")
+            r_scene = await _gen_image(scene_id, [oid], {**params, "size": "1024x1024", "prompt": params.get("prompt", "") or f"{sku_name} 使用场景图"}, "scene")
+            r_poster = await _gen_image(scene_id, [oid], {**params, "size": "1024x1024", "prompt": params.get("prompt", "") or f"{sku_name} 营销海报"}, "poster")
+            sku_urls.append({
+                "sku": sku_name,
+                "main": [u for u in (r_main.get("created") or [])],
+                "scene": [u for u in (r_scene.get("created") or [])],
+                "poster": [u for u in (r_poster.get("created") or [])],
+            })
+        results.append({"product": d.get("name", ""), "skus": sku_urls})
+    return {"ok": bool(results), "results": results, "message": f"批量生成 {len(results)} 个商品"}
+
 
 async def execute_action(scene_id: str, action: str, object_ids: list[str] | None = None,
                         params: dict | None = None) -> dict:
@@ -253,10 +384,15 @@ async def execute_action(scene_id: str, action: str, object_ids: list[str] | Non
         if action in ("generate_story", "generate_characters", "generate_scenes", "generate_storyboard"):
             return await _act_llm_scene(scene_id, obj_ids, params, action)
         if action == "batch_generate":
-            # 批量：对全部 product 生成主图+场景图+海报
-            r1 = await _gen_image(scene_id, obj_ids, {**params, "size": "1024x1024"}, "main")
-            r2 = await _gen_image(scene_id, obj_ids, {**params, "size": "1024x1024"}, "scene")
-            return {"ok": r1.get("ok") or r2.get("ok"), "main": r1, "scene": r2, "message": "批量生成完成"}
+            return await _act_batch_sku(scene_id, obj_ids, params)
+        if action == "generate_detail_page":
+            return await _act_generate_detail_page(scene_id, obj_ids, params)
+        if action == "generate_shots":
+            return await _act_generate_shots(scene_id, obj_ids, params)
+        if action == "generate_images":
+            return await _act_generate_images(scene_id, obj_ids, params)
+        if action in ("analyze_video", "detect_shots", "extract_frames"):
+            return await _act_film_analysis(scene_id, obj_ids, params)
         return {"ok": False, "error": f"未支持的动作: {action}"}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"动作执行异常：{exc}"}

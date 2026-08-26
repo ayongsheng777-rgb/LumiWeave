@@ -31,11 +31,17 @@ import {
   sceneEdgeCreate,
   sceneEdgeDelete,
   sceneRunAction,
+  sceneSaveVersion,
+  sceneListVersions,
+  sceneRestoreVersion,
+  sceneListAssets,
   type SceneTypeDef,
   type SceneInstance,
   type SceneObjectDTO,
   type SceneEdgeDTO,
   type SceneObjectMeta,
+  type SceneVersion,
+  type SceneAsset,
 } from '../api'
 
 // ── 动作中文名（§19 动作面板展示用）──────────────────────────────────────
@@ -98,6 +104,25 @@ function toEdge(e: SceneEdgeDTO): Edge {
   }
 }
 
+// ── 撤销/重做历史栈（§32）────────────────────────────────────────────────
+interface Snapshot {
+  objects: Node[]
+  edges: Edge[]
+}
+function snapshotOf(s: { objects: Node[]; edges: Edge[] }): Snapshot {
+  return {
+    objects: s.objects.map((n) => ({
+      ...n,
+      data: { ...n.data },
+      style: { ...(n.style || {}) },
+      position: { ...n.position },
+    })),
+    edges: s.edges.map((e) => ({ ...e, style: { ...(e.style || {}) } })),
+  }
+}
+let lastEditCommit = 0
+
+
 // ── 未注册对象类型的兜底元数据（按类型缓存，保证引用稳定）───────────────
 const fallbackCache = new Map<string, SceneObjectMeta>()
 function fallbackMeta(objectType: string): SceneObjectMeta {
@@ -139,6 +164,16 @@ interface SceneState {
   busy: string // 正在执行的动作名，空串表示空闲
   runLog: RunLogEntry[]
 
+  // 撤销/重做（§32）
+  past: Snapshot[]
+  future: Snapshot[]
+  canUndo: boolean
+  canRedo: boolean
+  // 素材库（§37/§38）
+  assets: SceneAsset[]
+  // 场景版本（§35）
+  versions: SceneVersion[]
+
   init: () => Promise<void>
   reloadScenes: () => Promise<void>
   createScene: (sceneType: string, name?: string) => Promise<string | null>
@@ -162,6 +197,82 @@ interface SceneState {
   runAction: (action: string, objectIds?: string[], params?: Record<string, unknown>) => Promise<void>
   pushLog: (e: RunLogEntry) => void
   clear: () => void
+
+  // 撤销/重做（§32）
+  undo: () => void
+  redo: () => void
+  // 对象复制（§66）
+  duplicateObjects: (ids: string[]) => Promise<void>
+  // 素材库（§37/§38）
+  loadAssets: () => Promise<void>
+  addAssetToCanvas: (asset: SceneAsset) => Promise<void>
+  // 场景版本（§35）
+  saveVersion: (label: string) => Promise<void>
+  loadVersions: () => Promise<void>
+  restoreVersion: (id: string) => Promise<void>
+}
+
+// 把当前画布压入历史栈（在「会改动画布」的操作之前调用）
+function recordHistory(get: () => SceneState, set: (p: Partial<SceneState>) => void) {
+  const s = get()
+  const snap = snapshotOf(s)
+  set({
+    past: [...s.past, snap].slice(-50),
+    future: [],
+    canUndo: true,
+    canRedo: false,
+  })
+}
+
+// 撤销/重做时把快照同步回后端（创建缺失对象 / 删除多余对象 / 更新既有对象）
+async function syncCanvas(get: () => SceneState, _set: (p: Partial<SceneState>) => void, snap: Snapshot) {
+  const sceneId = get().currentSceneId
+  if (!sceneId) return
+  const snapIds = new Set(snap.objects.map((o) => o.id))
+  const cur = get().objects
+  const curIds = new Set(cur.map((o) => o.id))
+  for (const id of curIds) {
+    if (!snapIds.has(id)) {
+      try {
+        await sceneObjectDelete(sceneId, id)
+      } catch {
+        /* noop */
+      }
+    }
+  }
+  for (const o of snap.objects) {
+    const d = (o.data as { payload?: Record<string, unknown> }).payload || {}
+    const st = (o.style || {}) as { width?: number; height?: number }
+    if (curIds.has(o.id)) {
+      try {
+        await sceneObjectUpdate(sceneId, o.id, {
+          x: Math.round(o.position.x),
+          y: Math.round(o.position.y),
+          width: Math.round(Number(o.width ?? st.width ?? 300)),
+          height: Math.round(Number(o.height ?? st.height ?? 220)),
+          data: d,
+          locked: !!(o.data as { locked?: boolean }).locked,
+          hidden: !!(o.data as { hidden?: boolean }).hidden,
+        })
+      } catch {
+        /* noop */
+      }
+    } else {
+      try {
+        await sceneObjectCreate(sceneId, {
+          id: o.id,
+          type: (o.data as { objectType?: string }).objectType || 'text',
+          x: Math.round(o.position.x),
+          y: Math.round(o.position.y),
+          width: Math.round(Number(o.width ?? 300)),
+          height: Math.round(Number(o.height ?? 220)),
+          data: d,
+        })
+      } catch {
+        /* noop */
+      }
+    }
+  }
 }
 
 const LAST_SCENE_KEY = 'lumiweave_last_scene'
@@ -177,6 +288,12 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   loading: false,
   busy: '',
   runLog: [],
+  past: [],
+  future: [],
+  canUndo: false,
+  canRedo: false,
+  assets: [],
+  versions: [],
 
   // ── 初始化：注册表 + 场景列表，并自动打开上次场景 ──────────────────
   init: async () => {
@@ -222,7 +339,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       if (!res.ok) return
       const objects = ((res.data?.objects || []) as SceneObjectDTO[]).map(toNode)
       const edges = ((res.data?.edges || []) as SceneEdgeDTO[]).map(toEdge)
-      set({ currentSceneId: sceneId, objects, edges, selectedIds: [] })
+      set({ currentSceneId: sceneId, objects, edges, selectedIds: [], past: [], future: [], canUndo: false, canRedo: false })
       localStorage.setItem(LAST_SCENE_KEY, sceneId)
     } finally {
       set({ loading: false })
@@ -256,6 +373,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   addObject: async (objectType, position) => {
     const sceneId = get().currentSceneId
     if (!sceneId) return
+    recordHistory(get, set)
     const meta = get().metaOf(objectType)
     const res = await sceneObjectCreate(sceneId, {
       type: objectType,
@@ -273,6 +391,12 @@ export const useSceneStore = create<SceneState>((set, get) => ({
 
   /** 编辑对象字段：本地立即生效 + 防抖落库 */
   patchObject: (id, patch) => {
+    // 连续输入合并为一次撤销步骤
+    const now = Date.now()
+    if (now - lastEditCommit > 700) {
+      lastEditCommit = now
+      recordHistory(get, set)
+    }
     set((s) => ({
       objects: s.objects.map((o) =>
         o.id === id
@@ -305,6 +429,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   deleteObjects: async (ids) => {
     const sceneId = get().currentSceneId
     if (!sceneId || !ids.length) return
+    recordHistory(get, set)
     set((s) => ({
       objects: s.objects.filter((o) => !ids.includes(o.id)),
       edges: s.edges.filter((e) => !ids.includes(e.source) && !ids.includes(e.target)),
@@ -315,6 +440,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
 
   toggleLock: (id) => {
     const sceneId = get().currentSceneId
+    recordHistory(get, set)
     let locked = false
     set((s) => ({
       objects: s.objects.map((o) => {
@@ -349,6 +475,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   onConnect: async (c) => {
     const sceneId = get().currentSceneId
     if (!sceneId || !c.source || !c.target) return
+    recordHistory(get, set)
     const res = await sceneEdgeCreate(sceneId, { source: c.source, target: c.target })
     if (!res.ok) return
     const id = (res.data?.edge?.id as string) || `tmp_${c.source}_${c.target}`
@@ -373,6 +500,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   runAction: async (action, objectIds, params) => {
     const sceneId = get().currentSceneId
     if (!sceneId) return
+    recordHistory(get, set)
     set({ busy: action })
     try {
       const res = await sceneRunAction(sceneId, {
@@ -401,4 +529,112 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   pushLog: (e) => set((s) => ({ runLog: [e, ...s.runLog].slice(0, 50) })),
 
   clear: () => set({ objects: [], edges: [], selectedIds: [] }),
+
+  // ── 撤销 / 重做（§32）──────────────────────────────────────────────
+  undo: () => {
+    const s = get()
+    if (!s.past.length) return
+    const prev = s.past[s.past.length - 1]
+    const cur = snapshotOf(s)
+    set({
+      objects: prev.objects,
+      edges: prev.edges,
+      past: s.past.slice(0, -1),
+      future: [cur, ...s.future].slice(0, 50),
+      canUndo: s.past.length > 1,
+      canRedo: true,
+    })
+    void syncCanvas(get, set, prev)
+  },
+
+  redo: () => {
+    const s = get()
+    if (!s.future.length) return
+    const next = s.future[0]
+    const cur = snapshotOf(s)
+    set({
+      objects: next.objects,
+      edges: next.edges,
+      past: [...s.past, cur].slice(-50),
+      future: s.future.slice(1),
+      canUndo: true,
+      canRedo: s.future.length > 1,
+    })
+    void syncCanvas(get, set, next)
+  },
+
+  // ── 对象复制（§66）─────────────────────────────────────────────────
+  duplicateObjects: async (ids) => {
+    const sceneId = get().currentSceneId
+    if (!sceneId || !ids.length) return
+    recordHistory(get, set)
+    const created: Node[] = []
+    for (const id of ids) {
+      const node = get().objects.find((o) => o.id === id)
+      if (!node) continue
+      const d = (node.data as { payload?: Record<string, unknown> }).payload || {}
+      const st = (node.style || {}) as { width?: number; height?: number }
+      const res = await sceneObjectCreate(sceneId, {
+        type: (node.data as { objectType?: string }).objectType || 'text',
+        x: Math.round(node.position.x) + 40,
+        y: Math.round(node.position.y) + 40,
+        width: Math.round(Number(node.width ?? st.width ?? 300)),
+        height: Math.round(Number(node.height ?? st.height ?? 220)),
+        data: d,
+      })
+      if (res.ok && res.data?.object) created.push(toNode(res.data.object))
+    }
+    if (created.length) set((st) => ({ objects: [...st.objects, ...created], selectedIds: created.map((c) => c.id) }))
+  },
+
+  // ── 素材库（§37/§38）───────────────────────────────────────────────
+  loadAssets: async () => {
+    const sceneId = get().currentSceneId
+    if (!sceneId) return
+    const res = await sceneListAssets(sceneId)
+    if (res.ok) set({ assets: (res.data?.assets || []) as SceneAsset[] })
+  },
+
+  addAssetToCanvas: async (asset) => {
+    const sceneId = get().currentSceneId
+    if (!sceneId || !asset.url) return
+    recordHistory(get, set)
+    const res = await sceneObjectCreate(sceneId, {
+      type: 'image',
+      x: 60 + Math.floor(Math.random() * 200),
+      y: 60 + Math.floor(Math.random() * 200),
+      width: 280,
+      height: 280,
+      data: { url: asset.url, prompt: '', asset_id: asset.id, name: asset.name || '素材' },
+    })
+    if (res.ok && res.data?.object) {
+      const n = toNode(res.data.object)
+      set((st) => ({ objects: [...st.objects, n], selectedIds: [n.id] }))
+    }
+  },
+
+  // ── 场景版本（§35）─────────────────────────────────────────────────
+  saveVersion: async (label) => {
+    const sceneId = get().currentSceneId
+    if (!sceneId) return
+    const res = await sceneSaveVersion(sceneId, label || '')
+    if (res.ok) await get().loadVersions()
+  },
+
+  loadVersions: async () => {
+    const sceneId = get().currentSceneId
+    if (!sceneId) return
+    const res = await sceneListVersions(sceneId)
+    if (res.ok) set({ versions: (res.data?.versions || []) as SceneVersion[] })
+  },
+
+  restoreVersion: async (id) => {
+    const sceneId = get().currentSceneId
+    if (!sceneId) return
+    const res = await sceneRestoreVersion(sceneId, id)
+    if (res.ok) {
+      await get().openScene(sceneId)
+      await get().loadVersions()
+    }
+  },
 }))

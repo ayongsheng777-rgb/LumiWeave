@@ -336,3 +336,19 @@ CREATE TABLE IF NOT EXISTS scene_edges (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_scene_edges_scene ON scene_edges (scene_id);
+
+-- ============ V2.5 Scene Engine：场景版本（规格书 §35）============
+-- 每次「保存版本」把当前 objects/edges/data 快照存一份，支持恢复/复制/分支。
+CREATE TABLE IF NOT EXISTS scene_versions (
+    id          TEXT PRIMARY KEY,
+    scene_id    TEXT NOT NULL,
+    version     INTEGER NOT NULL DEFAULT 1,
+    label       TEXT NOT NULL DEFAULT '',
+    snapshot    JSONB NOT NULL DEFAULT '{"objects":[],"edges":[],"data":{}}',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_scene_versions_scene ON scene_versions (scene_id);
+
+-- 素材库补 scene_id 列（规格书 §37/§38：Asset 与 Canvas Object 解耦，按场景检索）
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS scene_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_assets_scene ON assets (scene_id);

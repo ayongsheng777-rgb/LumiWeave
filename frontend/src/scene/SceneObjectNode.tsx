@@ -6,9 +6,9 @@
  *
  * 能力：缩放（NodeResizer）、锁定、删除、媒体预览、关键字段速览。
  */
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useState } from 'react'
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react'
-import { Lock, LockOpen, Trash2, Play } from 'lucide-react'
+import { Lock, LockOpen, Trash2, Play, Copy } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
 import { useUiStore } from '../store/uiStore'
 import { cameraLabel } from '../cameraLabels'
@@ -44,11 +44,20 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
   const meta = useSceneStore((s) => s.metaOf(objectType))
   const toggleLock = useSceneStore((s) => s.toggleLock)
   const deleteObjects = useSceneStore((s) => s.deleteObjects)
+  const duplicateObjects = useSceneStore((s) => s.duplicateObjects)
   const patchObject = useSceneStore((s) => s.patchObject)
   const runAction = useSceneStore((s) => s.runAction)
   const busy = useSceneStore((s) => s.busy)
   const typeDef = useSceneStore((s) => s.currentTypeDef())
   const openLightbox = useUiStore((s) => s.openLightbox)
+
+  // 右键菜单（§18 Context Menu）
+  const [ctx, setCtx] = useState<{ x: number; y: number } | null>(null)
+  const onContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const rect = e.currentTarget.getBoundingClientRect()
+    setCtx({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+  }, [])
 
   const imageUrl = pick(payload, IMAGE_KEYS)
   const videoUrl = pick(payload, VIDEO_KEYS)
@@ -103,6 +112,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
           selected ? 'border-brand-500' : 'border-edge'
         }`}
         style={{ height: '100%' }}
+        onContextMenu={onContextMenu}
       >
         {/* 标题栏：色条 + 中文类型名 + 操作 */}
         <div className="flex shrink-0 items-center gap-1.5 border-b border-edge px-2 py-1.5">
@@ -192,6 +202,44 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
           ) : null}
         </div>
       </div>
+
+      {/* 右键菜单（§18）：复制 / 主动作 / 锁定 / 删除 */}
+      {ctx && (
+        <div
+          className="absolute z-50 min-w-[140px] overflow-hidden rounded-lg border border-edge bg-panel py-1 shadow-node-dark"
+          style={{ left: ctx.x, top: ctx.y }}
+          onContextMenu={(e) => e.preventDefault()}
+          onClick={() => setCtx(null)}
+        >
+          <button
+            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-ink transition hover:bg-hover"
+            onClick={() => void duplicateObjects([id])}
+          >
+            <Copy size={11} /> 复制为新对象
+          </button>
+          {primaryAction && (
+            <button
+              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-ink transition hover:bg-hover"
+              onClick={() => void runAction(primaryAction, [id])}
+              disabled={!!busy}
+            >
+              <Play size={11} /> 执行动作
+            </button>
+          )}
+          <button
+            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-ink transition hover:bg-hover"
+            onClick={() => toggleLock(id)}
+          >
+            {locked ? <LockOpen size={11} /> : <Lock size={11} />} {locked ? '解锁' : '锁定'}
+          </button>
+          <button
+            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-red-400 transition hover:bg-hover"
+            onClick={() => void deleteObjects([id])}
+          >
+            <Trash2 size={11} /> 删除
+          </button>
+        </div>
+      )}
     </>
   )
 })

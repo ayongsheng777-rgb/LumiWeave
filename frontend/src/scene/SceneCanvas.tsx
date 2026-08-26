@@ -4,7 +4,7 @@
  * 布局：左场景侧边栏 · 中无限画布（含动态工具条）· 右动态 Inspector（抽屉）· 底部六页签工作栏
  * 全部对象走同一个 sceneObject 节点组件，具体长相由后端注册表决定。
  */
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Background,
   Controls,
@@ -14,9 +14,10 @@ import {
   useReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Settings2, X, Loader2, Sparkles } from 'lucide-react'
+import { Settings2, X, Loader2, Sparkles, Undo2, Redo2, Upload, Clapperboard } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
 import { sceneNodeTypes } from './SceneObjectNode'
+import { sceneFilmUpload, sceneFilmAnalyze } from '../api'
 import SceneSidebar from './SceneSidebar'
 import SceneToolbar from './SceneToolbar'
 import SceneInspector from './SceneInspector'
@@ -34,9 +35,64 @@ function SceneCanvasInner() {
   const typeDef = useSceneStore((s) => s.currentTypeDef())
   const loading = useSceneStore((s) => s.loading)
   const busy = useSceneStore((s) => s.busy)
+  const undo = useSceneStore((s) => s.undo)
+  const redo = useSceneStore((s) => s.redo)
+  const canUndo = useSceneStore((s) => s.canUndo)
+  const canRedo = useSceneStore((s) => s.canRedo)
+  const loadAssets = useSceneStore((s) => s.loadAssets)
+  const loadVersions = useSceneStore((s) => s.loadVersions)
   const { screenToFlowPosition } = useReactFlow()
 
   const [showInspector, setShowInspector] = useState(true)
+  const [filmBusy, setFilmBusy] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  // 切换场景时加载素材库与版本列表（§35/§38）
+  useEffect(() => {
+    if (currentSceneId) {
+      void loadAssets()
+      void loadVersions()
+    }
+  }, [currentSceneId, loadAssets, loadVersions])
+
+  // 撤销/重做快捷键（§32）：Ctrl/Cmd+Z 撤销，Ctrl/Cmd+Shift+Z 或 Ctrl+Y 重做
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod) return
+      const k = e.key.toLowerCase()
+      if (k === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) redo()
+        else undo()
+      } else if (k === 'y') {
+        e.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [undo, redo])
+
+  // 影视拉片：上传视频 → 自动拆镜（§68）
+  const handleFilmUpload = async (file: File) => {
+    if (!currentSceneId) return
+    setFilmBusy(true)
+    try {
+      const up = await sceneFilmUpload(currentSceneId, file)
+      const url = up?.url || up?.data?.url
+      if (!url) return
+      const res = await sceneFilmAnalyze(currentSceneId, url)
+      if (res.ok && res.data?.ok !== false) {
+        await useSceneStore.getState().openScene(currentSceneId)
+        await useSceneStore.getState().loadAssets()
+      }
+    } finally {
+      setFilmBusy(false)
+    }
+  }
+
+  const isFilmScene = typeDef?.category === 'film'
 
   const onDrop = useCallback(
     (event: React.DragEvent) => {
@@ -88,6 +144,53 @@ function SceneCanvasInner() {
             </ReactFlow>
 
             <SceneToolbar />
+
+            {/* 左下：撤销/重做 + 影视拆镜上传（§32/§68） */}
+            <div className="absolute bottom-24 left-3 z-20 flex items-center gap-1.5">
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-edge bg-panel/90 text-ink-2 shadow-node-dark backdrop-blur-md transition enabled:hover:text-ink disabled:opacity-40"
+                onClick={undo}
+                disabled={!canUndo}
+                title="撤销 (Ctrl+Z)"
+              >
+                <Undo2 size={15} />
+              </button>
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-edge bg-panel/90 text-ink-2 shadow-node-dark backdrop-blur-md transition enabled:hover:text-ink disabled:opacity-40"
+                onClick={redo}
+                disabled={!canRedo}
+                title="重做 (Ctrl+Shift+Z)"
+              >
+                <Redo2 size={15} />
+              </button>
+              {isFilmScene && (
+                <button
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-brand-500/40 bg-panel/90 px-3 text-[11px] text-brand-500 shadow-node-dark backdrop-blur-md transition hover:bg-panel disabled:opacity-50"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={filmBusy || !!busy}
+                  title="上传 MP4 → 自动拆镜 → 视觉分析"
+                >
+                  {filmBusy ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Clapperboard size={13} />
+                  )}
+                  <Upload size={13} />
+                  {filmBusy ? '拆镜中…' : '上传视频拆镜'}
+                </button>
+              )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="video/*,.mp4,.webm,.mov,.m4v"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void handleFilmUpload(f)
+                  e.target.value = ''
+                }}
+              />
+            </div>
 
             {/* 右上：Inspector 开关 */}
             <button

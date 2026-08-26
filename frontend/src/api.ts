@@ -776,3 +776,55 @@ export async function sceneBatch(
     parameters,
   })
 }
+
+// ── 场景版本（§35）────────────────────────────────────────────────────────
+export interface SceneVersion {
+  id: string
+  scene_id: string
+  version: number
+  label: string
+  created_at: string
+}
+
+export async function sceneSaveVersion(sceneId: string, label: string) {
+  return request('POST', `/scenes/${encodeURIComponent(sceneId)}/versions`, { label })
+}
+
+export async function sceneListVersions(sceneId: string) {
+  return request('GET', `/scenes/${encodeURIComponent(sceneId)}/versions`)
+}
+
+export async function sceneRestoreVersion(sceneId: string, versionId: string) {
+  return request('POST', `/scenes/${encodeURIComponent(sceneId)}/versions/${encodeURIComponent(versionId)}/restore`)
+}
+
+// ── 素材库（§37/§38）──────────────────────────────────────────────────────
+export interface SceneAsset {
+  id: string
+  type: string
+  url: string
+  name: string
+  scene_id: string
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export async function sceneListAssets(sceneId: string, assetType = '') {
+  const q = assetType ? `?type=${encodeURIComponent(assetType)}` : ''
+  return request('GET', `/scenes/${encodeURIComponent(sceneId)}/assets${q}`)
+}
+
+// ── 影视拉片：上传 + 拆镜（§14/§15/§68）──────────────────────────────────
+export async function sceneFilmUpload(sceneId: string, file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${API_BASE}/scenes/${encodeURIComponent(sceneId)}/film/upload`, {
+    method: 'POST',
+    body: form,
+  })
+  return res.json()
+}
+
+export async function sceneFilmAnalyze(sceneId: string, videoUrl: string) {
+  return request('POST', `/scenes/${encodeURIComponent(sceneId)}/film/analyze`, { video_url: videoUrl })
+}

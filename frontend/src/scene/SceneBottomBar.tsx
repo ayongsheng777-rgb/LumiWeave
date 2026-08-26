@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import {
   Boxes, Sparkles, Workflow, Clock, Image as ImageIcon, History,
-  ChevronDown, ChevronUp, Loader2, Play, Lock, Eye,
+  ChevronDown, ChevronUp, Loader2, Play, Lock, Eye, Plus,
 } from 'lucide-react'
 import { useSceneStore, ACTION_LABELS } from '../store/sceneStore'
 import { useUiStore } from '../store/uiStore'
@@ -39,19 +39,11 @@ export default function SceneBottomBar() {
   const toggleLock = useSceneStore((s) => s.toggleLock)
   const currentSceneId = useSceneStore((s) => s.currentSceneId)
   const openLightbox = useUiStore((s) => s.openLightbox)
+  const assetLib = useSceneStore((s) => s.assets)
+  const loadAssets = useSceneStore((s) => s.loadAssets)
+  const addAssetToCanvas = useSceneStore((s) => s.addAssetToCanvas)
 
   const [aiPrompt, setAiPrompt] = useState('')
-
-  // 素材：场景内所有带 url 的图片/视频对象
-  const assets = objects
-    .map((o) => {
-      const p = (o.data.payload || {}) as Record<string, unknown>
-      const url = [p.url, p.image, p.image_url, p.video, p.video_url].find(
-        (v) => typeof v === 'string' && v,
-      ) as string | undefined
-      return url ? { id: o.id, url, type: String(o.data.objectType) } : null
-    })
-    .filter(Boolean) as { id: string; url: string; type: string }[]
 
   const timelineEnabled = typeDef?.timeline_enabled
 
@@ -182,28 +174,52 @@ export default function SceneBottomBar() {
                 </div>
               ))}
 
-            {/* ── 素材页签 ── */}
+            {/* ── 素材页签（§38：独立素材库，非画布对象） ── */}
             {tab === 'assets' && (
-              <div className="grid grid-cols-8 gap-1.5">
-                {assets.map((a) => (
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[10px] text-ink-3">
+                    AI 生成结果自动存入素材库；点「+」把素材放回画布复用
+                  </span>
                   <button
-                    key={a.id + a.url}
-                    className="group relative aspect-square overflow-hidden rounded-lg border border-edge"
-                    onClick={() => openLightbox(a.url)}
-                    title={a.type}
+                    className="rounded-md border border-edge px-2 py-0.5 text-[10px] text-ink-2 transition hover:text-ink"
+                    onClick={() => void loadAssets()}
                   >
-                    {a.type === 'video' ? (
-                      <video src={a.url} className="h-full w-full object-cover" muted />
-                    ) : (
-                      <img src={a.url} alt="" className="h-full w-full object-cover" />
-                    )}
+                    刷新
                   </button>
-                ))}
-                {!assets.length && (
-                  <div className="col-span-8 py-4 text-center text-[10px] text-ink-3">
-                    还没有生成任何图片 / 视频
-                  </div>
-                )}
+                </div>
+                <div className="grid grid-cols-8 gap-1.5">
+                  {assetLib.map((a) => (
+                    <div
+                      key={a.id}
+                      className="group relative aspect-square overflow-hidden rounded-lg border border-edge"
+                    >
+                      <button
+                        className="h-full w-full"
+                        onClick={() => openLightbox(a.url)}
+                        title={a.name || a.type}
+                      >
+                        {a.type === 'video' ? (
+                          <video src={a.url} className="h-full w-full object-cover" muted />
+                        ) : (
+                          <img src={a.url} alt={a.name || ''} className="h-full w-full object-cover" />
+                        )}
+                      </button>
+                      <button
+                        className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-md bg-black/60 text-white opacity-0 transition group-hover:opacity-100"
+                        title="放入画布"
+                        onClick={() => void addAssetToCanvas(a)}
+                      >
+                        <Plus size={11} />
+                      </button>
+                    </div>
+                  ))}
+                  {!assetLib.length && (
+                    <div className="col-span-8 py-4 text-center text-[10px] text-ink-3">
+                      素材库为空：AI 生成结果会自动存入，点「刷新」查看
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

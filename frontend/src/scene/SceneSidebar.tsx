@@ -5,7 +5,7 @@
  * 下半：当前项目已有场景实例列表（点击切换 / 悬停删除）
  */
 import { useEffect, useState } from 'react'
-import { ShoppingBag, Clapperboard, Film, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ShoppingBag, Clapperboard, Film, Plus, Trash2, ChevronLeft, ChevronRight, Save, History, RotateCcw } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
 
 const SCENE_ICONS: Record<string, React.ReactNode> = {
@@ -30,6 +30,9 @@ export default function SceneSidebar() {
   const openScene = useSceneStore((s) => s.openScene)
   const removeScene = useSceneStore((s) => s.removeScene)
   const loading = useSceneStore((s) => s.loading)
+  const versions = useSceneStore((s) => s.versions)
+  const saveVersion = useSceneStore((s) => s.saveVersion)
+  const restoreVersion = useSceneStore((s) => s.restoreVersion)
 
   useEffect(() => {
     void init()
@@ -138,6 +141,55 @@ export default function SceneSidebar() {
           )}
         </div>
       </div>
+
+      {/* 版本管理（§35：快照 / 恢复） */}
+      {currentSceneId && (
+        <div className="border-t border-edge px-2 py-2">
+          <div className="mb-1 flex items-center justify-between px-1">
+            <span className="text-[10px] text-ink-3">版本管理</span>
+            <button
+              className="flex items-center gap-1 rounded-md border border-brand-500/40 px-1.5 py-0.5 text-[10px] text-brand-500 transition hover:bg-brand-500/10"
+              onClick={() => {
+                const label = prompt('版本说明（可选）', '')
+                if (label !== null) void saveVersion(label || '')
+              }}
+              title="把当前画布快照存为一个版本"
+            >
+              <Save size={10} /> 保存版本
+            </button>
+          </div>
+          <div className="max-h-40 space-y-0.5 overflow-y-auto">
+            {versions.map((v) => (
+              <div key={v.id} className="group flex items-center gap-1.5 rounded-lg px-1.5 py-1 hover:bg-hover">
+                <History size={11} className="shrink-0 text-ink-3" />
+                <span className="min-w-0 flex-1 truncate text-[10px] text-ink-2">
+                  v{v.version}
+                  {v.label ? ` · ${v.label}` : ''}
+                </span>
+                <span className="shrink-0 text-[9px] text-ink-3">
+                  {new Date(v.created_at).toLocaleDateString('zh-CN')}
+                </span>
+                <button
+                  className="shrink-0 rounded p-0.5 text-ink-3 transition hover:text-brand-500"
+                  title="恢复到该版本"
+                  onClick={() => {
+                    if (confirm(`恢复到 v${v.version}？当前画布内容将被覆盖。`)) {
+                      void restoreVersion(v.id)
+                    }
+                  }}
+                >
+                  <RotateCcw size={11} />
+                </button>
+              </div>
+            ))}
+            {!versions.length && (
+              <div className="px-1 py-2 text-center text-[10px] text-ink-3">
+                还没有版本，点「保存版本」备份当前画布
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </aside>
   )
 }

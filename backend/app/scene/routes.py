@@ -5,11 +5,14 @@ project_id 通过查询参数传递，默认 "default"。
 """
 from __future__ import annotations
 
+import uuid
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, File, UploadFile
 from fastapi.responses import JSONResponse
 
+from app.config import DATA_DIR
 from app.scene import service
 from app.scene.actions import execute_action
 from app.scene.registry import OBJECT_LIBRARY, registry
@@ -165,6 +168,72 @@ async def create_edge(scene_id: str, request: Request):
 async def delete_edge(scene_id: str, edge_id: str):
     await service.delete_edge(edge_id)
     return _ok()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 场景版本（§35）
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/{scene_id}/versions")
+async def save_version(scene_id: str, request: Request):
+    data = await request.json()
+    label = str(data.get("label", ""))
+    vid = await service.create_version(scene_id, label)
+    return _ok(version=await service.get_version(vid))
+
+
+@router.get("/{scene_id}/versions")
+async def list_versions(scene_id: str):
+    return _ok(versions=await service.list_versions(scene_id))
+
+
+@router.post("/{scene_id}/versions/{version_id}/restore")
+async def restore_version(scene_id: str, version_id: str):
+    scene = await service.restore_version(scene_id, version_id)
+    if not scene:
+        return _err("版本不存在", 404)
+    return _ok(scene=scene)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 素材库（§37/§38，按场景检索，复用 V2 assets 表）
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/{scene_id}/assets")
+async def list_scene_assets(scene_id: str, request: Request):
+    atype = request.query_params.get("type", "")
+    return _ok(assets=await service.list_scene_assets(scene_id, atype))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 影视拉片：视频上传 + 拆镜（§14/§15/§68）
+# ─────────────────────────────────────────────────────────────────────────────
+
+VIDEO_EXTS = {".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"}
+VIDEO_UPLOAD_DIR = DATA_DIR / "uploads"
+
+
+@router.post("/{scene_id}/film/upload")
+async def upload_film_video(scene_id: str, file: UploadFile = File(...)):
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in VIDEO_EXTS:
+        return _err(f"不支持的视频格式：{ext or '未知'}")
+    data = await file.read()
+    if not data:
+        return _err("空文件")
+    VIDEO_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    fname = f"film_{uuid.uuid4().hex[:16]}{ext}"
+    (VIDEO_UPLOAD_DIR / fname).write_bytes(data)
+    return _ok(url=f"/uploads/{fname}")
+
+
+@router.post("/{scene_id}/film/analyze")
+async def analyze_film(scene_id: str, request: Request):
+    data = await request.json()
+    result = await execute_action(scene_id, "analyze_video", [], {"video_url": str(data.get("video_url", ""))})
+    if not result.get("ok"):
+        return _err(result.get("error", "拆镜失败"))
+    return _ok(**result)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

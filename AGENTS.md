@@ -363,7 +363,26 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 数据库：`postgresql://lumiweave:lumiweave2026@postgres:5432/lumiweave`（容器内），宿主连 `localhost:5435`。
 
-数据表：`skills` / `renderers` / `tasks` / `task_events` / `task_results` / `token_usage_log` / `model_pricing` / `app_kv` / `prompt_sources` / `prompt_knowledge` / `workflows` / `mcp_clients`；【V2 新增】`canvas_objects` / `canvas_edges` / `providers` / `assets`；【V2.5 新增】`scenes` / `scene_objects` / `scene_edges`。（MCP 改造已删 `agents` 表）
+数据表：`skills` / `renderers` / `tasks` / `task_events` / `task_results` / `token_usage_log` / `model_pricing` / `app_kv` / `prompt_sources` / `prompt_knowledge` / `workflows` / `mcp_clients`；【V2 新增】`canvas_objects` / `canvas_edges` / `providers` / `assets`；【V2.5 新增】`scenes` / `scene_objects` / `scene_edges` / `scene_versions`；`assets` 已加 `scene_id` 列（素材按场景检索）。（MCP 改造已删 `agents` 表）
+
+## 一·二十、V2.5 第二轮：P0 缺口补齐（2026-08-27）
+
+对照 84 节规格书做覆盖审计后，本轮把 **P0 硬验收缺口 + 三场景核心深度**补完（`tmp/scene_spec_coverage.md` 是逐节对照表，估算覆盖 ≈67%→提升至 ≈80%，P0 缺口清零）：
+
+- **Undo/Redo（§32）**——`sceneStore` 加 50 步历史栈（`past/future` + `canUndo/canRedo`），增删/拖拽/缩放/编辑/连线/动作前自动入栈；Ctrl+Z 撤销 / Ctrl+Shift+Z、Ctrl+Y 重做；撤销时 `syncCanvas()` 把快照**回写后端**（重建被删对象、删除多余对象、恢复几何/数据）。切场景清栈。
+- **对象复制 + 右键菜单（§18/§66）**——节点右键弹出 Context Menu：复制为新对象 / 执行主动作 / 锁定 / 删除。
+- **场景版本管理（§35）**——新表 `scene_versions`（id/scene_id/version/label/snapshot）；`service.create_version/list_versions/restore_version`（快照覆盖 objects/edges/data，对象按 id 幂等重建）；端点 `POST|GET /{scene_id}/versions`、`POST /{scene_id}/versions/{id}/restore`；前端 SceneSidebar 底部「版本管理」区（保存/恢复）。
+- **素材库（§37/§38）**——复用 V2 `assets` 表 + `scene_id` 列；`service.add_asset_for_scene/list_scene_assets`；出图/生视频/抽帧**自动登记素材**；端点 `GET /{scene_id}/assets`；底部「素材」页签改为独立素材库（点「+」放回画布）。
+- **电商详情页（§67）**——`_act_generate_detail_page`：LLM 按商品+卖点生成「标题/标语/模块化正文」，落成 text 对象。
+- **批量 SKU（§27）**——`_act_batch_sku`：逐商品 × SKU 变体生成主图/场景图/海报，返回按 SKU 聚合结果。
+- **影视自动拆镜（§14/§15/§59/§68）——旗舰补全**：新包 `backend/app/film/`，`breakdown.run_film_analysis` 管线 = ffprobe 元数据 → ffmpeg `select='gt(scene,0.3)'` 镜头检测（无切换则等间隔兜底）→ 逐镜头抽关键帧落 `/app/data/uploads/` → best-effort 视觉分析（景别/运动/构图/光线/色调/人物/情绪，`chat()` 带图链接，失败自动降级）→ 建 video/shot/frame 对象（带正确 start/end 时码）+ 帧自动入素材库。端点 `POST /{scene_id}/film/upload`（视频上传）、`POST /{scene_id}/film/analyze`；画布左下「上传视频拆镜」按钮（仅影视场景显示）。**Dockerfile 运行镜像加装 `ffmpeg`**（此前没有，改 Dockerfile 后必须重建镜像）。
+- **动作注册**——`actions.execute_action` 补注册：`generate_detail_page` / `generate_shots`（分镜→镜头）/ `generate_images`（戏剧批量出图）/ `analyze_video` / `detect_shots` / `extract_frames`（后三者都走拆镜管线）。
+
+**验证**：`tmp/verify_scene_v25.py` 容器内 **16 项全绿**——ffmpeg 就位、详情页真实 LLM 出稿、版本保存/列表/恢复（改坏数据后恢复完好）、素材列表、合成 6s 测试视频拆出 **3 镜头 / 2 帧**、元数据正确（duration/fps/codec）。
+
+**踩坑**：`add_asset_for_scene()` 的关键字参数是 `metadata=`（不是 `meta=`）；容器 `--force-recreate` 会清掉 `docker cp` 进去的验证脚本，重建后要重新拷入。
+
+**剩余 P1/P2（未做，留给下一批）**：短剧配音/字幕/成片合成（§69，依赖 TTS/合成 Provider）、MCP Scene 工具（§41）、Skill 桥接（§42）、RAG 检索注入（§43）、商业化套餐与 Provider 定价管理（§73/§74）、顶层产品菜单（§75）、响应式抽屉与设计 token 收口（§49/§50）。
 
 ## 三、启动 / 重启 SOP
 
