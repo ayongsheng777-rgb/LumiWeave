@@ -330,7 +330,28 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 - 两套画布共用同一套 `--lw-*` 主题变量（tailwind token），明暗切换一致
 - 前端新 hash：`index-D0InHs1W.js`
 
+## 一·十九、V2.5 专业场景画布（2026-08-26 完成，commit a5d031f）
 
+**目标**：从「AI 工作流节点编辑器」升级为「AI 内容生产专业场景画布」。同一套画布内核，按**场景**切换工具条 / 检查器 / 底部工作栏，首批落地三套专业场景。
+
+**后端 `backend/app/scene/`（新包，5 文件）**：
+- `registry.py`——**唯一真源**。注册 3 个场景（`ecommerce-material` 电商商品营销物料 / `ecommerce-drama` 电商短剧带货 / `film-analysis` 影视拉片）+ `OBJECT_LIBRARY` 20 类专业对象元数据（label/color/icon/default_data/fields）。**加新对象类型只改这里，前端自动出工具条与检查器字段**（规格书 §40）。
+- `service.py`——`scenes` / `scene_objects` / `scene_edges` 三表 CRUD。JSONB 走 `json.dumps` 写、`json.loads` 读（asyncpg 字符串透传）。
+- `routes.py`——`/api/scenes` 全套 REST：场景 CRUD、`/types`、`/templates`、对象 CRUD、连线增删、`/actions`、`/analyze`、`/generate`、`/batch`。⚠️ `/types` `/templates` 必须注册在 `/{scene_id}` **之前**，否则会被路径参数吞掉。
+- `actions.py`——动作执行器，真实落地不是 mock：文本类走 `ai.client.chat_json` / `chat`（注意 `chat()` 返回 **str**，不是 dict），出图走 `providers.cloud_gen.cloud_image_generate`，生视频走 `cloud_video_generate`，Provider 由 `providers.service.best_provider(task_type)` 自动优选。生成的新对象按源对象坐标自动错开排布（x/y 是**表列**，不在 `data` 里）。
+- 挂载：`main.py` → `app.include_router(scene_router, prefix="/api/scenes")`；`init_db.sql` 追加三张表（幂等 `IF NOT EXISTS`）。
+
+**前端 `frontend/src/scene/`（新目录，7 组件）+ `store/sceneStore.ts`**：
+- `sceneStore.ts`——场景状态机：`init()` 并行拉类型/列表并恢复上次场景（localStorage `lumiweave_last_scene`）；`patchObject` 防抖落库；`persistGeometry` 在拖拽/缩放结束落库；`runAction` 执行后重新 `openScene` 刷新。⚠️ `metaOf()` 用 `fallbackCache` 缓存兜底对象，**不能每次返回新字面量**，否则 zustand selector 引用不稳→无限重渲染。
+- `SceneCanvas.tsx`——布局：左 `SceneSidebar`（场景模板 + 实例列表）· 中 ReactFlow（`SceneToolbar` / MiniMap / Controls）· 右 `SceneInspector` 抽屉 · 底 `SceneBottomBar`。整体包 `ReactFlowProvider`（NodeResizer 需要 context）。
+- `SceneObjectNode.tsx`——**单一节点类型** `sceneObject`，真实业务类型放 `data.objectType`（20 类共用一个组件，加类型免加组件）。含缩放/锁定/删除/媒体预览+lightbox/主动作播放钮/字段速览（镜头术语走 `cameraLabel()` 中英双文）。
+- `SceneToolbar.tsx` / `SceneInspector.tsx`——**完全读注册表**渲染：工具条按 `scene.object_types` 出按钮（点击添加 / 拖入画布），检查器按 `meta.fields` 出控件（数组→多行、布尔→勾选、镜头术语→中英双文下拉、数字→number、对象→JSON、长文本→textarea）。
+- `SceneBottomBar.tsx` 六页签（对象/AI/工作流/时间线/素材/历史，默认收起）；`SceneTimeline.tsx` 按「场号-镜号」排序并按 duration 等比铺轨道，点击联动选中画布对象。
+- 入口：`uiStore.CanvasMode` 扩为三态 `workflow | infinite | scene`（`toggleMode` 循环切换），`TopHeader` 加「专业场景」按钮，`Workspace` 在 scene 模式下隐藏工作流浮动工具条。
+
+**验收**：`tmp/verify_scene_engine.py`（容器内跑，真实 TOTP 登录）**32 项全绿**——三场景 CRUD、注册表/模板、default_data 注入、JSONB 中文写入、几何更新、连线、级联清理、未知动作友好报错，且**出图动作真实调通云端 Provider 成功出图**。
+
+**新增数据表**：`scenes`（project_id/scene_type/name/data）· `scene_objects`（scene_id/object_type/x/y/width/height/rotation/z_index/data）· `scene_edges`（scene_id/source/target/edge_type/data）。PG 卷已初始化时，加表用 `docker compose exec -T postgres psql -U lumiweave -d lumiweave -f /docker-entrypoint-initdb.d/01_init.sql`。
 
 | 服务 | 镜像 | 宿主端口 → 容器 | 说明 |
 |---|---|---|---|
@@ -342,7 +363,7 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 数据库：`postgresql://lumiweave:lumiweave2026@postgres:5432/lumiweave`（容器内），宿主连 `localhost:5435`。
 
-数据表：`skills` / `renderers` / `tasks` / `task_events` / `task_results` / `token_usage_log` / `model_pricing` / `app_kv` / `prompt_sources` / `prompt_knowledge` / `workflows` / `mcp_clients`；【V2 新增】`canvas_objects` / `canvas_edges` / `providers` / `assets`。（MCP 改造已删 `agents` 表）
+数据表：`skills` / `renderers` / `tasks` / `task_events` / `task_results` / `token_usage_log` / `model_pricing` / `app_kv` / `prompt_sources` / `prompt_knowledge` / `workflows` / `mcp_clients`；【V2 新增】`canvas_objects` / `canvas_edges` / `providers` / `assets`；【V2.5 新增】`scenes` / `scene_objects` / `scene_edges`。（MCP 改造已删 `agents` 表）
 
 ## 三、启动 / 重启 SOP
 
@@ -390,7 +411,10 @@ backend/
 │   ├── auth.py          OTP/TOTP + 会话 token
 │   ├── task_service.py  统一 taskId：create_task/add_event/set_status/set_result
 │   ├── ai/              AI 模型层（client/registry/auto_best/persist/routes）
-│   ├── agent/           Agent Core（adapter/registry/router/provider/routes + engine/workflow_routes）
+│   ├── workflow/        工作流执行核心（engine/routes，MCP 改造时从 agent/ 迁来）
+│   ├── mcp/             MCP Server（21 工具，stdio + streamable-http 双模式）
+│   ├── services/        服务层（供 MCP 与 REST 共用）
+│   ├── scene/           【V2.5】场景引擎（registry/service/routes/actions/schemas）
 │   ├── skills/          Skill Core（manifest/loader/manager/runtime/permissions/routes）
 │   ├── renderers/       ComfyUI（registry/comfyui/routes）
 │   ├── prompt_learning/ RAG（embedder/store/source/extractor/retriever/routes）
@@ -423,7 +447,11 @@ backend/
 5. **改代码必须 build**：backend 无 bind mount，改 `.py` 或 skills 只 restart 不生效，必须 `build backend`。
 6. **nginx 反代走 IPv6 导致页面加载失败**：Docker Desktop 会给容器分配 IPv6（`fd7c:...`），nginx `proxy_pass http://backend:8000` 优先解析 IPv6，但 backend 的 uvicorn 只监听 IPv4 → `connect() failed (111: Connection refused)`，间歇性导致前端卡在「加载中」。修法（frontend/nginx.conf）：`resolver 127.0.0.11 ipv6=off valid=30s; set $backend_upstream http://backend:8000; proxy_pass $backend_upstream;` 强制 IPv4。
 7. **asyncpg 的 `($1 || ' days')::interval` 传 int 报错**：`DataError: expected str, got int`，改 `make_interval(days => $1)` 传整型；`pricing.summary` 里 LATERAL join 的 `p.input_per_million/p.output_per_million` 必须加进 `GROUP BY`，否则报 `GroupingError`。
-8. **React Flow 死循环（React error #185）**：`CanvasCore` 里 `useCanvasStore()` 无参订阅整个 store，`onSelectionChange` 里 `setSelected` 改 `selectedIds` → 组件重渲染 → ReactFlow 又回调 `onSelectionChange` → 无限循环，主界面白屏。修法：① 用 selector 精确订阅（`useCanvasStore((s)=>s.objects)` 等），**不订阅 selectedIds**；② 不要把 `selected` 塞进受控 node（选区由 ReactFlow 内部管理，仅经 onSelectionChange 同步回 store）。排查手段：用 puppeteer-core + 系统 Chrome headless 登录抓 `pageerror`（Minified React error #185 = 死循环）。
+8. **【V2.5】zustand selector 返回新字面量 → 无限重渲染**：`metaOf(type)` 兜底写成 `|| { label, color, fields: {} }`，每次调用都是新引用，被 selector 订阅后 React 认为状态变了 → 反复渲染。修法：按 type 缓存兜底对象（`fallbackCache`），保证同一 type 返回同一引用。
+9. **【V2.5】FastAPI 静态路径必须注册在路径参数之前**：`@router.get("/types")` 若写在 `@router.get("/{scene_id}")` 之后，请求 `/api/scenes/types` 会被当成 `scene_id="types"` 查库返回 404。
+10. **【V2.5】`ai.client.chat()` 返回 `str | None`，不是 dict**：想拿结构化结果用 `chat_json()`。对 `chat()` 结果调 `.get('text')` 会 `AttributeError`。
+11. **【V2.5】scene_objects 的 x/y/width/height 是表列，不在 `data` 里**：从 `obj["data"].get("x")` 取永远是 None，导致 AI 生成的新对象全堆在 (0,0)。要从 `obj.get("x")` 顶层取。
+12. **React Flow 死循环（React error #185）**：`CanvasCore` 里 `useCanvasStore()` 无参订阅整个 store，`onSelectionChange` 里 `setSelected` 改 `selectedIds` → 组件重渲染 → ReactFlow 又回调 `onSelectionChange` → 无限循环，主界面白屏。修法：① 用 selector 精确订阅（`useCanvasStore((s)=>s.objects)` 等），**不订阅 selectedIds**；② 不要把 `selected` 塞进受控 node（选区由 ReactFlow 内部管理，仅经 onSelectionChange 同步回 store）。排查手段：用 puppeteer-core + 系统 Chrome headless 登录抓 `pageerror`（Minified React error #185 = 死循环）。
 
 ## 八、常用命令速查
 
@@ -435,9 +463,13 @@ docker compose logs --tail=50 backend
 # 容器内 import 冒烟（快速定位导入错误，不用反复起服务）
 docker compose exec -T backend python -c "import app.main; print('IMPORT_OK')"
 
-# 全链路验收脚本（真实 TOTP 登录 + 端点回归）
-SECRET=$(docker compose exec -T backend cat /app/data/otp_secret | tr -d '\r\n ') \
-  OTP_SECRET="$SECRET" python D:/WorkBuddy/tmp/verify_lumiweave_phases.py
+# 全链路验收脚本（在容器内跑，脚本自己用 app.auth 生成 TOTP，不用外传密钥）
+docker cp tmp/verify_scene_engine.py lumiweave-backend:/app/verify_scene_engine.py
+docker compose exec -T backend python /app/verify_scene_engine.py
+
+# PG 卷已初始化时补建新表（init_db.sql 幂等，直接重跑）
+docker compose exec -T postgres psql -U lumiweave -d lumiweave \
+  -f /docker-entrypoint-initdb.d/01_init.sql
 ```
 
 ## 九、文档说明
