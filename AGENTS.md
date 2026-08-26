@@ -432,6 +432,10 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 **全部完成**：V2.5 规格书从 P0 到深度增强共五轮（a5d031f → c44b82c → c6b1a13 → 3cd8467 → 63739a0），任务清单 `docs/V2.5_任务清单.md` 全勾。
 
+**容器清理 SOP（2026-08-27）**：容器内 `/app/verify_*.py` 与 `uploads` 里的 `film_*` / `clip_*` / `final_*` / `concat_*` / `test_*` / `deep_*` 都是验证遗留，可删：
+`docker compose exec -T backend sh -c "rm -f /app/verify_*.py && cd /app/data/uploads && rm -f clip_*.mp4 concat_*.txt deep_vision.mp4 film_*.jpg final_*.mp4 test_*.mp4"`
+本地 `tmp/verify_*.py` 是验收脚本源（gitignored，保留），任务清单与 AGENTS.md 引用的也是它们。
+
 ## 三、启动 / 重启 SOP
 
 ```bash
