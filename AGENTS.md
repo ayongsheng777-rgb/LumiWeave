@@ -417,6 +417,21 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 **剩余仅「深度增强」**（非缺口，见任务清单第六节）：Vision 专用 Provider、RAG 真向量、AI 动作全异步、套餐接用户体系、千/五千对象压测、响应式全量。
 
+## 一·二十三、V2.5 第五轮：深度增强六项全落地（2026-08-27，commit 63739a0）
+
+**P0/P1/P2 全清 + 深度增强全完成，84 节覆盖 ≈95% 达标 / 5% 骨架 / 0% 未做。**
+
+- **Vision 专用路由**——`app/film/vision.py`：`_find_vision_provider()` 探测 providers 表 type='llm' 且模型名含 vl/vision/qwen/gpt-4o/gemini 的 Provider，走 OpenAI 兼容 `image_url` 多模态消息（POST {endpoint}/chat/completions）；无则回退 `chat_full` 带图链接；`VISION_KEYS` 8 字段二次清洗。拆镜实测识别出「中景/三分法/自然光/暖调」。
+- **RAG 真向量**——`actions._embed()` 调 embedding Provider（`best_provider("embedding")` → `POST {endpoint}/embeddings`），`_rag_retrieve` 余弦相似度优先（>0.3），无 embedding 回退**拆词 OR ILIKE**（⚠️ 别用整句 ILIKE——查询词不可能成为内容子串）。
+- **AI 动作全异步**——`execute_action` 读 `params.async_mode`：建 task（running）→ `asyncio.create_task(_run_action_task)` → 立即返回 `{async:true, task_id}`；前端 AI 页签「异步执行」开关 + 轮询 `GET /{id}/tasks/{tid}`。
+- **套餐可切换**——`plans.current_plan()/set_plan()` 读写 `app_kv`（key=current_plan），`POST /api/scenes/plans` 切换四档，配额按当前套餐算；顶栏菜单每档「启用」。
+- **千对象压测**——1000 对象写入 0.98s（1022/s）、全量读回 0.05s。
+- **响应式全量**——窄屏（<1100px）：Inspector 变底部抽屉（`inset-x-3 bottom-24 h-56`）、侧边栏初始收起（`useState(() => window.innerWidth < 1100)`）。
+
+**验证**：`tmp/verify_scene_deep.py` 容器内 **10/10 全绿**（套餐 free→pro→还原、异步动作 completed、RAG 命中 3 条、Vision 字段齐全+分析有值、1000 对象 1022/s、读回 0.05s）。
+
+**全部完成**：V2.5 规格书从 P0 到深度增强共五轮（a5d031f → c44b82c → c6b1a13 → 3cd8467 → 63739a0），任务清单 `docs/V2.5_任务清单.md` 全勾。
+
 ## 三、启动 / 重启 SOP
 
 ```bash
