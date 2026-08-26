@@ -1,21 +1,22 @@
 """Cloud 渲染适配器（MiniMax H3 云端，规格书 §5）。"""
 from __future__ import annotations
 
-import httpx, uuid, os
+import httpx, uuid
 from app.render_kernel.schemas.render_plan import RenderPlan
 from app.render_kernel.adapters.base import RenderAdapter, AdapterResponse
+from app.config import settings
 
 
 class CloudAdapter(RenderAdapter):
     """
     MiniMax H3 云端渲染适配器。
-    环境变量 MINIMAX_API_KEY / MINIMAX_BASE_URL 配置端点。
+    密钥从 backend/.env 的 MINIMAX_API_KEY 读取（不硬编码，不入库）。
     """
 
     def __init__(self, api_key: str | None = None, base_url: str | None = None):
-        self.api_key = api_key or os.getenv("MINIMAX_API_KEY", "")
-        self.base_url = (base_url or os.getenv("MINIMAX_BASE_URL", "https://api.minimax.chat")).rstrip("/")
-        self.group_id = os.getenv("MINIMAX_GROUP_ID", "")
+        self.api_key = api_key or settings.minimax_api_key
+        self.base_url = (base_url or settings.minimax_base_url).rstrip("/")
+        self.group_id = settings.minimax_group_id
 
     @property
     def engine_name(self) -> str:

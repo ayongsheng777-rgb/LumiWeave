@@ -1,17 +1,18 @@
 """视频生成引擎适配器（规格书 §5）。"""
 from __future__ import annotations
 
-import httpx, uuid, os
+import httpx, uuid
 from app.render_kernel.schemas.render_plan import RenderPlan
 from app.render_kernel.adapters.base import RenderAdapter, AdapterResponse
+from app.config import settings
 
 
 class VideoAdapter(RenderAdapter):
     """MiniMax 视频生成（H3 协议）。"""
 
     def __init__(self, api_key: str | None = None, base_url: str | None = None):
-        self.api_key = api_key or os.getenv("MINIMAX_API_KEY", "")
-        self.base_url = (base_url or os.getenv("MINIMAX_BASE_URL", "https://api.minimax.chat")).rstrip("/")
+        self.api_key = api_key or settings.minimax_api_key
+        self.base_url = (base_url or settings.minimax_base_url).rstrip("/")
 
     @property
     def engine_name(self) -> str:

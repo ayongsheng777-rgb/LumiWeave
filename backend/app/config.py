@@ -50,6 +50,11 @@ class Settings(BaseSettings):
 
     feishu_webhook_url: str = ""
 
+    # Render Kernel：MiniMax 云端渲染（规格书 §5 Cloud/Video Adapter）
+    minimax_api_key: str = ""
+    minimax_base_url: str = "https://api.minimax.chat"
+    minimax_group_id: str = ""
+
     class Config:
         env_file = ".env"
         extra = "ignore"
