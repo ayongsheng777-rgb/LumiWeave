@@ -61,6 +61,9 @@ services:
       - AI_MODELS_JSON=${AI_MODELS_JSON:-[]}
       - AI_ACTIVE=${AI_ACTIVE:-default}
       - FEISHU_WEBHOOK_URL=${FEISHU_WEBHOOK_URL:-}
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY:-}
+      - MINIMAX_BASE_URL=${MINIMAX_BASE_URL:-https://api.minimax.chat}
+      - MINIMAX_GROUP_ID=${MINIMAX_GROUP_ID:-}
     volumes:
       - backend_data:/app/data
     ports:
