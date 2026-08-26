@@ -1,5 +1,5 @@
 import { type NodeProps } from '@xyflow/react'
-import { BookOpen, Wand2, ChevronDown } from 'lucide-react'
+import { BookOpen } from 'lucide-react'
 import { useState } from 'react'
 import { useNodeAdapter } from '../../store/nodeAdapter'
 import { NodeShell, Field, inputCls } from './NodeShell'
@@ -38,8 +38,9 @@ export function StoryNode({ id, data, selected }: NodeProps) {
 
   const [busy, setBusy]         = useState(false)
   const [error, setError]       = useState('')
-  const [videoMode, setVideoMode] = useState<VideoGenMode>('auto_full')
-  const [showModeMenu, setShowModeMenu] = useState(false)
+  // 模式持久化在节点 data.video_mode（单一数据来源）
+  const videoMode = (String(d.video_mode || 'auto_full')) as VideoGenMode
+  const setVideoMode = (v: VideoGenMode) => update(id, { video_mode: v })
   const [genStep, setGenStep]   = useState<GenStep>('idle')
   const [genProg, setGenProg]   = useState<GenProgress>({ step: '', current: 0, total: 0 })
   // 生成结果：id → url
@@ -233,33 +234,21 @@ export function StoryNode({ id, data, selected }: NodeProps) {
       {/* ── 第二步：全流程生成（始终显示；未解析时置灰） ── */}
       {genStep !== 'parsing' && (
         <div className="mt-2 space-y-1.5">
-          {/* 模式选择 */}
-          <div className="relative">
-            <button
-              className="nodrag w-full flex items-center justify-between rounded-lg border border-edge bg-soft px-3 py-2 text-sm text-ink-1 hover:border-brand-400 transition"
-              onClick={() => setShowModeMenu(!showModeMenu)}
+          {/* 模式选择：原生 select（自定义弹出层会被节点滚动容器裁剪） */}
+          <Field label="全流程生成模式">
+            <select
+              className={inputCls}
+              value={videoMode}
+              onChange={(e) => setVideoMode(e.target.value as VideoGenMode)}
             >
-              <span className="flex items-center gap-1.5">
-                <Wand2 size={13} className="text-brand-400" />
-                <span>{VIDEO_MODE_OPTIONS.find((o) => o.value === videoMode)?.label}</span>
-              </span>
-              <ChevronDown size={12} className={`transition-transform ${showModeMenu ? 'rotate-180' : ''}`} />
-            </button>
-            {showModeMenu && (
-              <div className="absolute z-50 mt-1 w-full rounded-lg border border-edge bg-panel-2 shadow-lg">
-                {VIDEO_MODE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    className={`nodrag w-full px-3 py-2 text-left text-[12px] hover:bg-soft transition ${videoMode === opt.value ? 'text-brand-400 font-medium' : 'text-ink-2'}`}
-                    onClick={() => { setVideoMode(opt.value as VideoGenMode); setShowModeMenu(false) }}
-                  >
-                    <div>{opt.label}</div>
-                    <div className="text-[10px] text-ink-3">{opt.desc}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+              {VIDEO_MODE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <div className="mt-1 text-[10px] text-ink-3">
+              {VIDEO_MODE_OPTIONS.find((o) => o.value === videoMode)?.desc}
+            </div>
+          </Field>
 
           {/* 进度条 */}
           {isGenerating && (
