@@ -74,7 +74,7 @@ class VideoApiConnector(BaseRenderer):
                 "provider": self.provider, "capabilities": self.capabilities()}
 
     def capabilities(self) -> list[str]:
-        return ["text_to_video", "image_to_video"]
+        return ["text_to_video", "image_to_video", "start_end_to_video", "reference_to_video"]
 
     # ---- submit ----
     async def submit(self, workflow: dict[str, Any], *, task_id: str) -> dict[str, Any]:
@@ -104,7 +104,12 @@ class VideoApiConnector(BaseRenderer):
             if resp.status_code != 200:
                 return {"status": "running", "remote_task_id": remote_task_id}
             state = self._parse_status(resp.json())
-            return {"status": state, "remote_task_id": remote_task_id}
+            out: dict[str, Any] = {"status": state, "remote_task_id": remote_task_id}
+            if self.provider in ("minimax", "minimax_h3") and state == "failed":
+                err = self._task_of(resp.json()).get("error")
+                if err:
+                    out["error"] = str(err)
+            return out
         except Exception:  # noqa: BLE001
             return {"status": "running", "remote_task_id": remote_task_id}
 
@@ -144,7 +149,8 @@ class VideoApiConnector(BaseRenderer):
             if st.get("status") == "completed":
                 return await self.result(rid)
             if st.get("status") == "failed":
-                return {"ok": False, "videos": [], "images": [], "error": "视频生成失败"}
+                return {"ok": False, "videos": [], "images": [],
+                        "error": f"视频生成失败{('：' + st['error']) if st.get('error') else ''}"}
             await self._sleep(5.0)
         return {"ok": False, "videos": [], "images": [], "error": "等待视频结果超时"}
 
@@ -168,20 +174,34 @@ class VideoApiConnector(BaseRenderer):
         mode = str(p.get("mode") or ("image2video" if (image_url or reference_images) else "text2video"))
 
         if self.provider in ("minimax", "minimax_h3"):
+            # MiniMax-H3 V2 多模态协议：content[] 结构 + role 标注用途
+            #   text / image_url(first_frame|last_frame|reference_image) / video_url(reference_video)
+            # 异步：POST 返回 task_id，GET /v2/query/video_generation/{task_id} 轮询
+            resolution = str(p.get("resolution") or "2K")
+            last_frame = str(p.get("last_frame_url") or p.get("last_frame") or "")
+            content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+
+            if image_url:
+                # 首帧生视频（i2va）：宽高比由输入图决定，不传 ratio
+                content.append({"type": "image_url", "image_url": {"url": image_url}, "role": "first_frame"})
+                if last_frame:
+                    # 首尾帧模式
+                    content.append({"type": "image_url", "image_url": {"url": last_frame}, "role": "last_frame"})
+            else:
+                # 多参考生视频（r2va）：角色图/场景图/道具图全部作为 reference_image
+                for u in reference_images:
+                    content.append({"type": "image_url", "image_url": {"url": u}, "role": "reference_image"})
+
             payload: dict[str, Any] = {
-                "model": model or "Hailuo-02",
-                "prompt": prompt,
+                "model": model or "MiniMax-H3",
+                "content": content,
                 "duration": duration,
+                "resolution": resolution,
             }
-            if negative:
-                payload["negative_prompt"] = negative
-            # subject_reference 支持多图：多个角色/场景/道具参考图合并
-            refs = [{"type": "image", "url": u} for u in reference_images]
-            if image_url and not refs:
-                refs = [{"type": "image", "url": image_url}]
-            if refs:
-                payload["subject_reference"] = refs
-            return "/v1/video_generation", payload
+            # t2va 场景 ratio 必填且不能为 adaptive；有输入图时由图片决定，省略
+            if not image_url:
+                payload["ratio"] = ratio if ratio and ratio != "adaptive" else "16:9"
+            return "/v2/video_generation", payload
 
         if self.provider == "kling":
             payload = {
@@ -241,7 +261,8 @@ class VideoApiConnector(BaseRenderer):
 
     def _status_path(self, rid: str) -> str:
         if self.provider in ("minimax", "minimax_h3"):
-            return f"/v1/query/video_generation?task_id={rid}"
+            # V2：路径参数形式
+            return f"/v2/query/video_generation/{rid}"
         if self.provider == "kling":
             return f"/v1/videos/text2video/{rid}"
         if self.provider == "siliconflow":
@@ -251,12 +272,18 @@ class VideoApiConnector(BaseRenderer):
     def _result_path(self, rid: str) -> str:
         return self._status_path(rid)
 
+    @staticmethod
+    def _task_of(data: dict[str, Any]) -> dict[str, Any]:
+        """MiniMax V2 响应形如 {"task": {...}}；兼容旧平铺结构。"""
+        t = data.get("task")
+        return t if isinstance(t, dict) else data
+
     def _parse_status(self, data: dict[str, Any]) -> str:
         if self.provider in ("minimax", "minimax_h3"):
-            st = str(data.get("status", "")).lower()
-            if st in ("success", "succeed", "completed", "complete"):
+            st = str(self._task_of(data).get("status", "")).lower()
+            if st in ("succeeded", "success", "successed", "completed", "complete"):
                 return "completed"
-            if st in ("failed", "fail", "error"):
+            if st in ("failed", "fail", "cancelled", "canceled", "error"):
                 return "failed"
             return "running"
         if self.provider == "kling":
@@ -283,7 +310,14 @@ class VideoApiConnector(BaseRenderer):
     def _extract_videos(self, data: dict[str, Any]) -> list[dict[str, str]]:
         out: list[dict[str, str]] = []
         if self.provider in ("minimax", "minimax_h3"):
-            url = data.get("file") or data.get("video_url") or ""
+            # V2：task.content.url 即成片下载地址（无需再换 file_id）
+            task = self._task_of(data)
+            content = task.get("content") or {}
+            url = ""
+            if isinstance(content, dict):
+                url = str(content.get("url") or "")
+            # 兼容旧结构
+            url = url or str(task.get("file") or task.get("video_url") or data.get("file") or data.get("video_url") or "")
             if url:
                 out.append({"url": url, "type": "video/mp4"})
             return out
