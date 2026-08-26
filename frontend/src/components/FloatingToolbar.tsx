@@ -48,9 +48,9 @@ export default function FloatingToolbar() {
         <LayoutGrid size={19} />
       </button>
 
-      {/* 展开态：浮动图标列 */}
+      {/* 展开态：浮动图标列（从圆钮向上展开，限高可视区；nowheel 让滚轮滚动面板而不是画布） */}
       {open && (
-        <div className="pointer-events-auto absolute left-0 top-[52px] flex max-h-[70vh] w-14 flex-col items-center gap-1 overflow-y-auto rounded-xl border border-edge bg-panel py-2 shadow-node-dark">
+        <div className="nowheel pointer-events-auto absolute bottom-full left-0 mb-2 flex max-h-[calc(50vh-3rem)] w-14 flex-col items-center gap-1 overflow-y-auto rounded-xl border border-edge bg-panel py-2 shadow-node-dark">
           <div className="mb-1 text-[10px] text-ink-3">节点</div>
           {ITEMS.map((it) => (
             <button

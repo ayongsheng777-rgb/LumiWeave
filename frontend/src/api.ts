@@ -202,6 +202,11 @@ export async function getRendererHealth(rendererId: string) {
   return request('GET', `/renderers/${rendererId}/health`)
 }
 
+// 获取 ComfyUI 可用工作流能力：checkpoints/loras/samplers + 节点包检测
+export async function getRendererWorkflows(rendererId: string) {
+  return request('GET', `/renderers/${rendererId}/workflows`)
+}
+
 // params 形如 {prompt, negative, seed, steps, width, height, ratio}
 // mode: 'text2image' | 'text2video'
 export async function rendererGenerate(

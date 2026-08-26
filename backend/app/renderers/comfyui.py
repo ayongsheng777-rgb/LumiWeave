@@ -59,6 +59,53 @@ class ComfyUIConnector(BaseRenderer):
             h["Authorization"] = f"Bearer {self.cfg.api_key}"
         return h
 
+    async def list_capabilities(self) -> dict[str, Any]:
+        """拉取 ComfyUI /object_info，提取可用 checkpoints/loras/samplers + 关键节点包检测。
+
+        供前端「获取」按钮展示该 ComfyUI 实际可用的模型与工作流能力（V2.3）。
+        """
+        if not self.cfg.endpoint:
+            return {"ok": False, "error": "endpoint 未配置"}
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+                resp = await client.get(
+                    f"{self.cfg.endpoint.rstrip('/')}/object_info", headers=self._headers()
+                )
+            if resp.status_code != 200:
+                return {"ok": False, "error": f"HTTP {resp.status_code}"}
+            info: dict[str, Any] = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": str(exc)}
+
+        def _options(class_type: str, field: str) -> list[str]:
+            node = info.get(class_type) or {}
+            opts = ((node.get("input") or {}).get("required") or {}).get(field) or []
+            if isinstance(opts, list) and opts and isinstance(opts[0], (list, tuple)):
+                return [str(x) for x in opts[0]]
+            return []
+
+        keys = set(info.keys())
+        checkpoints = _options("CheckpointLoaderSimple", "ckpt_name")
+        loras = _options("LoraLoader", "lora_name")[:80]
+        samplers = _options("KSampler", "sampler_name")[:60]
+        extras = {
+            "ltx_video": any("LTX" in k for k in keys),
+            "wan_video": any(k.startswith("Wan") or "WanVideo" in k for k in keys),
+        }
+        templates = [
+            {"id": "text2image", "label": "文生图（内置模板）"},
+            {"id": "text2video", "label": "文生视频（内置模板）"},
+            {"id": "ltx-video", "label": "LTX 视频（内置模板，需 LTX 节点包）"},
+        ]
+        return {
+            "ok": True,
+            "checkpoints": checkpoints,
+            "loras": loras,
+            "samplers": samplers,
+            "extras": extras,
+            "templates": templates,
+        }
+
     async def health(self) -> dict[str, Any]:
         if not self.cfg.enabled:
             return {"enabled": False, "healthy": False, "reason": "renderer 未启用"}

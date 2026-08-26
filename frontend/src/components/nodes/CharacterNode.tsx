@@ -19,6 +19,18 @@ const VIEW_PROMPT: Record<string, string> = {
   '三视图': 'character turnaround sheet, front view, side view, back view, three-view reference',
   '四视图': 'character turnaround sheet, front view, three-quarter view, side view, back view, four-view reference',
 }
+// 视角提示词预设（V2.3 多样性选择）：点击拼进提示词，再点取消
+const VIEW_PRESETS: { label: string; prompt: string }[] = [
+  { label: '正面定妆', prompt: 'front-facing portrait, looking at camera, symmetrical face, centered composition' },
+  { label: '45°侧脸',  prompt: 'three-quarter angle view, 45 degree head turn' },
+  { label: '正侧面',   prompt: 'side profile view, profile portrait' },
+  { label: '背面',     prompt: 'back view, rear perspective' },
+  { label: '仰视',     prompt: 'low angle shot, looking up perspective' },
+  { label: '俯视',     prompt: 'high angle shot, top-down perspective' },
+  { label: '全身',     prompt: 'full body shot, head to toe, standing pose' },
+  { label: '半身',     prompt: 'upper body shot, waist up portrait' },
+  { label: '面部特写', prompt: 'close-up shot, facial detail, shallow depth of field' },
+]
 
 export function CharacterNode({ id, data, selected }: NodeProps) {
   const { update } = useNodeAdapter()
@@ -102,6 +114,36 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
         <PromptTranslate prompt={prompt} />
         <PromptOptimize prompt={prompt} kind="character" model={model} nodeLabel="角色设计"
           onApply={(v) => update(id, { prompt: v })} />
+        {/* 视角预设：点选拼进提示词（已含则取消），可叠加 */}
+        <div className="mt-1 flex flex-wrap gap-1">
+          {VIEW_PRESETS.map((p) => {
+            const active = prompt.toLowerCase().includes(p.prompt.toLowerCase())
+            return (
+              <button
+                key={p.label}
+                type="button"
+                title={`${active ? '移除' : '追加'}：${p.prompt}`}
+                onClick={() => {
+                  if (active) {
+                    const next = prompt
+                      .replace(new RegExp(`,?\\s*${p.prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'), '')
+                      .replace(/^\s*,\s*/, '')
+                    update(id, { prompt: next })
+                  } else {
+                    update(id, { prompt: prompt ? `${prompt}, ${p.prompt}` : p.prompt })
+                  }
+                }}
+                className={`nodrag rounded-full border px-2 py-0.5 text-[10px] transition ${
+                  active
+                    ? 'border-brand-500 bg-brand-500/15 text-brand-300'
+                    : 'border-edge bg-soft text-ink-3 hover:bg-hover hover:text-ink'
+                }`}
+              >
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
       </Field>
       <div className="grid grid-cols-2 gap-2">
         <Field label="风格">

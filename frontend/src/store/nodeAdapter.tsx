@@ -24,6 +24,8 @@ export interface NodeAdapter {
   getNodes: () => Node[]
   /** 返回当前画布全部连线（供 StoryboardNode 查找上游 StoryNode） */
   getEdges: () => Edge[]
+  /** 调整节点外壳样式（如展开配置时松开固定高度） */
+  setSize: (id: string, style: Record<string, unknown>) => void
 }
 
 const NodeAdapterContext = createContext<NodeAdapter | null>(null)
@@ -47,6 +49,10 @@ function buildWorkflowAdapter(): NodeAdapter {
     getLocked: (id) => (nodes.find((n) => n.id === id)?.data as Record<string, unknown> | undefined)?.locked === true,
     getNodes: () => nodes,
     getEdges: () => edges,
+    setSize: (id, style) =>
+      useWorkflowStore.setState((s) => ({
+        nodes: s.nodes.map((n) => (n.id === id ? { ...n, style: { ...(n.style || {}), ...style } } : n)),
+      })),
   }
 }
 
@@ -71,6 +77,10 @@ function buildCanvasAdapter(): NodeAdapter {
     getLocked: (id) => byId(id)?.locked === true,
     getNodes: () => objects,
     getEdges: () => edges,
+    setSize: (id, style) =>
+      useCanvasStore.setState((s) => ({
+        objects: s.objects.map((n) => (n.id === id ? { ...n, style: { ...(n.style || {}), ...style } } : n)),
+      })),
   }
 }
 

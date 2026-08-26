@@ -50,7 +50,7 @@ export function NodeShell({
   /** 结果态自定义展示（图片/视频等媒体）；不传则回退为文本摘要 */
   resultView?: ReactNode
 }) {
-  const { getStatus, getOutput, getLocked, toggleLock, remove } = useNodeAdapter()
+  const { getStatus, getOutput, getLocked, toggleLock, remove, setSize } = useNodeAdapter()
   const status = getStatus(id)
   const output = getOutput(id)
   const locked = getLocked(id)
@@ -60,8 +60,18 @@ export function NodeShell({
   // 默认：已完成 → 只看结果；否则展开
   const [viewMode, setViewMode] = useState<NodeViewMode>(status === 'completed' ? 'result-only' : 'expanded')
 
+  // 展开配置：同时松开外壳固定高度（此前缩放过的节点高度被钉死，表单会塞进看不见的滚动区）
+  const expandConfig = () => {
+    setViewMode('expanded')
+    setSize(id, { height: 'auto' })
+  }
+
   const toggleExpand = () => {
-    setViewMode(viewMode === 'expanded' ? (status === 'completed' && resultView ? 'result-only' : 'collapsed') : 'expanded')
+    if (viewMode === 'expanded') {
+      setViewMode(status === 'completed' && resultView ? 'result-only' : 'collapsed')
+    } else {
+      expandConfig()
+    }
   }
 
   const isCompact = viewMode !== 'expanded'
@@ -69,7 +79,11 @@ export function NodeShell({
   return (
     <div
       className={`flex flex-col rounded-xl bg-panel-2 ring-1 ${ringOf[status]} border border-edge shadow-node-dark animate-fade-in transition-all duration-300`}
-      style={{ width: '100%', height: '100%', minWidth: viewMode === 'collapsed' ? 180 : 240 }}
+      style={
+        viewMode === 'expanded'
+          ? { width: '100%', minWidth: 240, minHeight: 320 }
+          : { width: '100%', height: '100%', minWidth: viewMode === 'collapsed' ? 180 : 240 }
+      }
     >
       <NodeResizer
         isVisible={!!selected && !locked && viewMode === 'expanded'}
@@ -89,11 +103,11 @@ export function NodeShell({
         {!isCompact && <span className="text-brand-300">{icon}</span>}
         <span className={`truncate font-medium text-ink ${isCompact ? 'text-[11px] text-ink-2' : 'text-sm'}`}>{title}</span>
         <span className="ml-auto flex items-center gap-0.5">
-          {/* 齿轮：强制展开配置 */}
+          {/* 齿轮：强制展开配置（并松开固定高度） */}
           <button
             className="nodrag rounded p-1 text-ink-3 transition hover:bg-soft hover:text-brand-400"
             title="配置参数"
-            onClick={(e) => { e.stopPropagation(); setViewMode('expanded') }}
+            onClick={(e) => { e.stopPropagation(); expandConfig() }}
           >
             <Settings2 size={13} />
           </button>

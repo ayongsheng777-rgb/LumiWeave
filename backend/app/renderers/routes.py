@@ -126,6 +126,19 @@ async def renderer_health(renderer_id: str):
     return {"id": renderer_id, "name": r.cfg.name, **health}
 
 
+@router.get("/{renderer_id}/workflows")
+async def renderer_workflows(renderer_id: str):
+    """获取 ComfyUI 可用工作流能力：checkpoints/loras/samplers + 节点包检测（V2.3）。"""
+    from app.renderers.comfyui import ComfyUIConnector
+
+    r = renderer_registry.get(renderer_id)
+    if not r:
+        return JSONResponse(status_code=404, content={"error": "Renderer 未注册"})
+    if not isinstance(r, ComfyUIConnector):
+        return JSONResponse(status_code=400, content={"error": "仅 ComfyUI 渲染器支持获取可用工作流"})
+    return await r.list_capabilities()
+
+
 @router.post("/{renderer_id}/generate")
 async def renderer_generate(renderer_id: str, request: Request):
     r = renderer_registry.get(renderer_id)
