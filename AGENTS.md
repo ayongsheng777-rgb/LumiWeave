@@ -384,6 +384,24 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 **剩余 P1/P2（未做，留给下一批）**：短剧配音/字幕/成片合成（§69，依赖 TTS/合成 Provider）、MCP Scene 工具（§41）、Skill 桥接（§42）、RAG 检索注入（§43）、商业化套餐与 Provider 定价管理（§73/§74）、顶层产品菜单（§75）、响应式抽屉与设计 token 收口（§49/§50）。
 
+## 一·二十一、V2.5 第三轮：P1 全部补齐（2026-08-27，commit c6b1a13）
+
+任务清单（`docs/V2.5_任务清单.md`）P1 七项全部落地，**P0/P1 缺口归零**（覆盖 ≈60% 达标 / 33% 骨架 / 7% 未做）：
+
+- **短剧配音稿/字幕/成片（§69）**——`generate_voiceover`（LLM 配音稿→audio 对象）/ `generate_subtitle`（分镜台词→字幕 JSON）/ `compose_final`（ffmpeg concat 拼接**本地**视频成片 + 自动入素材库；云端视频提示先下载）。已注册进 `ecommerce-drama` 场景。
+- **MCP scene 工具（§41）**——新建 `app/mcp/tools/scene_tools.py`，7 个工具：`scene.list / create / load / save / action.execute / asset.list / version.save`，在 `tools/__init__.py` 与 `server.py` 注册（tools 目录每个文件一个 `register(server)`，用 `@server.tool(name=...)` 定义 + `tool_registry.register(...)` 登记元信息）。
+- **Skill 桥接（§42）**——`execute_action` 支持 `skill:<id>` 前缀 → `app.skills.skill_manager.execute(skill_id, args, context)`，失败透出真实错误。
+- **RAG 注入（§43）**——`_rag_retrieve(query)` 检索 `prompt_knowledge`（ILIKE），注入详情页/LLM 生成上下文。
+- **Task 留痕（§53）**——`execute_action` 包装层按成功/失败写 `tasks` 表（canvas_id=scene_id, type=action）。
+- **Token 落库（§57）**——`_llm_json/_llm_text` 改走 `ai.client.chat_full`（返回 `ChatResult` 含 usage），写 `token_usage_log`（scenario='scene_action', task_id=scene_id）。⚠️ chat_full 是拿 usage 的唯一入口，别用裸 chat()。
+- **前端对象状态 + 批量结果（§52/§54）**——sceneStore 加 `objectStatus`（running/completed/failed）+ `batchResult`；节点标题栏/对象列表状态徽标，AI 页签批量计数。
+
+**验证**：`tmp/verify_scene_p1.py` 容器内 **8/8 全绿**（MCP 7 工具注册、配音稿/字幕真实 LLM、ffmpeg 拼接成片、Skill 桥接优雅报错、token 13→15、tasks 5 条留痕）。
+
+**踩坑**：`_act_skill` 失败时必须返回 `error` 键，否则路由回退成笼统的「动作执行失败」，看不到真实原因。
+
+**剩余仅 P2**：模板文件化（§26/§39）、响应式收口（§49/§50）、商业化（§73/§74）、顶层菜单（§75）、影视 Vision 全字段强化（§68 深度）、真异步批量进度 + 性能压测（§70-§72）。
+
 ## 三、启动 / 重启 SOP
 
 ```bash
