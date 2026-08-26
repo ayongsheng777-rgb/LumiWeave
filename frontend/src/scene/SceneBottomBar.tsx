@@ -35,6 +35,8 @@ export default function SceneBottomBar() {
   const typeDef = useSceneStore((s) => s.currentTypeDef())
   const runAction = useSceneStore((s) => s.runAction)
   const busy = useSceneStore((s) => s.busy)
+  const batchResult = useSceneStore((s) => s.batchResult)
+  const objectStatus = useSceneStore((s) => s.objectStatus)
   const runLog = useSceneStore((s) => s.runLog)
   const toggleLock = useSceneStore((s) => s.toggleLock)
   const currentSceneId = useSceneStore((s) => s.currentSceneId)
@@ -74,6 +76,27 @@ export default function SceneBottomBar() {
                       <span className="shrink-0 text-[10px]" style={{ color: meta.color }}>
                         {meta.label}
                       </span>
+                      {objectStatus[o.id] && objectStatus[o.id] !== 'idle' && (
+                        <span
+                          className={`shrink-0 rounded-full px-1.5 text-[8px] ${
+                            objectStatus[o.id] === 'running'
+                              ? 'animate-pulse bg-amber-400/20 text-amber-400'
+                              : objectStatus[o.id] === 'completed'
+                                ? 'bg-emerald-400/20 text-emerald-400'
+                                : objectStatus[o.id] === 'failed'
+                                  ? 'bg-red-400/20 text-red-400'
+                                  : ''
+                          }`}
+                        >
+                          {objectStatus[o.id] === 'running'
+                            ? '执行中'
+                            : objectStatus[o.id] === 'completed'
+                              ? '完成'
+                              : objectStatus[o.id] === 'failed'
+                                ? '失败'
+                                : objectStatus[o.id]}
+                        </span>
+                      )}
                       <button
                         className="min-w-0 flex-1 truncate text-left text-[11px] text-ink-2"
                         onClick={() => setSelected([o.id])}
@@ -124,6 +147,13 @@ export default function SceneBottomBar() {
                 <div className="text-[10px] text-ink-3">
                   未选中对象时，动作作用于整个场景的相关对象。
                 </div>
+                {batchResult && (
+                  <div className="flex items-center gap-2 rounded-lg bg-hover/60 px-2 py-1.5 text-[10px]">
+                    <span className="text-ink-2">批量：共 {batchResult.total}</span>
+                    <span className="text-emerald-400">成功 {batchResult.ok}</span>
+                    <span className="text-red-400">失败 {batchResult.failed}</span>
+                  </div>
+                )}
               </div>
             )}
 

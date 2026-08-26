@@ -48,6 +48,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
   const patchObject = useSceneStore((s) => s.patchObject)
   const runAction = useSceneStore((s) => s.runAction)
   const busy = useSceneStore((s) => s.busy)
+  const status = useSceneStore((s) => s.objectStatus[id])
   const typeDef = useSceneStore((s) => s.currentTypeDef())
   const openLightbox = useUiStore((s) => s.openLightbox)
 
@@ -120,6 +121,21 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
           <span className="shrink-0 text-[10px] font-medium" style={{ color: meta.color }}>
             {meta.label}
           </span>
+          {status && status !== 'idle' && (
+            <span
+              className={`shrink-0 rounded-full px-1.5 text-[8px] leading-4 ${
+                status === 'running'
+                  ? 'animate-pulse bg-amber-400/20 text-amber-400'
+                  : status === 'completed'
+                    ? 'bg-emerald-400/20 text-emerald-400'
+                    : status === 'failed'
+                      ? 'bg-red-400/20 text-red-400'
+                      : ''
+              }`}
+            >
+              {status === 'running' ? '执行中' : status === 'completed' ? '完成' : status === 'failed' ? '失败' : status}
+            </span>
+          )}
           <input
             className="nodrag min-w-0 flex-1 truncate bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-3"
             value={title === meta.label ? '' : title}

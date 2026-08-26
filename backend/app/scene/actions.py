@@ -9,8 +9,13 @@ Scene Action 可由 Skill / Workflow / Renderer 实现。这里用现有基础�
 """
 from __future__ import annotations
 
+import json
+import re
+import subprocess
+import uuid
 from typing import Any
 
+from app import db
 from app.scene import service
 from app.scene.registry import OBJECT_LIBRARY
 
@@ -25,24 +30,50 @@ async def _video_provider() -> dict | None:
     return await best_provider("video")
 
 
-async def _llm_json(system: str, user: str) -> dict | None:
-    from app.ai.client import chat_json
+async def _chat_full(system: str, user: str, *, json_mode: bool = False,
+                     temperature: float = 0.4, max_tokens: int = 2000) -> Any:
+    from app.ai.client import chat_full
+    return await chat_full(system, user, temperature=temperature, max_tokens=max_tokens,
+                           json_mode=json_mode, scenario="scene_action", task_id="")
+
+
+async def _record_usage(scene_id: str, result: Any) -> None:
+    """把 chat_full 的 usage 落 token_usage_log（P1-07 / §57）。"""
     try:
-        return await chat_json(system, user, temperature=0.4, max_tokens=2000,
-                               scenario="scene_action")
+        usage = (result.usage or {}) if hasattr(result, "usage") else {}
+        await db.execute(
+            """INSERT INTO token_usage_log
+               (model, provider, scenario, prompt_tokens, completion_tokens, task_id, workflow_id)
+               VALUES ($1,$2,'scene_action',$3,$4,$5,$6)""",
+            str(usage.get("model") or ""), str(usage.get("provider") or ""),
+            int(usage.get("prompt_tokens", 0) or 0), int(usage.get("completion_tokens", 0) or 0),
+            scene_id, scene_id,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _llm_json(system: str, user: str) -> dict | None:
+    r = await _chat_full(system, user, json_mode=True)
+    await _record_usage("", r)
+    if not r.ok or not r.content:
+        return None
+    m = re.search(r"\{.*\}", r.content, re.S)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
     except Exception:  # noqa: BLE001
         return None
 
 
 async def _llm_text(system: str, user: str) -> str | None:
-    """注意：app.ai.client.chat 返回 str | None（不是 dict），勿再包一层 .get('text')。"""
-    from app.ai.client import chat
-    try:
-        text = await chat(system, user, temperature=0.5, max_tokens=2000,
-                          scenario="scene_action")
-        return (text or "").strip() or None
-    except Exception:  # noqa: BLE001
+    """注意：走 chat_full 拿 usage（P1-07），返回 content 字符串。"""
+    r = await _chat_full(system, user, temperature=0.5)
+    await _record_usage("", r)
+    if not r.ok or not r.content:
         return None
+    return r.content.strip() or None
 
 
 def _label(obj_type: str) -> str:
@@ -219,7 +250,11 @@ async def _act_llm_scene(scene_id: str, obj_ids: list[str], params: dict, action
         if dd.get("text") or dd.get("summary") or dd.get("description") or dd.get("name"):
             ctx = dd.get("text") or dd.get("summary") or dd.get("description") or dd.get("name")
             break
-    r = await _llm_json(sys, f"主题/参考：{ctx}\n额外要求：{params.get('prompt','')}")
+    refs = await _rag_retrieve(str(ctx)[:40])
+    prompt = f"主题/参考：{ctx}\n额外要求：{params.get('prompt','')}"
+    if refs:
+        prompt += "\n\n参考资料（RAG）：\n" + "\n".join(refs)
+    r = await _llm_json(sys, prompt)
     if not r:
         return {"ok": False, "error": "AI 生成失败（检查 AI 配置）"}
     # 新对象自动错开排布，避免全部堆在 (0,0)
@@ -254,8 +289,11 @@ async def _act_generate_detail_page(scene_id: str, obj_ids: list[str], params: d
         if not obj:
             continue
         d = obj["data"]
+        refs = await _rag_retrieve(f"{d.get('name','')} {d.get('category','')}")
         ctx = (f"商品：{d.get('name','')}；品牌：{d.get('brand','')}；类目：{d.get('category','')}；"
                f"卖点：{', '.join(d.get('selling_points', []) or [])}；描述：{d.get('description','')}")
+        if refs:
+            ctx += "\n\n参考资料（RAG）：\n" + "\n".join(refs)
         sys = ("你是电商详情页策划。基于商品信息生成一套详情页文案，输出 JSON："
                '{"title":"详情页标题","sections":[{"title":"模块标题","body":"模块正文"}],"slogan":"一句话卖点标语"}'
                "。中文，专业且有转化力。")
@@ -365,7 +403,141 @@ async def _act_batch_sku(scene_id: str, obj_ids: list[str], params: dict) -> dic
     return {"ok": bool(results), "results": results, "message": f"批量生成 {len(results)} 个商品"}
 
 
-async def execute_action(scene_id: str, action: str, object_ids: list[str] | None = None,
+# ─────────────────────────────────────────────────────────────────────────────
+# RAG 检索注入（P1-04 / §43）
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _rag_retrieve(query: str, limit: int = 3) -> list[str]:
+    if not query:
+        return []
+    try:
+        rows = await db.fetch(
+            """SELECT title, content FROM prompt_knowledge
+               WHERE content ILIKE '%' || $1 || '%' OR title ILIKE '%' || $1 || '%'
+               ORDER BY created_at DESC LIMIT $2""",
+            query[:40], limit,
+        )
+        return [f"【{r['title']}】{str(r['content'])[:200]}" for r in rows]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 留痕（P1-05 / §53）
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _log_task(scene_id: str, action: str, status: str) -> None:
+    try:
+        tid = "task_" + uuid.uuid4().hex[:16]
+        await db.execute(
+            """INSERT INTO tasks (id, canvas_id, project_id, type, status)
+               VALUES ($1,$2,'default',$3,$4)""",
+            tid, scene_id, action, status,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Skill 桥接（P1-03 / §42）：动作名以 skill: 开头 → 调技能运行时
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _act_skill(scene_id: str, skill_id: str, obj_ids: list[str], params: dict) -> dict:
+    from app.skills import skill_manager
+    objs = await service.list_objects(scene_id)
+    if obj_ids:
+        objs = [o for o in objs if o["id"] in obj_ids]
+    context = {
+        "scene_id": scene_id,
+        "objects": [{"id": o["id"], "type": o["object_type"], "data": o["data"]} for o in objs[:20]],
+        "project_id": "default",
+    }
+    result = await skill_manager.execute(skill_id, params or {}, context)
+    success = bool(getattr(result, "success", False))
+    message = getattr(result, "output", None) or getattr(result, "error", "skill 执行完成")
+    return {
+        "ok": success,
+        "error": None if success else message,
+        "message": message,
+        "skill_id": skill_id,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 短剧补全（§69）：配音稿 / 字幕 / 成片合成
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _act_generate_voiceover(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id)
+                          if o["object_type"] in ("product", "story")]
+    created = []
+    for oid in targets:
+        obj = await service.get_object(oid)
+        if not obj:
+            continue
+        d = obj["data"]
+        ctx = d.get("text") or d.get("summary") or d.get("name") or d.get("description") or ""
+        sys = ("你是带货短剧配音导演。基于剧情/商品写一段 30-60 秒的配音稿"
+               "（中文、口语化、有节奏、突出卖点），直接输出配音稿文本。")
+        text = await _llm_text(sys, ctx)
+        if not text:
+            continue
+        nid = await service.create_object(scene_id, "audio", x=400, y=float(obj.get("y") or 0) + 300,
+                                          width=360, height=200,
+                                          data={"text": text, "voiceover": True, "source_object_id": oid})
+        created.append(nid)
+    return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 段配音稿"}
+
+
+async def _act_generate_subtitle(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    boards = [o for o in await service.list_objects(scene_id) if o["object_type"] == "storyboard"]
+    if not boards:
+        return {"ok": False, "error": "需要先有分镜对象"}
+    lines = []
+    for b in boards:
+        dd = b["data"]
+        if dd.get("dialogue"):
+            lines.append(f"[{dd.get('scene', 1)}-{dd.get('shot', 1)}] {dd['dialogue']}")
+    sys = ("你是短剧字幕师。把分镜台词整理成标准字幕 JSON，输出："
+           '{"subtitles":[{"start":0,"end":3,"text":"..."}]}，每句 3-6 秒，只输出 JSON。')
+    r = await _llm_json(sys, "\n".join(lines) if lines else "分镜台词为空，请按常见带货短剧编 5 句台词")
+    payload = r or {"subtitles": [{"start": 0, "end": 3, "text": "（无台词）"}]}
+    nid = await service.create_object(scene_id, "text", x=400, y=300, width=420, height=280,
+                                      data={"name": "字幕", "subtitles": payload.get("subtitles", []),
+                                            "subtitle": True})
+    return {"ok": True, "created": [nid], "message": f"生成 {len(payload.get('subtitles', []))} 条字幕"}
+
+
+async def _act_compose_final(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    from app.config import DATA_DIR
+    vids = [o for o in await service.list_objects(scene_id) if o["object_type"] == "video"]
+    local = []
+    for o in vids:
+        u = (o["data"] or {}).get("url", "")
+        if u.startswith("/uploads/"):
+            p = DATA_DIR / "uploads" / u[len("/uploads/"):]
+            if p.exists():
+                local.append(str(p))
+    if len(local) < 2:
+        return {"ok": False, "error": "成片合成需要至少 2 个本地视频对象（云端视频请先下载到 /uploads/）"}
+    up = DATA_DIR / "uploads"
+    up.mkdir(parents=True, exist_ok=True)
+    name = f"final_{uuid.uuid4().hex[:12]}.mp4"
+    listfile = up / f"concat_{uuid.uuid4().hex[:8]}.txt"
+    listfile.write_text("\n".join(f"file '{p}'" for p in local), encoding="utf-8")
+    out = up / name
+    r = subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
+                        "-c", "copy", str(out)], capture_output=True, text=True, timeout=300)
+    if not out.exists() or out.stat().st_size < 1000:
+        return {"ok": False, "error": f"ffmpeg 合成失败：{r.stderr[-200:] if r and r.stderr else '未知'}"}
+    url = f"/uploads/{name}"
+    nid = await service.create_object(scene_id, "video", x=500, y=400, width=340, height=240,
+                                      data={"url": url, "prompt": "", "model": "ffmpeg", "composed": True})
+    await _register_asset(scene_id, "video", url, name="成片", meta={"composed": True})
+    return {"ok": True, "created": [nid], "message": f"合成成片（{len(local)} 段拼接）"}
+
+
+async def _run_action(scene_id: str, action: str, object_ids: list[str] | None = None,
                         params: dict | None = None) -> dict:
     params = params or {}
     obj_ids = object_ids or []
@@ -393,6 +565,22 @@ async def execute_action(scene_id: str, action: str, object_ids: list[str] | Non
             return await _act_generate_images(scene_id, obj_ids, params)
         if action in ("analyze_video", "detect_shots", "extract_frames"):
             return await _act_film_analysis(scene_id, obj_ids, params)
+        if action.startswith("skill:"):
+            return await _act_skill(scene_id, action[6:], obj_ids, params)
+        if action == "generate_voiceover":
+            return await _act_generate_voiceover(scene_id, obj_ids, params)
+        if action == "generate_subtitle":
+            return await _act_generate_subtitle(scene_id, obj_ids, params)
+        if action == "compose_final":
+            return await _act_compose_final(scene_id, obj_ids, params)
         return {"ok": False, "error": f"未支持的动作: {action}"}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"动作执行异常：{exc}"}
+
+
+async def execute_action(scene_id: str, action: str, object_ids: list[str] | None = None,
+                        params: dict | None = None) -> dict:
+    """动作分发入口（P1-05 / §53：成功/失败在 tasks 表留痕）。"""
+    result = await _run_action(scene_id, action, object_ids, params)
+    await _log_task(scene_id, action, "completed" if result.get("ok") else "failed")
+    return result

@@ -109,6 +109,7 @@ registry.register(SceneDefinition(
     actions=[
         "generate_story", "generate_characters", "generate_scenes",
         "generate_storyboard", "generate_shots", "generate_images", "generate_video",
+        "generate_voiceover", "generate_subtitle", "compose_final",
     ],
     toolbar=["select", "text", "product", "character", "scene", "storyboard", "shot", "image", "video", "ai", "group", "timeline", "zoom"],
     inspector=["product", "story", "character", "scene", "storyboard", "shot", "image", "video"],

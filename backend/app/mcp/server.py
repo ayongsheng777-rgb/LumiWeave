@@ -13,6 +13,7 @@ from app.mcp.tools import (
     register_film_tools,
     register_project_tools,
     register_provider_tools,
+    register_scene_tools,
     register_workflow_tools,
 )
 
@@ -23,7 +24,7 @@ server = MCPServer(
         "LumiWeave MCP Server —— AI 影视创作操作系统。"
         "对外部编程智能体（Codex / Claude Code / WorkBuddy / Cursor 等）暴露："
         "画布（canvas.*）、工作流（workflow.*）、素材（asset.*）、"
-        "接口（provider.*）、项目（project.*）、影视创作（film.*）六类工具。"
+        "接口（provider.*）、项目（project.*）、影视创作（film.*）、场景（scene.*）七类工具。"
     ),
 )
 
@@ -34,6 +35,7 @@ register_asset_tools(server)
 register_provider_tools(server)
 register_project_tools(server)
 register_film_tools(server)
+register_scene_tools(server)
 
 
 def http_app():

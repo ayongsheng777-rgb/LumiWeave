@@ -65,6 +65,9 @@ export const ACTION_LABELS: Record<string, string> = {
   analyze_shot: '镜头语言分析',
   generate_prompt: '生成 Prompt',
   generate_reference: '生成参考图',
+  generate_voiceover: '生成配音稿',
+  generate_subtitle: '生成字幕',
+  compose_final: '合成成片',
 }
 
 export interface RunLogEntry {
@@ -163,6 +166,10 @@ interface SceneState {
   loading: boolean
   busy: string // 正在执行的动作名，空串表示空闲
   runLog: RunLogEntry[]
+  // 对象级状态（§52 / P1-05）
+  objectStatus: Record<string, string>
+  // 批量结果（§54 / P1-06）
+  batchResult: { total: number; ok: number; failed: number } | null
 
   // 撤销/重做（§32）
   past: Snapshot[]
@@ -197,6 +204,8 @@ interface SceneState {
   runAction: (action: string, objectIds?: string[], params?: Record<string, unknown>) => Promise<void>
   pushLog: (e: RunLogEntry) => void
   clear: () => void
+  setObjectStatus: (id: string, status: string) => void
+  setBatchResult: (r: { total: number; ok: number; failed: number } | null) => void
 
   // 撤销/重做（§32）
   undo: () => void
@@ -288,6 +297,8 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   loading: false,
   busy: '',
   runLog: [],
+  objectStatus: {},
+  batchResult: null,
   past: [],
   future: [],
   canUndo: false,
@@ -501,11 +512,18 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     const sceneId = get().currentSceneId
     if (!sceneId) return
     recordHistory(get, set)
+    const targetIds = objectIds && objectIds.length ? objectIds : get().selectedIds
     set({ busy: action })
+    // 目标对象置 running（§52 / P1-05）
+    set((st) => {
+      const next = { ...st.objectStatus }
+      for (const id of targetIds) next[id] = 'running'
+      return { objectStatus: next }
+    })
     try {
       const res = await sceneRunAction(sceneId, {
         action,
-        object_ids: objectIds && objectIds.length ? objectIds : get().selectedIds,
+        object_ids: targetIds,
         parameters: params || {},
       })
       const ok = !!res.ok && res.data?.ok !== false
@@ -517,16 +535,40 @@ export const useSceneStore = create<SceneState>((set, get) => ({
           ? String(res.data?.message || '执行完成')
           : String(res.data?.error || '执行失败'),
       })
+      // 状态回写
+      set((st) => {
+        const next = { ...st.objectStatus }
+        for (const id of targetIds) next[id] = ok ? 'completed' : 'failed'
+        return { objectStatus: next }
+      })
+      // 批量结果（§54 / P1-06）
+      const results = res.data?.results as Array<{ skus?: unknown[] }> | undefined
+      if (Array.isArray(results)) {
+        const okCount = results.filter((r) => Array.isArray(r?.skus) && r.skus.length).length
+        set({ batchResult: { total: results.length, ok: okCount, failed: results.length - okCount } })
+      } else {
+        set({ batchResult: null })
+      }
       // 动作会新增/改写对象，重新拉取当前场景
       if (ok) await get().openScene(sceneId)
     } catch (err) {
       get().pushLog({ ts: Date.now(), action, ok: false, message: String(err) })
+      set((st) => {
+        const next = { ...st.objectStatus }
+        for (const id of targetIds) next[id] = 'failed'
+        return { objectStatus: next }
+      })
     } finally {
       set({ busy: '' })
     }
   },
 
   pushLog: (e) => set((s) => ({ runLog: [e, ...s.runLog].slice(0, 50) })),
+
+  setObjectStatus: (id, status) =>
+    set((s) => ({ objectStatus: { ...s.objectStatus, [id]: status } })),
+
+  setBatchResult: (r) => set({ batchResult: r }),
 
   clear: () => set({ objects: [], edges: [], selectedIds: [] }),
 
