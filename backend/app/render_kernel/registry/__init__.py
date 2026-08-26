@@ -4,6 +4,7 @@ from app.render_kernel.registry.capability import (
     CapabilityRegistry,
     get_registry,
     resolve_capabilities,
+    load_capabilities_from_db,
 )
 
 __all__ = [
@@ -11,4 +12,5 @@ __all__ = [
     "CapabilityRegistry",
     "get_registry",
     "resolve_capabilities",
+    "load_capabilities_from_db",
 ]

@@ -1,7 +1,7 @@
 """PromptSafety — 提示词安全校验（规格书 §7 内容安全）。"""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 
 
@@ -17,7 +17,7 @@ _SUSPICIOUS_CHARS = set("<script>svg:<>onerror")
 @dataclass
 class PromptSafetyResult:
     safe: bool
-    blocked_terms: list[str] = []
+    blocked_terms: list[str] = field(default_factory=list)
     message: str = ""
 
 

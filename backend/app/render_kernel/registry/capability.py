@@ -96,6 +96,39 @@ def get_registry() -> CapabilityRegistry:
     return _registry
 
 
+async def load_capabilities_from_db() -> int:
+    """
+    从 PostgreSQL model_capabilities 表加载能力，覆盖默认内置记录。
+    返回加载的条数。表不存在或未连接时静默跳过（保留内置默认）。
+    """
+    from app.render_kernel.db import capabilities_list
+    try:
+        rows = await capabilities_list()
+    except Exception as e:
+        # 表未初始化或 DB 未就绪 → 保留内置默认能力
+        print(f"[CapabilityRegistry] 加载 model_capabilities 失败，沿用内置默认: {e}")
+        return 0
+
+    if not rows:
+        return 0
+
+    for r in rows:
+        cap = ModelCapability(
+            provider_id=r.get("id", r.get("engine", "")),
+            engine=r.get("engine", "cloud"),
+            display_name=r.get("model_name", ""),
+            supports_image=("image_generation" in r.get("capability", "")),
+            supports_video=("video_generation" in r.get("capability", "")),
+            supports_ip_adapter=("ip_adapter" in r.get("capability", "")),
+            supports_controlnet=("controlnet" in r.get("capability", "")),
+            max_resolution=int(r.get("max_resolution", 2048)) if str(r.get("max_resolution", "2048")).isdigit() else 2048,
+            video_max_duration=float(r.get("video_duration_max") or 10.0),
+            special_tags=[r.get("capability", "")],
+        )
+        _registry.register(cap)
+    return len(rows)
+
+
 def resolve_capabilities(required: list[str]) -> list[ModelCapability]:
     """
     根据 capability_required 列表（["video_generation", "ip_adapter"...]），

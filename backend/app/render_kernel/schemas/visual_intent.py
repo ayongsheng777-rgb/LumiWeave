@@ -16,21 +16,18 @@ class CameraIntent(BaseModel):
     lens: Optional[int] = Field(default=None, ge=10, le=300, description="焦距 mm")
     shot: Optional[str] = Field(default=None, description="景别: extreme_wide/wide/full/medium/close_up/extreme_close_up")
     angle: Optional[str] = Field(default=None, description="角度: eye/high/low/bird/worm/dutch")
-    _normalized_from: Optional[str] = Field(default=None, exclude=True)
 
 
 class LightingIntent(BaseModel):
     direction: Optional[str] = Field(default=None, description="方向: front/left/right/back/top/low/side_left/side_right")
     temperature: Optional[int] = Field(default=None, ge=1000, le=20000, description="色温 K")
     intensity: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="强度 0-1")
-    _normalized_from: Optional[str] = Field(default=None, exclude=True)
 
 
 class MotionIntent(BaseModel):
     type: str = Field(default="static", description="运动: static/zoom_in/zoom_out/pan_left/pan_right/tilt_up/tilt_down/dolly_in/dolly_out")
     speed: float = Field(default=0.3, ge=0.1, le=1.0)
     duration: float = Field(default=5.0, ge=1.0, le=60.0)
-    _normalized_from: Optional[str] = Field(default=None, exclude=True)
 
 
 class ReferenceIntent(BaseModel):
@@ -40,7 +37,6 @@ class ReferenceIntent(BaseModel):
 
 class StyleIntent(BaseModel):
     style: str = Field(default="电影感")
-    _normalized_from: Optional[str] = Field(default=None, exclude=True)
 
 
 class VisualIntent(BaseModel):

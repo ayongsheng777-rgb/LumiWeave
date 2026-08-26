@@ -28,7 +28,7 @@ from app.tools import register_canvas_tools
 from app.token_usage.routes import router as token_router
 from app.api_v2 import router as api_v2_router
 from app.mcp.call_routes import router as mcp_call_router
-from app.mcp.tools.render_kernel_tools import router as render_kernel_router, websocket_router
+from app.mcp.tools.render_kernel_tools import router as render_kernel_router, websocket_router as render_kernel_ws_router
 
 PUBLIC_EXACT = {"/api/health"}
 # /uploads/ 为静态图片（<img> 标签无法携带 Bearer 头，故放行；仅本机/内网使用）
@@ -44,6 +44,9 @@ async def lifespan(app: FastAPI):
     await init_skills()
     await init_renderers()
     register_canvas_tools()
+    # Render Kernel：从 PostgreSQL 加载模型能力注册表（规格书 §5）
+    from app.render_kernel.registry import load_capabilities_from_db
+    await load_capabilities_from_db()
     start_scheduler()
     start_local_worker()  # 异构算力：本地 ComfyUI 队列常驻消费者
     yield

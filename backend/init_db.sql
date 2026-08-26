@@ -236,7 +236,7 @@ CREATE TABLE IF NOT EXISTS model_capabilities (
     engine       TEXT NOT NULL,            -- comfyui | cloud | minimax-video
     model_name   TEXT NOT NULL DEFAULT '',
     capability   TEXT NOT NULL,            -- video_generation | ip_adapter | controlnet | ...
-    max_resolution TEXT TEXT,               -- "1024x1024" 等
+    max_resolution TEXT,                    -- "1024x1024" 等
     video_duration_max REAL,               -- 视频最大时长（秒），NULL=不支持
     cost_per_1k_tokens REAL,               -- 计费用
     priority     INTEGER NOT NULL DEFAULT 100,
@@ -278,3 +278,14 @@ CREATE TABLE IF NOT EXISTS render_jobs (
 CREATE INDEX IF NOT EXISTS idx_render_jobs_canvas ON render_jobs (canvas_id);
 CREATE INDEX IF NOT EXISTS idx_render_jobs_status ON render_jobs (status);
 CREATE INDEX IF NOT EXISTS idx_render_jobs_created ON render_jobs (created_at DESC);
+
+-- ============ V2.5 Render Kernel：渲染任务事件流 ============
+-- 记录 RenderJob 生命周期事件（created/progress/completed/failed/cancelled）。
+CREATE TABLE IF NOT EXISTS render_job_events (
+    id          BIGSERIAL PRIMARY KEY,
+    job_id      TEXT NOT NULL,
+    event       TEXT NOT NULL,              -- created|progress|completed|failed|cancelled
+    payload     JSONB NOT NULL DEFAULT '{}',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_render_events_job ON render_job_events (job_id, created_at);
