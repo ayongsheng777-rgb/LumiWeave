@@ -402,6 +402,21 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 **剩余仅 P2**：模板文件化（§26/§39）、响应式收口（§49/§50）、商业化（§73/§74）、顶层菜单（§75）、影视 Vision 全字段强化（§68 深度）、真异步批量进度 + 性能压测（§70-§72）。
 
+## 一·二十二、V2.5 第四轮：P2 全部落地（2026-08-27，commit 3cd8467）
+
+任务清单 P2 六项全完成，**P0/P1/P2 缺口全部归零**（84 节覆盖 ≈85% 达标 / 15% 深度项 / ~0% 未做）：
+
+- **营销模板（§26/§39/§40）**——`backend/app/scene/templates.py`，12 类电商模板（主图速出/场景图/海报/详情页/9:16视频/批量SKU/卖点/直播脚本/优惠券/对比图/开箱/商品卡），JSON 化；端点 `GET /{id}/templates` + `POST /{id}/templates/{tid}/apply`；侧边栏「营销模板」区一键铺入。⚠️ 该 GET 是 `/scenes/{id}/templates`（两段），与全局 `GET /scenes/templates` 不冲突。
+- **商业化套餐（§73/§74）**——`backend/app/scene/plans.py` 四档 + 场景数/对象数配额软限制（`create_scene`/`create_object` 校验），`GET /scenes/plans`。默认 free，未接用户体系。
+- **顶层菜单（§75）**——TopHeader 汉堡菜单：快速创作（三场景一键 `createScene`）+ 系统套餐展示。
+- **响应式（§49/§50）**——窄屏（<1100px）自动收起 Inspector 并跟随窗口 resize。
+- **Vision 强化（§68 深度）**——拆镜视觉分析结果汇总成 `shot.analysis` 可读文本。
+- **真异步批量 + 压测（§54/§70-§72）**——`batch_generate` 后台 `asyncio.create_task` 执行 + `tasks.done/total` 进度列 + `GET /{id}/tasks/{tid}` 端点，前端轮询显示进度；压测 300 对象写入 **0.34s（883/s）**。
+
+**验证**：`tmp/verify_scene_p2.py` 容器内 **9/9 全绿**（4 套餐、12 模板+套用、异步批量 done=2/2、300 对象 0.34s、读回 310 对象）。
+
+**剩余仅「深度增强」**（非缺口，见任务清单第六节）：Vision 专用 Provider、RAG 真向量、AI 动作全异步、套餐接用户体系、千/五千对象压测、响应式全量。
+
 ## 三、启动 / 重启 SOP
 
 ```bash
