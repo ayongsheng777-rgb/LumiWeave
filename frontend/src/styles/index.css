@@ -148,9 +148,21 @@ body {
 .react-flow__controls-button:hover {
   background: var(--lw-hover);
 }
+/* 小地图（V2.8）：半透明玻璃 + 毛玻璃，融入网格背景 */
 .react-flow__minimap {
-  background: var(--lw-panel);
-  border-radius: 8px;
+  background: var(--lw-glass-bg) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  border: 1px solid var(--lw-glass-edge) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+.react-flow__minimap svg {
+  background: transparent !important;
+}
+.react-flow__minimap-mask {
+  fill: transparent;
 }
 .react-flow__edge-path {
   stroke: var(--lw-ink-3);

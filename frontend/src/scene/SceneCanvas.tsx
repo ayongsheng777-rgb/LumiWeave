@@ -129,7 +129,7 @@ function SceneCanvasInner() {
               <MiniMap
                 pannable
                 zoomable
-                className="!bottom-16 !border !border-[var(--lw-glass-edge)] !bg-[var(--lw-glass-bg)] backdrop-blur-md"
+                className="!bottom-16"
                 nodeColor={(n) =>
                   String(
                     useSceneStore.getState().metaOf(String(n.data?.objectType || '')).color ||
