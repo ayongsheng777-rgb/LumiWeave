@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { autoBest, deleteModel, getAiStats, getProfiles, getSceneDefaults, listPlatformModels, probe, upsertModel } from '../api'
+import { autoBest, autoBestScene, deleteModel, getAiStats, getProfiles, listPlatformModels, probe, upsertModel } from '../api'
 import { Plus, Trash2, Pencil, Zap, Gauge, ListPlus } from 'lucide-react'
 import { PLATFORM_PRESETS } from '../platformPresets'
 
@@ -14,14 +14,15 @@ interface Profile {
   description: string
   scenario: string
   scenes?: string[]
+  scene_models?: Record<string, string>
 }
 
 const inputCls =
   'w-full rounded-lg border border-edge bg-input px-2.5 py-1.5 text-sm text-ink outline-none transition focus:border-brand-500 placeholder:text-ink-3'
 
-const EMPTY_FORM = { id: '', name: '', model: '', base_url: '', api_key: '', proxy: '', description: '', scenario: 'general', scenes: [] as string[] }
+const EMPTY_FORM = { id: '', name: '', model: '', base_url: '', api_key: '', proxy: '', description: '', scenario: 'general', scenes: [] as string[], scene_models: {} as Record<string, string> }
 
-/** 适用场景分类（多选）：节点生成时按场景过滤可调用的模型 */
+/** 适用场景分类（多选）：节点生成时按场景过滤可调用的模型；每个场景可单独设置模型名（一键优选） */
 const SCENES: { key: string; label: string }[] = [
   { key: 'prompt', label: '提示词生成' },
   { key: 'image', label: '图片生成' },
@@ -43,8 +44,6 @@ export default function ModelPanel() {
   const [busy, setBusy] = useState(false)
   const [platformModels, setPlatformModels] = useState<string[]>([])
   const [showModels, setShowModels] = useState(false)
-  // 按场景优选出的默认模型映射 {scene: {profile_id, model}}
-  const [sceneDefaults, setSceneDefaults] = useState<Record<string, { profile_id?: string; model?: string }>>({})
 
   const load = async () => {
     const pRes = await getProfiles()
@@ -54,8 +53,6 @@ export default function ModelPanel() {
     }
     const sRes = await getAiStats()
     if (sRes.ok) setStats(sRes.data || {})
-    const dRes = await getSceneDefaults()
-    if (dRes.ok) setSceneDefaults(dRes.data?.defaults || {})
   }
 
   useEffect(() => {
@@ -66,7 +63,7 @@ export default function ModelPanel() {
     const p = PLATFORM_PRESETS.find((x) => x.key === key)
     if (!p) return
     // 一键匹配：平台预设自动填好地址/模型 + 默认适用场景；没有对应的留空
-    setForm((f) => ({ ...f, id: p.key, name: p.name, model: p.model, base_url: p.baseUrl, scenes: p.scenes || [] }))
+    setForm((f) => ({ ...f, id: p.key, name: p.name, model: p.model, base_url: p.baseUrl, scenes: p.scenes || [], scene_models: {} }))
   }
 
   const save = async () => {
@@ -94,6 +91,7 @@ export default function ModelPanel() {
       id: p.id, name: p.name, model: p.model, base_url: p.base_url, api_key: p.api_key,
       proxy: p.proxy, description: p.description || '', scenario: p.scenario || 'general',
       scenes: Array.isArray(p.scenes) ? p.scenes : [],
+      scene_models: (p.scene_models && typeof p.scene_models === 'object' ? p.scene_models : {}) as Record<string, string>,
     })
     setEditing(true)
     setShowForm(true)
@@ -129,17 +127,22 @@ export default function ModelPanel() {
     }
   }
 
-  // 按「适用场景」一键优选：在该场景勾选（或通用）的模型里实测选最佳，写入场景默认
+  // 单模型配置内按场景一键优选：拉平台列表 → 实测连通 → 写回 scene_models[scene]
   const handleSceneBest = async (scene: string) => {
+    if (!form.id.trim()) {
+      setMessage('请先填写模型 ID 并保存后再优选')
+      return
+    }
     setBusy(true)
     setMessage('')
-    const res = await autoBest(undefined, scene)
+    const res = await autoBestScene(form.id, scene)
     setBusy(false)
     if (res.ok) {
-      setMessage(`「${SCENES.find((s) => s.key === scene)?.label || scene}」优选完成：${res.data.model}`)
-      load()
+      const m = String(res.data?.model ?? '')
+      setMessage(`「${SCENES.find((s) => s.key === scene)?.label || scene}」优选完成：${m}（实测连通）`)
+      setForm((f) => ({ ...f, scene_models: { ...f.scene_models, [scene]: m } }))
     } else {
-      setMessage(`「${SCENES.find((s) => s.key === scene)?.label || scene}」优选失败：${res.data.reason || res.data.error || '未知'}`)
+      setMessage(`「${SCENES.find((s) => s.key === scene)?.label || scene}」优选失败：${res.data?.reason || res.data?.error || '未知'}`)
     }
   }
 
@@ -273,6 +276,38 @@ export default function ModelPanel() {
                 })}
               </div>
             </label>
+
+            {/* 场景模型名：每个场景单独设模型名，节点按节点类型自动匹配；一键优选=实测连通后填入 */}
+            <div className="col-span-2 block">
+              <span className="mb-1 block text-[11px] text-ink-2">
+                场景模型名（节点按类型自动匹配；一键优选会拉取平台列表并实测连通后填入）
+              </span>
+              <div className="space-y-1.5">
+                {SCENES.filter((s) => s.key !== 'general').map((s) => (
+                  <div key={s.key} className="flex items-center gap-1.5">
+                    <span className="w-16 shrink-0 text-[11px] text-ink-3">{s.label}</span>
+                    <input
+                      className={`${inputCls} min-w-0 flex-1`}
+                      placeholder={form.model || '留空用上方默认模型名'}
+                      value={form.scene_models[s.key] ?? ''}
+                      onChange={(e) => setForm({ ...form, scene_models: { ...form.scene_models, [s.key]: e.target.value } })}
+                    />
+                    <button
+                      type="button"
+                      disabled={busy || !form.id.trim()}
+                      onClick={() => void handleSceneBest(s.key)}
+                      className="flex shrink-0 items-center gap-1 rounded-lg border border-brand-500/40 bg-brand-500/10 px-2 py-1.5 text-[11px] text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-40"
+                      title={`拉取该平台模型列表并实测连通，把可用模型名填入「${s.label}」`}
+                    >
+                      <Zap size={11} /> 优选
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1 text-[10px] leading-snug text-ink-3">
+                实测方式：文本类用对话连通测试（免费）；图片用 128x128 极小图测试（微量额度）；视频提交测试。填好后保存生效。
+              </div>
+            </div>
           </div>
           <div className="mt-3 flex gap-2">
             <button onClick={save} disabled={busy} className="rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-brand-500 disabled:opacity-40">
@@ -296,63 +331,6 @@ export default function ModelPanel() {
             <div className="text-lg font-semibold text-ink">{String(v ?? 0)}</div>
           </div>
         ))}
-      </div>
-
-      {/* 场景模型一览：每个适用场景列出可用模型 + 一键优选（实测选最佳，写入场景默认） */}
-      <div className="rounded-xl border border-edge bg-panel-2 p-3">
-        <div className="mb-2 text-sm font-medium text-ink">场景模型一览（按适用场景一键优选）</div>
-        <div className="space-y-3">
-          {SCENES.filter((s) => s.key !== 'general').map((s) => {
-            const inScene = profiles.filter((p) => {
-              const sc = p.scenes
-              return !sc || !sc.length || sc.includes('general') || sc.includes(s.key)
-            })
-            const def = sceneDefaults[s.key]
-            const defProfile = def?.profile_id ? profiles.find((p) => p.id === def?.profile_id) : null
-            return (
-              <div key={s.key}>
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="text-[11px] font-medium text-ink-2">{s.label}</span>
-                  <span className="text-[10px] text-ink-3">{inScene.length} 个模型</span>
-                  <button
-                    onClick={() => void handleSceneBest(s.key)}
-                    disabled={busy || inScene.length === 0}
-                    className="ml-auto flex items-center gap-1 rounded-md bg-brand-500/10 px-2 py-0.5 text-[11px] text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-40"
-                    title={`在勾选「${s.label}」的模型里实测连通，选最佳作为该场景默认模型`}
-                  >
-                    <Zap size={11} /> 一键优选
-                  </button>
-                </div>
-                {inScene.length === 0 ? (
-                  <div className="text-[10px] text-ink-3">暂无勾选该场景的模型（可在下方给模型勾选「{s.label}」）</div>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {inScene.map((p) => {
-                      const isDef = def?.profile_id === p.id
-                      return (
-                        <span
-                          key={p.id}
-                          className={`flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] ${
-                            isDef ? 'border-brand-500 bg-brand-500/15 text-brand-300' : 'border-edge bg-soft text-ink-2'
-                          }`}
-                          title={isDef ? '当前该场景默认模型' : p.model}
-                        >
-                          {p.name} · {p.model}
-                          {isDef && ' ✓'}
-                        </span>
-                      )
-                    })}
-                  </div>
-                )}
-                {defProfile && (
-                  <div className="mt-0.5 text-[10px] text-ink-3">
-                    当前优选：{defProfile.name} · {def?.model}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
       </div>
 
       {/* 模型列表 */}
@@ -391,6 +369,15 @@ export default function ModelPanel() {
                 ))}
               </span>
             </div>
+            {p.scene_models && Object.keys(p.scene_models).length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {Object.entries(p.scene_models).map(([k, m]) => (
+                  <span key={k} className="rounded-md border border-brand-500/25 bg-brand-500/5 px-1.5 py-0.5 text-[10px] text-brand-300">
+                    {SCENES.find((s) => s.key === k)?.label || k}：{m}
+                  </span>
+                ))}
+              </div>
+            )}
             {p.description && <div className="mt-1 text-[11px] text-ink-3">说明：{p.description}</div>}
           </div>
         ))}

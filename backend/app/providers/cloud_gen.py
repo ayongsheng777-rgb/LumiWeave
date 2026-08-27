@@ -70,7 +70,8 @@ async def cloud_image_generate(
         key = profile.get("api_key") or ""
         prov_name = str(profile.get("name") or profile.get("provider") or provider_id)
         if not model:
-            model = str(profile.get("model") or "")
+            sm = profile.get("scene_models") or {}
+            model = str((sm.get("image") if isinstance(sm, dict) else None) or profile.get("model") or "")
     else:
         if not p:
             return {"ok": False, "error": "云端 Provider 不存在", "logs": logs}
@@ -162,7 +163,8 @@ async def cloud_video_generate(
         key = profile.get("api_key") or ""
         prov_name = str(profile.get("name") or profile.get("provider") or provider_id)
         if not model:
-            model = str(profile.get("model") or "")
+            sm = profile.get("scene_models") or {}
+            model = str((sm.get("video") if isinstance(sm, dict) else None) or profile.get("model") or "")
     else:
         if not p:
             return {"ok": False, "error": "云端 Provider 不存在", "logs": logs}

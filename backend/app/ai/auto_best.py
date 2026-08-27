@@ -173,3 +173,75 @@ async def auto_best(profile_id: str | None = None, scene: str | None = None) -> 
         "provider": profile.get("provider", ""),
         "tested": tested,
     }
+
+
+async def auto_best_scene(profile_id: str, scene: str) -> dict[str, Any]:
+    """单模型配置内按场景一键优选（V2.8）：拉该平台模型列表 → 按场景实测连通 → 返回最佳模型名。
+
+    实测方式（保证可用，列表拉出来不一定能用）：
+      - prompt/kb/skills（文本）：chat 实测（不花钱）
+      - image：极简 128x128 出图实测（极小额度，HTTP 200 即可用）
+      - video：/video/submit 提交实测（创建任务即认为可用，不轮询）
+    已手动填过 scene_models[scene] 的模型优先验证，否则全测平台列表前 8 个。
+    """
+    profiles = model_profiles()
+    profile = next((p for p in profiles if p.get("id") == profile_id), None)
+    if not profile:
+        return {"ok": False, "reason": "模型配置不存在", "tested": []}
+    key = (profile.get("api_key") or "").strip()
+    if not key or _is_placeholder(key):
+        return {"ok": False, "reason": "API Key 无效", "tested": []}
+    available_models = await _list_models(profile)
+    if not available_models:
+        return {"ok": False, "reason": "无法获取模型列表（检查 Base URL / API Key 与平台兼容性）", "tested": []}
+    sm = profile.get("scene_models") or {}
+    if isinstance(sm, dict) and sm.get(scene):
+        candidates = [str(sm[scene])]  # 已设过的模型也验证一次，保证可用
+    else:
+        candidates = available_models[:8]
+
+    tested: list[dict[str, Any]] = []
+    best_model, best_lat = "", float("inf")
+    for m in candidates:
+        r = await _test_scene_model(profile, m, scene)
+        tested.append({"model": m, **r})
+        if r["success"] and r["latency_ms"] < best_lat:
+            best_model, best_lat = m, r["latency_ms"]
+    if not best_model:
+        return {"ok": False, "reason": f"「{scene}」场景候选模型全部实测失败，请检查 API Key / 额度 / 模型权限", "tested": tested}
+    return {"ok": True, "model": best_model, "latency_ms": best_lat, "scene": scene, "tested": tested}
+
+
+async def _test_scene_model(profile: dict[str, Any], model: str, scene: str) -> dict[str, Any]:
+    """按场景实测单模型连通性。返回 {success, latency_ms, error}。"""
+    t0 = asyncio.get_event_loop().time()
+    base_url = str(profile.get("base_url") or "").rstrip("/")
+    key = (profile.get("api_key") or "").strip()
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+    if scene in ("prompt", "kb", "skills", "chat", "general", "copywriting"):
+        # 文本类：chat 实测（与全局优选同款，不额外花钱）
+        r = await _test_one(profile, model, asyncio.Semaphore(1))
+        return {"success": bool(r.get("success")), "latency_ms": int(r.get("latency_ms") or 0),
+                "error": str(r.get("error") or "")[:160]}
+    if scene == "image":
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(40.0, connect=10.0)) as c:
+                resp = await c.post(f"{base_url}/images/generations", headers=headers,
+                                    json={"model": model, "prompt": "test", "image_size": "128x128", "batch_size": 1})
+            ok = resp.status_code == 200
+            return {"success": ok, "latency_ms": int((asyncio.get_event_loop().time() - t0) * 1000),
+                    "error": "" if ok else f"HTTP {resp.status_code}: {resp.text[:140]}"}
+        except Exception as exc:  # noqa: BLE001
+            return {"success": False, "latency_ms": 0, "error": str(exc)[:140]}
+    if scene == "video":
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(40.0, connect=10.0)) as c:
+                resp = await c.post(f"{base_url}/video/submit", headers=headers,
+                                    json={"model": model, "prompt": "test", "image_size": "1280x720", "num_frames": 16})
+            ok = resp.status_code == 200
+            return {"success": ok, "latency_ms": int((asyncio.get_event_loop().time() - t0) * 1000),
+                    "error": "" if ok else f"HTTP {resp.status_code}: {resp.text[:140]}"}
+        except Exception as exc:  # noqa: BLE001
+            return {"success": False, "latency_ms": 0, "error": str(exc)[:140]}
+    return {"success": False, "latency_ms": 0, "error": "不支持的场景"}
