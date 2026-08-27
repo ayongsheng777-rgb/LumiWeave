@@ -73,7 +73,7 @@ export default function SceneTextWriter({
       {/* 内容区：默认收起 3 行摘要（降低画布视觉疲劳），点摘要/按钮展开全文编辑 */}
       {collapsed && isLong ? (
         <button
-          className="nodrag block w-full flex-1 cursor-pointer overflow-hidden whitespace-pre-wrap break-words rounded-md border border-edge bg-input px-2 py-1.5 text-left text-sm leading-relaxed text-ink-2 transition hover:border-brand-400"
+          className="nodrag block w-full flex-1 cursor-pointer overflow-hidden whitespace-pre-wrap break-words rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-left text-sm leading-relaxed text-ink-2 transition hover:border-brand-400"
           onClick={() => setCollapsed(false)}
           title="点击展开编辑"
           disabled={locked}

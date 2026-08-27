@@ -215,7 +215,7 @@ export function ShotGenerator({ shot, index, totalShots, nodeId, nodeLabel, onUp
       {expanded && (
         <div className="border-t border-edge px-3 pb-3 pt-2">
           <textarea
-            className="nodrag mb-2 w-full rounded-md border border-edge bg-input px-2 py-1.5 text-[11px] text-ink outline-none focus:border-brand-500"
+            className="nodrag mb-2 w-full rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
             rows={2}
             value={shot.description}
             placeholder="镜头描述（动作/情节）"
@@ -225,7 +225,7 @@ export function ShotGenerator({ shot, index, totalShots, nodeId, nodeLabel, onUp
           {/* 提示词 + 中英互译 + 优化 */}
           <div className="mb-2">
             <textarea
-              className="nodrag w-full rounded-md border border-edge bg-input px-2 py-1.5 text-[11px] text-ink outline-none focus:border-brand-500"
+              className="nodrag w-full rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
               rows={2}
               value={shot.prompt}
               placeholder="AI 绘图提示词（原文引用）"
@@ -254,7 +254,7 @@ export function ShotGenerator({ shot, index, totalShots, nodeId, nodeLabel, onUp
           {outputType === 'video' && (
             <div className="mb-2 space-y-1.5">
               <select
-                className="nodrag w-full rounded-md border border-edge bg-input px-2 py-1 text-[11px] text-ink outline-none"
+                className="nodrag w-full rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none"
                 value={videoMode}
                 onChange={(e) => onUpdate({ video_mode: e.target.value as 'text2video' | 'image2video' | 'multi_ref' })}
               >

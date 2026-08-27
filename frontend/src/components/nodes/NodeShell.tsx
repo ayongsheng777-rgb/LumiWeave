@@ -7,7 +7,7 @@ import { useUiStore } from '../../store/uiStore'
 import StatusBadge from './StatusBadge'
 
 export const inputCls =
-  'nodrag nowheel w-full rounded-lg border border-edge bg-input px-2.5 py-1.5 text-sm text-ink outline-none transition focus:border-brand-500 placeholder:text-ink-3'
+  'nodrag nowheel w-full rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none transition focus:border-brand-500 placeholder:text-ink-3'
 
 // 把节点输出转成可读的一行摘要
 function summarize(output: unknown): string {

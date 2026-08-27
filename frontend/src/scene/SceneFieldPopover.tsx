@@ -213,7 +213,7 @@ export default function SceneFieldPopover({
                     <span className="mb-1 block text-[11px] text-ink-3">总时长（秒）</span>
                     <input
                       type="number"
-                      className="nodrag nowheel w-full rounded-md border border-edge bg-input px-2 py-1 text-sm text-ink outline-none focus:border-brand-500"
+                      className="nodrag nowheel w-full rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
                       value={duration || ''}
                       onChange={(e) => patchObject(objectId, { duration: Number(e.target.value) })}
                     />
@@ -222,7 +222,7 @@ export default function SceneFieldPopover({
                     <span className="mb-1 block text-[11px] text-ink-3">分镜个数</span>
                     <input
                       type="number"
-                      className="nodrag nowheel w-full rounded-md border border-edge bg-input px-2 py-1 text-sm text-ink outline-none focus:border-brand-500"
+                      className="nodrag nowheel w-full rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
                       value={shotCount || ''}
                       onChange={(e) => patchObject(objectId, { shotCount: Number(e.target.value) })}
                     />

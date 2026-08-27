@@ -84,7 +84,7 @@ export function StoryboardNodeCanvas({ id, data }: { id: string; data: Record<st
       <div className="shrink-0 space-y-1.5 border-t border-edge p-3">
         <div className="grid grid-cols-2 gap-1.5">
           <select
-            className="nodrag rounded-md border border-edge bg-input px-2 py-1.5 text-[11px] text-ink outline-none"
+            className="nodrag rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none"
             defaultValue="medium shot"
             onChange={(e) => {
               if (shots.length === 0) addShot()
@@ -95,7 +95,7 @@ export function StoryboardNodeCanvas({ id, data }: { id: string; data: Record<st
             {CAMERAS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <input
-            className="nodrag rounded-md border border-edge bg-input px-2 py-1.5 text-[11px] text-ink outline-none"
+            className="nodrag rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none"
             type="number"
             min={1}
             max={30}

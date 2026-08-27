@@ -775,7 +775,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
                     <label key={key} className="block">
                       <span className="mb-1 block text-[11px] text-ink-3">{String(label)}（一行一项）</span>
                       <textarea
-                        className="w-full resize-y rounded-md border border-edge bg-input px-2 py-1 text-sm text-ink outline-none focus:border-brand-500"
+                        className="w-full resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
                         rows={2}
                         disabled={locked}
                         value={arr.map((x) => (typeof x === 'object' ? JSON.stringify(x) : String(x))).join('\n')}
@@ -809,7 +809,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
                     <label key={key} className="block">
                       <span className="mb-1 block text-[11px] text-ink-3">{String(label)}（手动匹配）</span>
                       <select
-                        className="w-full rounded-md border border-edge bg-input px-2 py-1 text-sm text-ink outline-none focus:border-brand-500"
+                        className="w-full rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
                         disabled={locked}
                         value={opts.includes(cur) ? cur : ''}
                         onChange={(e) => patchObject(id, { [key]: e.target.value })}
@@ -829,7 +829,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
                     <label key={key} className="block">
                       <span className="mb-1 block text-[11px] text-ink-3">{String(label)}</span>
                       <select
-                        className="w-full rounded-md border border-edge bg-input px-2 py-1 text-sm text-ink outline-none focus:border-brand-500"
+                        className="w-full rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
                         disabled={locked}
                         value={CAMERA_OPTIONS.includes(cur) ? cur : ''}
                         onChange={(e) => patchObject(id, { [key]: e.target.value })}
@@ -853,7 +853,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
                       <span className="mb-1 block text-[11px] text-ink-3">{String(label)}</span>
                       <input
                         type="number"
-                        className="w-full rounded-md border border-edge bg-input px-2 py-1 text-sm text-ink outline-none focus:border-brand-500"
+                        className="w-full rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
                         disabled={locked}
                         value={val === undefined || val === null ? '' : String(val)}
                         onChange={(e) => patchObject(id, { [key]: e.target.value === '' ? '' : Number(e.target.value) })}
@@ -887,7 +887,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
                   <label key={key} className="block">
                     <span className="mb-1 block text-[11px] text-ink-3">{String(label)}</span>
                     <input
-                      className="w-full rounded-md border border-edge bg-input px-2 py-1 text-sm text-ink outline-none focus:border-brand-500"
+                      className="w-full rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
                       disabled={locked}
                       value={String(val ?? '')}
                       onChange={(e) => patchObject(id, { [key]: e.target.value })}
