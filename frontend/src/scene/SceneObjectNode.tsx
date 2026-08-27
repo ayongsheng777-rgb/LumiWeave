@@ -15,6 +15,7 @@ import { CAMERA_ZH, cameraLabel } from '../cameraLabels'
 import type { SceneTypeDef } from '../api'
 import { aiChat, getProfiles } from '../api'
 import SceneFieldPopover from './SceneFieldPopover'
+import SceneTextWriter from './SceneTextWriter'
 
 /** 长文本字段 → 用 AI 对话弹窗编辑 */
 const LONG_TEXT_KEYS = new Set([
@@ -738,6 +739,8 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
             <StoryEditor id={id} payload={payload} locked={locked} />
           ) : objectType === 'shot_dialog' ? (
             <ShotDialogEditor id={id} payload={payload} locked={locked} />
+          ) : objectType === 'text' ? (
+            <SceneTextWriter id={id} locked={locked} />
           ) : (
             <>
               {Object.keys(fields).length === 0 && (
