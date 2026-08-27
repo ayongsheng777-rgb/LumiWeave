@@ -14,175 +14,19 @@ import {
 } from '../api'
 import SceneImageEdit from './SceneImageEdit'
 import ErrorBanner from '../components/ErrorBanner'
+import {
+  type AnyObj, type ParsedScript, EMPTY_PARSED, isStoryNode,
+  parseCharacters, parsePropsList, parseShotsFromScript, shotDesc,
+} from './sceneScript'
 
-type AnyObj = Record<string, unknown>
 type Category = '人物' | '道具' | '场景'
 
-interface ParsedShot {
-  no: number
-  location: string
-  time: string
-  goal: string
-  mood: string
-  bgm: string
-  duration: string
-  shots: { no: string; desc: string }[]
-  dialogue: { speaker: string; emotion: string; line: string }[]
-}
-interface ParsedScript {
-  characters: string[]
-  props: string[]
-  shots: ParsedShot[]
-}
-const EMPTY_PARSED: ParsedScript = { characters: [], props: [], shots: [] }
-
-/** 判断节点是否为剧情节点：兼容两种存储（新拖入 type='sceneObject' + data.objectType；重载后 type='story'） */
-function isStoryNode(n: AnyObj | null | undefined): boolean {
-  if (!n) return false
-  const t = String((n as AnyObj).type ?? '').toLowerCase()
-  const ot = String(((n as AnyObj).data as AnyObj)?.objectType ?? '').toLowerCase()
-  return t === 'story' || ot === 'story'
-}
 
 /** 模型库「适用场景」匹配：未设场景=通用，或含 general/目标场景 */
 function fitsScene(p: { scenes?: string[] }, need: string): boolean {
   const s = p.scenes
   if (!s || !s.length) return true
   return s.includes('general') || s.includes(need)
-}
-
-/** 取「出场元素」段内某字段区间（startField 到任一 endField 之前），找不到返回 '' */
-function sectionOf(script: string, startField: string, endFields: string[]): string {
-  const m = script.match(/# 出场元素([\s\S]*?)(?=\n# )/)
-  if (!m) return ''
-  const block = m[1]
-  const start = block.indexOf(startField)
-  if (start < 0) return ''
-  let end = block.length
-  for (const f of endFields) {
-    const i = block.indexOf(f, start + startField.length)
-    if (i >= 0 && i < end) end = i
-  }
-  return block.slice(start, end)
-}
-
-/** 顶层拆分：括号内的顿号/逗号不拆（"半杯珍珠奶茶（吸管插好、杯身有冷凝水珠）"保持一项） */
-function splitTopLevel(s: string): string[] {
-  const out: string[] = []
-  let depth = 0
-  let cur = ''
-  for (const ch of s) {
-    if (ch === '(' || ch === '（') depth++
-    if (ch === ')' || ch === '）') depth--
-    if ((ch === ',' || ch === '，' || ch === '、') && depth === 0) {
-      if (cur.trim()) out.push(cur.trim())
-      cur = ''
-    } else {
-      cur += ch
-    }
-  }
-  if (cur.trim()) out.push(cur.trim())
-  return out
-}
-
-/** 无效内容行（环境音/音效/分镜地点时间等）直接跳过 */
-function isJunkLine(l: string): boolean {
-  if (/^(（|\(|环境音|音效|旁白|画外音)/.test(l)) return true
-  if (/(地点|时间|环境)[：:]/.test(l)) return true
-  if (/^分镜\s*\d/.test(l)) return true
-  return false
-}
-
-/** 从剧本 script 解析「人物」：名字 → 完整描述行（只识别出场元素区，去编号、去重、过滤无效行） */
-function parseCharacters(script: string): Record<string, string> {
-  const desc: Record<string, string> = {}
-  const sec = sectionOf(script, '人物', ['道具', '分镜'])
-  if (!sec) return desc
-  for (const raw of sec.split('\n')) {
-    let l = raw.trim().replace(/^[-*]\s*/, '')
-    if (!l || l.startsWith('人物')) continue
-    if (isJunkLine(l)) continue
-    l = l.replace(/^\s*\d+[.、）)]?\s*/, '') // 去开头编号（1. / 2.）
-    const name = (l.split(/[：:（(]/)[0] || '').trim()
-    if (!name || name.length > 12) continue // 名字过长 = 错行
-    if (/[/\\]|\d{2}/.test(name)) continue // 名字含斜杠或两位数 = 描述片段
-    // 去重：同名字保留描述更完整的行
-    if (!desc[name] || l.length > desc[name].length) desc[name] = l
-  }
-  return desc
-}
-
-/** 从剧本 script 解析「道具」名字列表（只识别出场元素区，括号内不拆分，过滤无效行） */
-function parsePropsList(script: string): string[] {
-  const out: string[] = []
-  const sec = sectionOf(script, '道具', ['分镜'])
-  if (!sec) return out
-  for (const raw of sec.split('\n')) {
-    let l = raw.trim().replace(/^[-*]\s*/, '')
-    if (!l) continue
-    if (l.startsWith('道具')) l = l.replace(/^道具[：:]\s*/, '')
-    if (!l || isJunkLine(l)) continue
-    l = l.replace(/^\s*\d+[.、）)]?\s*/, '')
-    splitTopLevel(l).forEach((x) => {
-      if (x && !out.includes(x)) out.push(x)
-    })
-  }
-  return out
-}
-
-/** 从剧本 script 实时解析「分镜」完整信息（标题/目标/情绪/BGM/时长/镜头；括号内逗号不拆） */
-function parseShotsFromScript(script: string): ParsedShot[] {
-  const shots: ParsedShot[] = []
-  if (!script) return shots
-  const re = /##\s*分镜(\d+)[：:]?\s*(.*)/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(script))) {
-    const no = parseInt(m[1], 10)
-    const parts = splitTopLevel((m[2] || '').trim()) // 括号内逗号不拆
-    const loc = (parts[0] || '').trim()
-    const tm = parts.slice(1).join('，').trim()
-    const start = m.index + m[0].length
-    const nxt = script.slice(start).match(/\n##\s*分镜/)
-    const block = nxt ? script.slice(start, start + (nxt.index ?? script.length)) : script.slice(start)
-    const get = (label: string) => {
-      const g = block.match(new RegExp(`-?\\s*${label}[：:]\\s*([^\\n]+)`))
-      return g ? g[1].trim() : ''
-    }
-    const shotArr: { no: string; desc: string }[] = []
-    const gm = block.match(/-?\s*关键画面[\s\S]*?\n((?:.*\n)*?)(?=\n?\s*-?\s*对白|$)/)
-    if (gm) {
-      for (const line of gm[1].split('\n')) {
-        const mm = line.match(/[-*]\s*镜头([\d\-]+)[：:]\s*(.+)/)
-        if (mm) shotArr.push({ no: mm[1].trim(), desc: mm[2].trim() })
-      }
-    }
-    shots.push({
-      no,
-      location: loc,
-      time: tm,
-      goal: get('分镜目标'),
-      mood: get('情绪基调'),
-      bgm: get('背景音乐'),
-      duration: get('时长'),
-      shots: shotArr,
-      dialogue: [],
-    })
-  }
-  return shots
-}
-
-/** 场景（分镜）描述组装 */
-function shotDesc(s: ParsedShot): string {
-  const shots = (s.shots || []).map((x) => `镜头${x.no}：${x.desc}`).join('\n')
-  return [
-    `分镜${s.no}：${s.location || ''}${s.time ? `（${s.time}）` : ''}`,
-    s.goal ? `目标：${s.goal}` : '',
-    s.mood ? `情绪：${s.mood}` : '',
-    s.duration ? `时长：约${s.duration}秒` : '',
-    shots ? `画面：\n${shots}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n')
 }
 
 export default function SceneImageEditor({ id, locked }: { id: string; locked: boolean }) {

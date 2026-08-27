@@ -386,7 +386,7 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 ## 一·二十一、V2.5 第三轮：P1 全部补齐（2026-08-27，commit c6b1a13）
 
-任务清单（`docs/V2.5_任务清单.md`）P1 七项全部落地，**P0/P1 缺口归零**（覆盖 ≈60% 达标 / 33% 骨架 / 7% 未做）：
+任务清单（历史任务清单未入库，见本手册各轮记录）P1 七项全部落地，**P0/P1 缺口归零**（覆盖 ≈60% 达标 / 33% 骨架 / 7% 未做）：
 
 - **短剧配音稿/字幕/成片（§69）**——`generate_voiceover`（LLM 配音稿→audio 对象）/ `generate_subtitle`（分镜台词→字幕 JSON）/ `compose_final`（ffmpeg concat 拼接**本地**视频成片 + 自动入素材库；云端视频提示先下载）。已注册进 `ecommerce-drama` 场景。
 - **MCP scene 工具（§41）**——新建 `app/mcp/tools/scene_tools.py`，7 个工具：`scene.list / create / load / save / action.execute / asset.list / version.save`，在 `tools/__init__.py` 与 `server.py` 注册（tools 目录每个文件一个 `register(server)`，用 `@server.tool(name=...)` 定义 + `tool_registry.register(...)` 登记元信息）。
@@ -430,7 +430,7 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 **验证**：`tmp/verify_scene_deep.py` 容器内 **10/10 全绿**（套餐 free→pro→还原、异步动作 completed、RAG 命中 3 条、Vision 字段齐全+分析有值、1000 对象 1022/s、读回 0.05s）。
 
-**全部完成**：V2.5 规格书从 P0 到深度增强共五轮（a5d031f → c44b82c → c6b1a13 → 3cd8467 → 63739a0），任务清单 `docs/V2.5_任务清单.md` 全勾。
+**全部完成**：V2.5 规格书从 P0 到深度增强共五轮（a5d031f → c44b82c → c6b1a13 → 3cd8467 → 63739a0），任务清单全勾（历史任务清单未入库）。
 
 **容器清理 SOP（2026-08-27）**：容器内 `/app/verify_*.py` 与 `uploads` 里的 `film_*` / `clip_*` / `final_*` / `concat_*` / `test_*` / `deep_*` 都是验证遗留，可删：
 `docker compose exec -T backend sh -c "rm -f /app/verify_*.py && cd /app/data/uploads && rm -f clip_*.mp4 concat_*.txt deep_vision.mp4 film_*.jpg final_*.mp4 test_*.mp4"`

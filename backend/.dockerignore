@@ -1,0 +1,27 @@
+# 依赖与字节码（禁止打进镜像）
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+
+# 运行时数据与密钥（绝不进镜像，由卷挂载）
+data/
+.env
+*.env
+
+# 本地测试 / 一次性脚本（不进镜像）
+tests/
+tmp/
+
+# IDE / 系统
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# git
+.git/
+.gitignore
