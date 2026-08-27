@@ -81,48 +81,8 @@ async def _test_one(profile: dict[str, Any], model_id: str, sem: asyncio.Semapho
         return {"model": model_id, "success": True, "latency_ms": latency_ms, "error": ""}
 
 
-async def auto_best(profile_id: str | None = None, scene: str | None = None) -> dict[str, Any]:
-    """自动优选。scene 传入时：在「适用场景」勾选该场景（或未设场景=通用）的模型配置中，
-    逐个测连通选最佳，返回 {ok, model, provider_id, scene} 供按场景一键优选。"""
+async def auto_best(profile_id: str | None = None) -> dict[str, Any]:
     profiles = model_profiles()
-    if scene:
-        # 按场景过滤：勾选了该场景，或未设场景（通用）
-        scene_profiles = []
-        for p in profiles:
-            scenes = p.get("scenes") or []
-            if not scenes or "general" in scenes or scene in scenes:
-                scene_profiles.append(p)
-        if not scene_profiles:
-            return {"ok": False, "reason": f"没有勾选「{scene}」场景的模型配置", "tested": []}
-        # 逐个配置：测连通性（用配置里第一个/默认模型），挑可用且延迟最低的
-        best_p, best_lat = None, float("inf")
-        tested = []
-        sem = asyncio.Semaphore(2)
-        for p in scene_profiles:
-            key = (p.get("api_key") or "").strip()
-            if not key or _is_placeholder(key):
-                continue
-            try:
-                r = await _test_one(p, p.get("model") or "", sem)
-            except Exception:  # noqa: BLE001
-                r = {"success": False, "model": p.get("model", ""), "error": "异常"}
-            tested.append({"provider_id": p.get("id"), "provider": p.get("provider", ""),
-                           "model": p.get("model", ""), "success": bool(r and r.get("success")),
-                           "latency_ms": (r or {}).get("latency_ms", 0)})
-            if r and r.get("success") and (r.get("latency_ms") or 0) < best_lat:
-                best_p, best_lat = p, r.get("latency_ms") or 0
-        if not best_p:
-            return {"ok": False, "reason": f"「{scene}」场景候选模型全部实测失败，请检查 API Key/额度", "tested": tested}
-        return {
-            "ok": True,
-            "model": best_p.get("model", ""),
-            "provider_id": best_p.get("id", ""),
-            "provider": best_p.get("provider", ""),
-            "scene": scene,
-            "latency_ms": best_lat,
-            "tested": tested,
-        }
-
     profile = None
     if profile_id:
         profile = next((p for p in profiles if p.get("id") == profile_id), None)
@@ -175,14 +135,26 @@ async def auto_best(profile_id: str | None = None, scene: str | None = None) -> 
     }
 
 
+# 场景 → 模型名关键词（V2.8 按场景优选：image 只优选生图模型、video 只优选视频模型，避免选出无关 LLM）
+_SCENE_KEYWORDS: dict[str, list[str]] = {
+    "image": ["image", "flux", "stable-diffusion", "stable_diffusion", "sd3", "sdxl", "qwen-image", "wanx", "dall-e", "dall-e", "kolors", "illustrious", "playground", "t2i", "sd-"],
+    "video": ["video", "wan", "wanx", "hailuo", "kling", "minimax-video", "runway", "ltx", "cogvideo", "veo", "doubao-video", "t2v", "sora"],
+    "audio": ["audio", "tts", "music", "voice", "sing", "speech", "cosyvoice", "minimax-audio", "spark-tts", "gpt-4o-audio"],
+    "prompt": ["deepseek", "qwen", "glm", "gpt", "kimi", "moonshot", "gemini", "grok", "hunyuan", "ernie", "doubao", "minimax-text", "llama", "mistral"],
+    "kb": ["deepseek", "qwen", "glm", "gpt", "kimi", "gemini", "grok", "hunyuan", "doubao", "llama", "embedding", "bge"],
+    "skills": ["deepseek", "qwen", "glm", "gpt", "kimi", "gemini", "grok", "hunyuan", "doubao", "llama"],
+}
+
+
 async def auto_best_scene(profile_id: str, scene: str) -> dict[str, Any]:
-    """单模型配置内按场景一键优选（V2.8）：拉该平台模型列表 → 按场景实测连通 → 返回最佳模型名。
+    """单模型配置内按场景一键优选（V2.8）：拉该平台模型列表 → 按场景匹配候选 → 实测连通 → 返回最佳模型名。
 
     实测方式（保证可用，列表拉出来不一定能用）：
       - prompt/kb/skills（文本）：chat 实测（不花钱）
       - image：极简 128x128 出图实测（极小额度，HTTP 200 即可用）
       - video：/video/submit 提交实测（创建任务即认为可用，不轮询）
-    已手动填过 scene_models[scene] 的模型优先验证，否则全测平台列表前 8 个。
+    候选按「场景关键词」优先匹配（image 场景只优选生图模型，video 只优选视频模型，避免选出无关 LLM），
+    无匹配时才兜底全测平台列表前 8 个。已手动填过 scene_models[scene] 的模型优先验证。
     """
     profiles = model_profiles()
     profile = next((p for p in profiles if p.get("id") == profile_id), None)
@@ -198,7 +170,9 @@ async def auto_best_scene(profile_id: str, scene: str) -> dict[str, Any]:
     if isinstance(sm, dict) and sm.get(scene):
         candidates = [str(sm[scene])]  # 已设过的模型也验证一次，保证可用
     else:
-        candidates = available_models[:8]
+        kws = _SCENE_KEYWORDS.get(scene, [])
+        matched = [m for m in available_models if kws and any(kw in m.lower() for kw in kws)]
+        candidates = matched[:8] if matched else available_models[:8]
 
     tested: list[dict[str, Any]] = []
     best_model, best_lat = "", float("inf")

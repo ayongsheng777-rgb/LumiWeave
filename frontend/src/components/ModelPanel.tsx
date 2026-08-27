@@ -127,16 +127,19 @@ export default function ModelPanel() {
     }
   }
 
-  // 单模型配置内按场景一键优选：拉平台列表 → 实测连通 → 写回 scene_models[scene]
+  // 单模型配置内按场景一键优选：拉平台列表 → 按场景匹配+实测连通 → 写回 scene_models[scene]
+  // busyScene 只禁用被点的那个场景按钮（其它场景不连动变灰）
+  const [busyScene, setBusyScene] = useState<string | null>(null)
   const handleSceneBest = async (scene: string) => {
     if (!form.id.trim()) {
       setMessage('请先填写模型 ID 并保存后再优选')
       return
     }
-    setBusy(true)
+    if (busyScene) return
+    setBusyScene(scene)
     setMessage('')
     const res = await autoBestScene(form.id, scene)
-    setBusy(false)
+    setBusyScene(null)
     if (res.ok) {
       const m = String(res.data?.model ?? '')
       setMessage(`「${SCENES.find((s) => s.key === scene)?.label || scene}」优选完成：${m}（实测连通）`)
@@ -294,12 +297,12 @@ export default function ModelPanel() {
                     />
                     <button
                       type="button"
-                      disabled={busy || !form.id.trim()}
+                      disabled={busyScene === s.key}
                       onClick={() => void handleSceneBest(s.key)}
                       className="flex shrink-0 items-center gap-1 rounded-lg border border-brand-500/40 bg-brand-500/10 px-2 py-1.5 text-[11px] text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-40"
-                      title={`拉取该平台模型列表并实测连通，把可用模型名填入「${s.label}」`}
+                      title={`拉取该平台模型列表并按「${s.label}」匹配+实测连通，把可用模型名填入`}
                     >
-                      <Zap size={11} /> 优选
+                      <Zap size={11} className={busyScene === s.key ? 'animate-pulse' : ''} /> 优选
                     </button>
                   </div>
                 ))}
