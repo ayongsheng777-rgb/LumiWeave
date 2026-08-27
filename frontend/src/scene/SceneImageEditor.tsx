@@ -9,7 +9,7 @@ import {
 import { useSceneStore } from '../store/sceneStore'
 import { useUiStore } from '../store/uiStore'
 import {
-  aiChat, getProviders, getRenderers, getRendererWorkflows,
+  aiChat, getProfiles, getProviders, getRenderers, getRendererWorkflows,
   getSkills, promptLearningList, renderMedia, routeProviders,
 } from '../api'
 import SceneImageEdit from './SceneImageEdit'
@@ -136,16 +136,21 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   const [desc, setDesc] = useState('')
   const [rewriteReq, setRewriteReq] = useState('')
   const [rewriting, setRewriting] = useState(false)
-  const [profileId] = useState(String(payload.profile_id ?? ''))
+  const [profiles, setProfiles] = useState<{ id: string; name?: string; model?: string }[]>([])
+  const [aiProfileId, setAiProfileId] = useState(String(payload.profile_id ?? ''))
   const [skills, setSkills] = useState<AnyObj[]>([])
   const [skillId, setSkillId] = useState(String(payload.skill_ref ?? ''))
   const [kbs, setKbs] = useState<AnyObj[]>([])
   const [kbId, setKbId] = useState(String(payload.kb_ref ?? ''))
+  const [errMsg, setErrMsg] = useState('')
 
-  // 生成方式
+  // 生成方式：云端 provider 支持多选（不勾选=智能路由），ComfyUI 单选渲染器
   const [mode, setMode] = useState<'cloud' | 'comfyui'>(String(payload.render_mode ?? 'cloud') === 'comfyui' ? 'comfyui' : 'cloud')
   const [providers, setProviders] = useState<AnyObj[]>([])
-  const [providerId, setProviderId] = useState(String(payload.provider_id ?? ''))
+  const [selProviders, setSelProviders] = useState<string[]>(() => {
+    const v = String(payload.provider_ids ?? payload.provider_id ?? '')
+    return v ? v.split(',').filter(Boolean) : []
+  })
   const [models, setModels] = useState<string[]>([])
   const [model, setModel] = useState(String(payload.model ?? ''))
   const [renderers, setRenderers] = useState<AnyObj[]>([])
@@ -175,10 +180,10 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     setDesc('')
   }
 
-  // 选中对象 → 提取描述
+  // 选中对象 → 提取描述 + 标题自动识别为选中对象
   const pickOption = (val: string) => {
     setSelected(val)
-    patchObject(id, { purpose: category }) // 同步用途，兼容节点匹配提示
+    patchObject(id, { purpose: category, title: `${category}·${val}` })
     if (category === '场景') {
       const no = parseInt(val.replace(/^分镜\s*/, ''), 10)
       const s = mergedShots.find((x) => x.no === no)
@@ -196,11 +201,18 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     setManualInput('')
     setSelected(v)
     setDesc(v)
-    patchObject(id, { purpose: category })
+    patchObject(id, { purpose: category, title: `${category}·${v}` })
   }
 
   // ── 数据加载 ────────────────────────────────────────────────
   useEffect(() => {
+    getProfiles()
+      .then((r) => {
+        const list = ((r.data as AnyObj)?.profiles as { id: string; name?: string; model?: string }[]) || []
+        setProfiles(list)
+        if (list.length && !aiProfileId) setAiProfileId(list[0].id)
+      })
+      .catch(() => {})
     getSkills()
       .then((r) => {
         const d = r.data as AnyObj
@@ -215,13 +227,12 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
         setKbs(k)
       })
       .catch(() => {})
-    // 云端 Provider（image）
+    // 云端 Provider（image）：多选，不勾选=智能路由
     getProviders()
       .then((r) => {
         const all = (r.data as AnyObj[]) || []
         const list = all.filter((p) => String(p.type ?? '').includes('image') && p.status !== 'disabled')
         setProviders(list.length ? list : all)
-        if (list.length && !providerId) setProviderId(String(list[0].id))
       })
       .catch(() => {})
     // ComfyUI 渲染器
@@ -235,15 +246,23 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // provider 切换 → 刷新模型列表
+  // 恢复已保存的面板状态（刷新/重开节点后）
   useEffect(() => {
-    const p = providers.find((x) => String(x.id) === providerId)
+    if (payload.category) setCategory(String(payload.category) as Category)
+    if (payload.selected) setSelected(String(payload.selected))
+    if (payload.desc) setDesc(String(payload.desc))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 主 provider 切换 → 刷新模型列表（仅单选时展示模型下拉）
+  useEffect(() => {
+    const p = providers.find((x) => String(x.id) === selProviders[0])
     const ms = (p?.models as unknown) || []
     const arr = Array.isArray(ms) ? ms.map((m) => String(m)) : []
     setModels(arr)
     if (arr.length && !model) setModel(arr[0])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerId, providers])
+  }, [selProviders, providers])
 
   // renderer 切换 → 拉 ComfyUI 能力（checkpoint）
   useEffect(() => {
@@ -271,14 +290,15 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
         system:
           '你是角色/道具/场景描述专家。根据现有描述与要求重写一段用于 AI 生图的详细描述（人物可含外貌/服装/表情/三视图等），直接输出结果，不要解释。',
         user: req,
-        profile_id: profileId || undefined,
+        profile_id: aiProfileId || undefined,
         scenario: 'general',
       })
       const out = res.ok ? String((res.data as AnyObj)?.result ?? '') : `重写失败：${JSON.stringify((res.data as AnyObj)?.error ?? '')}`
       setDesc(out)
+      patchObject(id, { desc: out }) // 持久化，避免刷新丢失
       setRewriteReq('')
     } catch (e) {
-      setDesc(`重写失败：${String(e)}`)
+      setErrMsg(`AI 重写异常：${String(e)}`)
     } finally {
       setRewriting(false)
     }
@@ -305,51 +325,56 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   const generate = async () => {
     if (!genPrompt.trim() || generating) return
     setGenerating(true)
+    setErrMsg('')
     try {
-      const params: Record<string, unknown> = {
-        prompt: genPrompt.trim(),
-        size: '1024x1024',
-      }
-      const res = await renderMedia({
-        kind: 'image',
-        render_mode: mode,
-        provider_id: mode === 'cloud' ? providerId : undefined,
-        model: mode === 'cloud' ? model : undefined,
-        renderer_id: mode === 'comfyui' ? rendererId : undefined,
-        params: {
-          ...params,
-          ...(mode === 'comfyui' && checkpoint ? { checkpoint } : {}),
-        },
-      })
-      const d = res.data as AnyObj
-      const imgs = (d?.images as { url?: string }[] | undefined) || []
-      const url = String(imgs?.[0]?.url || d?.url || d?.result || '')
-      if (res.ok && url) {
-        patchObject(id, {
-          url,
-          prompt: genPrompt.trim(),
-          model: mode === 'cloud' ? model : checkpoint || '',
+      const pids = mode === 'cloud' ? (selProviders.length ? selProviders : ['']) : ['']
+      let lastErr = ''
+      for (const pid of pids) {
+        const res = await renderMedia({
+          kind: 'image',
           render_mode: mode,
-          provider_id: providerId,
-          renderer_id: rendererId,
-          skill_ref: skillId,
-          kb_ref: kbId,
-          category,
-          selected,
-          desc,
+          provider_id: mode === 'cloud' ? pid : undefined,
+          model: mode === 'cloud' && pids.length === 1 ? model : undefined,
+          renderer_id: mode === 'comfyui' ? rendererId : undefined,
+          params: {
+            prompt: genPrompt.trim(),
+            size: '1024x1024',
+            ...(mode === 'comfyui' && checkpoint ? { checkpoint } : {}),
+          },
         })
-      } else {
-        // 失败信息展示到描述区
-        setDesc(`生成失败：${JSON.stringify(d?.error || d?.message || '未知错误')}`)
+        const d = res.data as AnyObj
+        const imgs = (d?.images as { url?: string }[] | undefined) || []
+        const url = String(imgs?.[0]?.url || d?.url || d?.result || '')
+        if (res.ok && url) {
+          patchObject(id, {
+            url,
+            prompt: genPrompt.trim(),
+            model: mode === 'cloud' ? (pids.length === 1 ? model : '') : checkpoint || '',
+            render_mode: mode,
+            provider_ids: mode === 'cloud' ? selProviders.join(',') : '',
+            renderer_id: rendererId,
+            skill_ref: skillId,
+            kb_ref: kbId,
+            category,
+            selected,
+            desc,
+          })
+          setErrMsg('')
+          return
+        }
+        lastErr = String(d?.error || d?.message || '未知错误')
+        const logs = (d?.logs as { message?: string }[] | undefined) || []
+        if (logs.length) lastErr += `｜${logs[logs.length - 1]?.message ?? ''}`
       }
+      setErrMsg(`生成失败：${lastErr}`)
     } catch (e) {
-      setDesc(`生成异常：${String(e)}`)
+      setErrMsg(`生成异常：${String(e)}`)
     } finally {
       setGenerating(false)
     }
   }
 
-  // 自动优选：云端路由
+  // 自动优选：云端路由（把智能路由选中的 provider 勾选上）
   const autoPick = async () => {
     if (mode !== 'cloud') return
     try {
@@ -357,10 +382,11 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
       const chain = ((res.data as AnyObj)?.chain as AnyObj[]) || []
       if (chain.length) {
         const p = String(chain[0].id || '')
-        setProviderId(p)
+        setSelProviders([p])
         const prov = providers.find((x) => String(x.id) === p)
         const arr = (prov?.models as unknown) || []
         if (Array.isArray(arr) && arr.length) setModel(String(arr[0]))
+        patchObject(id, { provider_ids: p })
       }
     } catch {
       /* 忽略 */
@@ -394,7 +420,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   )
 
   return (
-    <div className="space-y-2">
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto nowheel">
       {/* 生成结果 + 操作 */}
       {imageUrl && (
         <div className="relative overflow-hidden rounded-lg border border-edge bg-black/30">
@@ -474,29 +500,48 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
                 disabled={locked}
                 onChange={(e) => setDesc(e.target.value)}
               />
-              {/* AI 重写：可输入要求 */}
-              <div className="flex items-center gap-1.5">
-                <input
-                  className="nodrag h-8 min-w-0 flex-1 rounded-md border border-edge bg-input px-2 text-sm text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
-                  placeholder="AI 重写要求，如：人物三视图"
-                  value={rewriteReq}
+              {/* AI 重写：模型选择 + 可输入要求 */}
+              <div className="space-y-1.5">
+                <select
+                  className="nodrag h-7 w-full rounded-md border border-edge bg-input px-1 text-[11px] text-ink outline-none focus:border-brand-500"
+                  value={aiProfileId}
                   disabled={locked || rewriting}
-                  onChange={(e) => setRewriteReq(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      void rewrite()
-                    }
-                  }}
-                />
-                <button
-                  className="nodrag flex h-8 shrink-0 items-center gap-1 rounded-md bg-soft px-2.5 text-sm text-ink-2 transition hover:text-ink disabled:opacity-50"
-                  disabled={locked || rewriting || !desc.trim()}
-                  onClick={() => void rewrite()}
+                  onChange={(e) => { setAiProfileId(e.target.value); patchObject(id, { profile_id: e.target.value }) }}
+                  title="AI 重写使用的模型"
                 >
-                  {rewriting ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
-                  重写
-                </button>
+                  <option value="">默认模型</option>
+                  {profiles.map((p) =>
+                    p && p.id ? (
+                      <option key={p.id} value={p.id}>
+                        {String(p.name ?? p.id)}
+                        {p.model ? ` · ${p.model}` : ''}
+                      </option>
+                    ) : null,
+                  )}
+                </select>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    className="nodrag h-8 min-w-0 flex-1 rounded-md border border-edge bg-input px-2 text-sm text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
+                    placeholder="AI 重写要求，如：人物三视图"
+                    value={rewriteReq}
+                    disabled={locked || rewriting}
+                    onChange={(e) => setRewriteReq(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        void rewrite()
+                      }
+                    }}
+                  />
+                  <button
+                    className="nodrag flex h-8 shrink-0 items-center gap-1 rounded-md bg-soft px-2.5 text-sm text-ink-2 transition hover:text-ink disabled:opacity-50"
+                    disabled={locked || rewriting || !desc.trim()}
+                    onClick={() => void rewrite()}
+                  >
+                    {rewriting ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
+                    重写
+                  </button>
+                </div>
               </div>
             </>
           )}
@@ -552,22 +597,46 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
 
         {mode === 'cloud' ? (
           <>
-            <div className="flex items-center gap-1.5">
-              <select
-                className="nodrag h-7 min-w-0 flex-1 rounded-md border border-edge bg-input px-1 text-[11px] text-ink outline-none focus:border-brand-500"
-                value={providerId}
-                onChange={(e) => { setProviderId(e.target.value); patchObject(id, { provider_id: e.target.value }) }}
+            <div className="flex items-center justify-between gap-1.5">
+              <span className="text-[11px] text-ink-3">
+                云端 Provider（{selProviders.length ? `已选 ${selProviders.length} 个，按序尝试` : '未选=智能路由'}）
+              </span>
+              <button
+                className="nodrag shrink-0 rounded-md bg-soft px-2 py-1 text-[11px] text-ink-2 hover:text-ink"
+                onClick={() => void autoPick()}
+                title="智能路由选中的 Provider 自动勾选"
               >
-                <option value="">智能路由（自动优选）</option>
-                {providers.map((p) => (
-                  <option key={String(p.id)} value={String(p.id)}>{String(p.name || p.id)}</option>
-                ))}
-              </select>
-              <button className="nodrag shrink-0 rounded-md bg-soft px-2 py-1 text-[11px] text-ink-2 hover:text-ink" onClick={() => void autoPick()} title="自动优选 Provider">
                 优选
               </button>
             </div>
-            {providerId && (
+            <div className="flex flex-wrap gap-1">
+              {providers.map((p) => {
+                const pid = String(p.id)
+                const on = selProviders.includes(pid)
+                return (
+                  <label
+                    key={pid}
+                    className={`nodrag flex cursor-pointer items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] transition ${
+                      on ? 'border-brand-500 bg-brand-500/15 text-brand-300' : 'border-edge bg-soft text-ink-2 hover:text-ink'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="nodrag accent-brand-500"
+                      checked={on}
+                      disabled={locked}
+                      onChange={() => {
+                        const next = on ? selProviders.filter((x) => x !== pid) : [...selProviders, pid]
+                        setSelProviders(next)
+                        patchObject(id, { provider_ids: next.join(',') })
+                      }}
+                    />
+                    <span>{String(p.name || p.id)}</span>
+                  </label>
+                )
+              })}
+            </div>
+            {selProviders.length === 1 && (
               <select
                 className="nodrag h-7 w-full rounded-md border border-edge bg-input px-1 text-[11px] text-ink outline-none focus:border-brand-500"
                 value={model}
@@ -615,6 +684,9 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
           {generating ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
           {generating ? '生成中…' : '生成图片'}
         </button>
+        {errMsg && (
+          <div className="rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] leading-snug text-red-400">{errMsg}</div>
+        )}
       </div>
 
       {editOpen && imageUrl && (

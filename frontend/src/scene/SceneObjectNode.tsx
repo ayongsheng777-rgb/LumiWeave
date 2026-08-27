@@ -557,11 +557,11 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
 
   const onTitleChange = useCallback(
     (v: string) => {
-      // 优先写 name，其次 title，最后 text
-      const key = 'name' in payload ? 'name' : 'title' in payload ? 'title' : 'text'
+      // 优先写 name，其次 title；图片节点标题由面板自动识别（写 title），手动改也写 title
+      const key = 'name' in payload ? 'name' : 'title' in payload ? 'title' : objectType === 'image' ? 'title' : 'text'
       patchObject(id, { [key]: v })
     },
-    [id, patchObject, payload],
+    [id, patchObject, payload, objectType],
   )
 
   const title =
