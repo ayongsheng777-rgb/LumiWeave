@@ -32,10 +32,12 @@ async def _video_provider() -> dict | None:
 
 
 async def _chat_full(system: str, user: str, *, json_mode: bool = False,
-                     temperature: float = 0.4, max_tokens: int = 2000) -> Any:
+                     temperature: float = 0.4, max_tokens: int = 2000,
+                     model_profile: dict | None = None) -> Any:
     from app.ai.client import chat_full
     return await chat_full(system, user, temperature=temperature, max_tokens=max_tokens,
-                           json_mode=json_mode, scenario="scene_action", task_id="")
+                           json_mode=json_mode, scenario="scene_action", task_id="",
+                           model_profile=model_profile)
 
 
 async def _record_usage(scene_id: str, result: Any) -> None:
@@ -54,8 +56,8 @@ async def _record_usage(scene_id: str, result: Any) -> None:
         pass
 
 
-async def _llm_json(system: str, user: str) -> dict | None:
-    r = await _chat_full(system, user, json_mode=True)
+async def _llm_json(system: str, user: str, *, model_profile: dict | None = None) -> dict | None:
+    r = await _chat_full(system, user, json_mode=True, model_profile=model_profile)
     await _record_usage("", r)
     if not r.ok or not r.content:
         return None
@@ -68,13 +70,49 @@ async def _llm_json(system: str, user: str) -> dict | None:
         return None
 
 
-async def _llm_text(system: str, user: str) -> str | None:
+async def _llm_text(system: str, user: str, *, model_profile: dict | None = None) -> str | None:
     """注意：走 chat_full 拿 usage（P1-07），返回 content 字符串。"""
-    r = await _chat_full(system, user, temperature=0.5)
+    r = await _chat_full(system, user, temperature=0.5, model_profile=model_profile)
     await _record_usage("", r)
     if not r.ok or not r.content:
         return None
     return r.content.strip() or None
+
+
+async def _siliconflow_profile() -> dict | None:
+    """强制取「硅基流动」LLM 配置（剧本格式生成必须用它，deepseek 输出不可控）。
+
+    从 providers 表按名称匹配（硅基流动 / siliconflow），优先挑非 deepseek 的模型
+    （Qwen 等格式遵循更好），避免 fallback 又撞回同一个 DeepSeek。
+    返回明文 profile 供 chat_full 直连。
+    """
+    try:
+        rows = await db.fetch(
+            "SELECT id, name, endpoint, api_key, models FROM providers "
+            "WHERE type='llm' AND status='enabled'"
+        )
+        for r in rows:
+            name = str(r["name"] or "").lower()
+            if "硅基" in name or "siliconflow" in name:
+                models = r["models"]
+                if isinstance(models, str):
+                    try:
+                        models = json.loads(models)
+                    except Exception:  # noqa: BLE001
+                        models = []
+                if not models:
+                    continue
+                # 优先非 deepseek 模型（格式稳定），兜底用第一个
+                pick = next((m for m in models if "deepseek" not in str(m).lower()), models[0])
+                return {
+                    "api_key": r["api_key"],
+                    "base_url": str(r["endpoint"] or "").rstrip("/"),
+                    "model": str(pick),
+                    "provider": str(r["name"]),
+                }
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 
 def _label(obj_type: str) -> str:
@@ -103,11 +141,14 @@ async def _act_analyze_product(scene_id: str, obj_ids: list[str], params: dict) 
         if not obj:
             continue
         d = obj["data"]
-        desc = f"商品名：{d.get('name','')}；品牌：{d.get('brand','')}；类目：{d.get('category','')}；已有描述：{d.get('description','')}"
-        sys = "你是资深电商营销专家。分析商品并提炼 3-5 条核心卖点（中文，每条不超过 20 字），直接输出 JSON：{\"selling_points\":[...],\"marketing_plan\":\"一段话营销方案\"}。"
+        desc = (f"商品名：{d.get('name','')}；商品链接：{d.get('product_url','')}；SKU：{d.get('sku','')}；"
+                f"主图：{d.get('main_image','')}；已有信息：{d.get('info','')}")
+        sys = ("你是电商商品分析师。根据商品名称/链接/SKU/主图推断商品信息并提炼卖点，直接输出 JSON："
+               '{"info":"一段商品信息摘要（品类/材质/卖点/适合人群，80 字内）","selling_points":["3-5 条中文卖点，每条≤20字"],"marketing_plan":"一段话带货营销方案"}。')
         r = await _llm_json(sys, desc)
         if r:
-            patch = {"selling_points": r.get("selling_points", []), "marketing_plan": r.get("marketing_plan", "")}
+            patch = {"selling_points": r.get("selling_points", []), "marketing_plan": r.get("marketing_plan", ""),
+                     "info": r.get("info", "")}
             await service.update_object(oid, data={**d, **patch})
             made.append(oid)
     return {"ok": bool(made), "updated": made, "message": f"已分析 {len(made)} 个商品"}
@@ -236,7 +277,7 @@ async def _act_generate_video(scene_id: str, obj_ids: list[str], params: dict) -
 
 
 async def _act_llm_scene(scene_id: str, obj_ids: list[str], params: dict, action: str) -> dict:
-    """通用 LLM 生成类动作（剧情/人物/场景/分镜/批量文案等）。"""
+    """通用 LLM 生成类动作（人物/场景/分镜/批量文案等；generate_story 已独立实现）。"""
     sys_map = {
         "generate_story": "你是短剧编剧。根据商品/主题生成 1 段带货短剧剧情梗概（200 字内），输出 JSON：{\"title\":\"\",\"summary\":\"\",\"text\":\"\"}。",
         "generate_characters": "你是角色设计师。根据剧情生成 2-3 个角色，输出 JSON：{\"characters\":[{\"name\":\"\",\"role\":\"\",\"appearance\":\"\"}]}。",
@@ -276,6 +317,236 @@ async def _act_llm_scene(scene_id: str, obj_ids: list[str], params: dict, action
         created.append(nid)
     return {"ok": bool(created), "created": created,
             "message": f"生成 {len(created)} 个{_label(obj_type)}"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 剧本生成（剧本 Agent：格式约束 + 分镜/人物/道具/BGM/对白关键词，供节点索引）
+# ─────────────────────────────────────────────────────────────────────────────
+
+SCRIPT_FORMAT = """# 项目设定
+- 视频类型：（产品广告 / 剧情短剧 / 种草视频）
+- 总时长：（秒）
+- 目标受众：（人群画像）
+- 情感基调：
+- 叙事结构：
+
+# 出场元素
+- 人物：（姓名 / 性别 / 年龄 / 性格 / 造型）
+- 道具：（关键器物）
+- 分镜：（地点 / 时间）
+
+# 故事大纲
+（1-2 句话概括全片）
+
+# 情绪曲线
+（如 平静 → 紧张 → 反转 → 温暖，标注时间点）
+
+# 分镜剧本
+按总时长拆成 3-5 个分镜，每个分镜必须包含，可拆多个镜头：
+## 分镜X：（地点，时间）
+- 分镜目标：
+- 情绪基调：
+- 背景音乐：（每个分镜必须单独编排专属 BGM，按该分镜的场景与情绪基调描述音乐类型/节奏/风格，如"轻松俏皮的潜行BGM"；禁止省略、禁止写"无"、禁止照抄上一分镜）
+- 关键画面（每行一个镜头，镜头编号 X-1、X-2...）：
+  - 镜头X-1：（镜头级视觉描述，含景别/动作特写）
+  - 镜头X-2：（镜头级视觉描述，含景别/动作特写）
+- 对白 / 旁白：
+  - 人物A（情绪）："台词"
+  - （环境音 / 音效）
+- 时长：约 X 秒（所有分镜时长之和 ≈ 总时长）
+
+# 整体节奏与风格说明
+（节奏/转场/BGM/色调/镜头语言）
+
+# 核心信息点对应
+（把商品卖点/品牌主张逐一对应到具体分镜）"""
+
+
+def _parse_script(script: str) -> dict:
+    """把规范剧本 markdown 解析为结构化数据（供前端高亮展示 + 图片/音频/视频节点索引）。
+
+    返回：
+      characters: 人物名列表（出场元素）
+      props:      道具名列表
+      shots:      分镜（原场景）列表，每项含 no/location/time/goal/mood/bgm/duration/
+                  shots(镜头[{no,desc}])/dialogue([{speaker,line}])
+    """
+    parsed: dict = {"characters": [], "props": [], "shots": []}
+    if not script:
+        return parsed
+    # 出场元素：人物 / 道具
+    m = re.search(r"# 出场元素(.*?)(?=\n# )", script, re.S)
+    if m:
+        block = m.group(1)
+        mc = re.search(r"-\s*人物[：:]\s*\n((?:\s+-\s*.*\n?)+)", block)
+        if mc:
+            for line in mc.group(1).splitlines():
+                line = line.strip().lstrip("-").strip()
+                if line:
+                    name = re.split(r"[（(]", line)[0].strip()
+                    if name and name not in parsed["characters"]:
+                        parsed["characters"].append(name)
+        mp = re.search(r"-\s*道具[：:]\s*(.+)", block)
+        if mp:
+            raw = mp.group(1)
+            names = [x.strip() for x in re.split(r"[、,，]", raw) if x.strip()]
+            parsed["props"] = names
+    # 分镜块：## 分镜N：（地点，时间）
+    for m in re.finditer(r"##\s*分镜(\d+)[：:]?\s*（?([^）\n]*)）?", script):
+        no = int(m.group(1))
+        head = m.group(2).strip()
+        loc, tm = "", ""
+        mm = re.search(r"(.+?)[,，]\s*(.+)", head)
+        if mm:
+            loc, tm = mm.group(1).strip(), mm.group(2).strip()
+        elif head:
+            loc = head
+        start = m.end()
+        nxt = re.search(r"\n##\s*分镜", script[start:])
+        end = start + nxt.start() if nxt else len(script)
+        block = script[start:end]
+        shot: dict = {"no": no, "location": loc, "time": tm, "goal": "", "mood": "", "bgm": "",
+                      "duration": "", "shots": [], "dialogue": []}
+        g = re.search(r"-?\s*分镜目标[：:]\s*(.+)", block)
+        if g:
+            shot["goal"] = g.group(1).strip()
+        g = re.search(r"-?\s*情绪基调[：:]\s*(.+)", block)
+        if g:
+            shot["mood"] = g.group(1).strip()
+        g = re.search(r"-?\s*背景音乐[：:]\s*(.+)", block)
+        if g:
+            shot["bgm"] = g.group(1).strip()
+        g = re.search(r"-?\s*时长[：:]\s*约?\s*([\d.]+)\s*秒", block)
+        if g:
+            shot["duration"] = g.group(1).strip()
+        # 关键画面 → 镜头
+        gm = re.search(r"-?\s*关键画面.*?\n((?:.*\n)*?)(?=\n?\s*-?\s*对白|$)", block, re.S)
+        if gm:
+            for line in gm.group(1).splitlines():
+                line = line.strip()
+                mm2 = re.match(r"[-*]\s*镜头([\d\-]+)[：:]\s*(.+)", line)
+                if mm2:
+                    shot["shots"].append({"no": mm2.group(1).strip(), "desc": mm2.group(2).strip()})
+                elif line.startswith("-") or line.startswith("*"):
+                    d = line.lstrip("-* ").strip()
+                    if d and not d.startswith("镜头"):
+                        mm3 = re.match(r"镜头([\d\-]+)[：:]\s*(.+)", d)
+                        if mm3:
+                            shot["shots"].append({"no": mm3.group(1).strip(), "desc": mm3.group(2).strip()})
+        # 对白 / 旁白
+        gd = re.search(r"-?\s*对白\s*/\s*旁白[：:]\s*\n((?:.*\n)*?)(?=\n?-?\s*时长|$)", block, re.S)
+        if gd:
+            for line in gd.group(1).splitlines():
+                line = line.strip()
+                if not line or line.startswith("（") or line.startswith("("):
+                    continue
+                line = line.lstrip("-* ").strip()
+                # 排除字段行误入对白（时长/背景音乐等）
+                if re.match(r"^(时长|背景音乐|分镜目标|情绪基调|关键画面)[：:]", line):
+                    continue
+                mm4 = re.match(r"(.+?)[（(]([^）)]*)[）)]\s*[：:]\s*[\"“]?(.+?)[\"”]?\s*$", line)
+                if mm4:
+                    speaker = mm4.group(1).strip()
+                    if speaker not in parsed["characters"]:
+                        parsed["characters"].append(speaker)
+                    shot["dialogue"].append({"speaker": speaker, "emotion": mm4.group(2).strip(), "line": mm4.group(3).strip()})
+                else:
+                    mm5 = re.match(r"(.+?)[：:]\s*[\"“]?(.+?)[\"”]?\s*$", line)
+                    if mm5:
+                        speaker = mm5.group(1).strip()
+                        if speaker not in parsed["characters"]:
+                            parsed["characters"].append(speaker)
+                        shot["dialogue"].append({"speaker": speaker, "emotion": "", "line": mm5.group(2).strip()})
+        parsed["shots"].append(shot)
+    return parsed
+
+
+async def _act_generate_story(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """围绕商品为主角生成规范化带货剧本（剧本 Agent：格式约束在系统提示词，
+    模型用前端选中的 profile——任何模型都按 SCRIPT_FORMAT 输出）。
+
+    商品上下文（链接/SKU/主图/信息）注入提示词 → AI 按链接/SKU/图片搜集并组织商品信息，
+    以商品为主角编带货短剧。结果写回 story 的 script（全文）+ parsed（结构化，供节点索引）。
+    """
+    # 1) 商品上下文：场景内第一个商品（或用户选中对象是商品）
+    product_ctx = ""
+    for o in await service.list_objects(scene_id):
+        if o["object_type"] == "product":
+            d = o["data"]
+            product_ctx = (f"商品名称：{d.get('name','')}\n商品链接：{d.get('product_url','')}\n"
+                           f"SKU：{d.get('sku','')}\n主图：{d.get('main_image','')}\n"
+                           f"商品信息：{d.get('info','') or d.get('marketing_plan','')}")
+            break
+    # 2) 剧情节点已有文本（用户想法）
+    story_text = ""
+    for oid in (obj_ids or []):
+        obj = await service.get_object(oid)
+        if obj and obj["object_type"] == "story":
+            story_text = obj["data"].get("text", "") or obj["data"].get("summary", "")
+            break
+    sys = ("你是顶级带货短剧编剧。围绕商品作为主角创作完整剧本。"
+           f"严格按以下 Markdown 结构输出（不要 JSON、不要开场白、不要额外解释）：\n\n{SCRIPT_FORMAT}")
+    user = f"商品信息（请结合链接/SKU/主图/信息组织商品背景）：\n{product_ctx or '（无商品，创作普通剧情短剧）'}"
+    if story_text:
+        user += f"\n\n用户已有剧情想法：\n{story_text}"
+    extra = str(params.get("prompt") or "").strip()
+    if extra:
+        user += f"\n\n额外要求：{extra}"
+    # 模型：用前端选中的 profile（剧本 Agent 的格式约束在系统提示词，任何模型按格式输出）
+    prof = None
+    pid = str(params.get("profile_id") or "").strip()
+    if pid:
+        try:
+            from app.ai import config as ai_config
+            prof = ai_config.get_profile(pid)
+        except Exception:  # noqa: BLE001
+            prof = None
+    r = await _chat_full(sys, user, temperature=0.7, max_tokens=6000, model_profile=prof)
+    await _record_usage("", r)
+    if not r.ok or not r.content:
+        return {"ok": False, "error": "剧本生成失败（请检查 AI 配置 / 所选模型）"}
+    script = r.content.strip()
+    # 2.5) 格式校验：解析出分镜 <3 说明模型没按模版输出（DeepSeek 常见），
+    #      自动换「格式最稳的可用模型」（硅基流动非 deepseek，如 Qwen）重试一次
+    parsed = _parse_script(script)
+    if len(parsed["shots"]) < 3:
+        fb = await _siliconflow_profile()
+        if fb and (prof is None or str(fb.get("model")) != str((prof or {}).get("model"))):
+            r2 = await _chat_full(sys, user, temperature=0.4, max_tokens=6000, model_profile=fb)
+            await _record_usage("", r2)
+            if r2.ok and r2.content:
+                script2 = r2.content.strip()
+                parsed2 = _parse_script(script2)
+                if len(parsed2["shots"]) > len(parsed["shots"]):
+                    script, parsed = script2, parsed2
+    # 3) 提取标题/梗概（分镜/人物/道具/BGM/对白已由 _parse_script 解析）
+    title = ""
+    summary = ""
+    m = re.search(r"# 故事大纲\s*\n(.*?)(?=\n# )", script, re.S)
+    if m:
+        summary = m.group(1).strip()
+    m2 = re.search(r"# 项目设定\s*\n- 视频类型：(.+)", script)
+    if m2:
+        title = f"{m2.group(1).strip()}·商品短剧"
+    # 4) 写回/创建 story 对象
+    targets = [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] == "story"]
+    if targets:
+        oid = targets[0]
+        obj = await service.get_object(oid)
+        await service.update_object(oid, data={**obj["data"], "script": script, "parsed": parsed,
+                                               "text": summary or script[:500],
+                                               "summary": summary, "title": title or obj["data"].get("title", "")})
+        created = [oid]
+    else:
+        existing = await service.list_objects(scene_id)
+        base_y = max([float(o.get("y") or 0) + float(o.get("height") or 0) for o in existing] or [0]) + 80
+        nid = await service.create_object(scene_id, "story", x=320, y=base_y, width=420, height=520,
+                                          data={"title": title, "summary": summary, "text": summary or script[:500],
+                                                "script": script, "parsed": parsed})
+        created = [nid]
+    return {"ok": True, "created": created, "script": script,
+            "summary": summary or "", "parsed": parsed,
+            "message": f"剧本生成完成 · 解析出 {len(parsed['shots'])} 个分镜 / {len(parsed['characters'])} 个人物 / {len(parsed['props'])} 个道具"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -653,7 +924,9 @@ async def _run_action(scene_id: str, action: str, object_ids: list[str] | None =
             return await _act_analyze_shot(scene_id, obj_ids, params)
         if action == "generate_video":
             return await _act_generate_video(scene_id, obj_ids, params)
-        if action in ("generate_story", "generate_characters", "generate_scenes", "generate_storyboard"):
+        if action == "generate_story":
+            return await _act_generate_story(scene_id, obj_ids, params)
+        if action in ("generate_characters", "generate_scenes", "generate_storyboard"):
             return await _act_llm_scene(scene_id, obj_ids, params, action)
         if action == "batch_generate":
             # 真异步批量（§54 / P2-06）：后台执行 + tasks 表进度，立即返回 task_id
