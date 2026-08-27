@@ -489,6 +489,30 @@ async def _act_generate_story(scene_id: str, obj_ids: list[str], params: dict) -
     user = f"商品信息（请结合链接/SKU/主图/信息组织商品背景）：\n{product_ctx or '（无商品，创作普通剧情短剧）'}"
     if story_text:
         user += f"\n\n用户已有剧情想法：\n{story_text}"
+    # 总时长 / 分镜个数：从节点输入框取值，注入硬约束（前端 actionRoute 传 duration/shotCount）
+    timing_ctx = ""
+    try:
+        dur = float(params.get("duration") or 0)
+    except (TypeError, ValueError):
+        dur = 0
+    try:
+        cnt = int(params.get("shotCount") or 0)
+    except (TypeError, ValueError):
+        cnt = 0
+    if dur > 0 or cnt > 0:
+        timing_ctx = "【时长与分镜硬约束（必须严格执行）】"
+        if dur > 0:
+            timing_ctx += (f" 总时长必须严格为 {dur:.0f} 秒，"
+                           f"所有分镜时长之和必须等于 {dur:.0f} 秒（误差不超过 ±2 秒）")
+        if cnt > 0:
+            timing_ctx += f" 分镜个数必须严格为 {cnt} 个"
+            if dur > 0:
+                timing_ctx += f"，每段约 {dur / cnt:.1f} 秒"
+            timing_ctx += "，禁止多拆或合并"
+        if cnt > 0:
+            timing_ctx += f"；每个分镜的时长都必须标注"
+    if timing_ctx:
+        user += f"\n\n{timing_ctx}"
     extra = str(params.get("prompt") or "").strip()
     if extra:
         user += f"\n\n额外要求：{extra}"
@@ -506,10 +530,33 @@ async def _act_generate_story(scene_id: str, obj_ids: list[str], params: dict) -
     if not r.ok or not r.content:
         return {"ok": False, "error": "剧本生成失败（请检查 AI 配置 / 所选模型）"}
     script = r.content.strip()
-    # 2.5) 格式校验：解析出分镜 <3 说明模型没按模版输出（DeepSeek 常见），
-    #      自动换「格式最稳的可用模型」（硅基流动非 deepseek，如 Qwen）重试一次
+    # 2.5) 格式校验：分镜 <3、或用户给定分镜数/总时长而结果不匹配（DeepSeek 常见），
+    #      判定"没按模版"→ 自动换「格式最稳的可用模型」（硅基流动非 deepseek）重试一次
     parsed = _parse_script(script)
-    if len(parsed["shots"]) < 3:
+
+    def _durations_total(shots: list[dict]) -> float:
+        """分镜时长总和（解析失败/缺失计 0）。"""
+        total = 0.0
+        for sh in shots:
+            try:
+                total += float(sh.get("duration") or 0)
+            except (TypeError, ValueError):
+                pass
+        return total
+
+    def _timing_ok(shots: list[dict]) -> bool:
+        if cnt > 0 and not (cnt - 1 <= len(shots) <= cnt + 1):
+            return False
+        if dur > 0:
+            total = _durations_total(shots)
+            # 各分镜都标了时长才校验总和（防止只缺一两个导致误判）
+            marked = sum(1 for sh in shots if sh.get("duration"))
+            if marked >= len(shots) and len(shots) > 0:
+                if abs(total - dur) > max(4.0, dur * 0.2):
+                    return False
+        return True
+
+    if len(parsed["shots"]) < 3 or not _timing_ok(parsed["shots"]):
         fb = await _siliconflow_profile()
         if fb and (prof is None or str(fb.get("model")) != str((prof or {}).get("model"))):
             r2 = await _chat_full(sys, user, temperature=0.4, max_tokens=6000, model_profile=fb)
@@ -517,7 +564,9 @@ async def _act_generate_story(scene_id: str, obj_ids: list[str], params: dict) -
             if r2.ok and r2.content:
                 script2 = r2.content.strip()
                 parsed2 = _parse_script(script2)
-                if len(parsed2["shots"]) > len(parsed["shots"]):
+                if (len(parsed2["shots"]) > len(parsed["shots"])
+                        or (len(parsed2["shots"]) >= 3 and not _timing_ok(parsed["shots"])
+                            and _timing_ok(parsed2["shots"]))):
                     script, parsed = script2, parsed2
     # 3) 提取标题/梗概（分镜/人物/道具/BGM/对白已由 _parse_script 解析）
     title = ""
