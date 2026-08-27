@@ -18,7 +18,7 @@ export function ImageNode({ id, data, selected }: NodeProps) {
   const [providers, setProviders] = useState<{ id: string; name: string; models?: string[]; status?: string }[]>([])
 
   useEffect(() => {
-    getModelChoices().then((r) => {
+    getModelChoices('image').then((r) => {
       if (r.ok) setProviders((r.data?.providers || []))
     })
   }, [])

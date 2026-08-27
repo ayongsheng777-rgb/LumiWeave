@@ -39,7 +39,7 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
   const [renderers, setRenderers] = useState<RendererInfo[]>([])
 
   useEffect(() => {
-    getModelChoices().then((r) => {
+    getModelChoices('image').then((r) => {
       if (r.ok) setProviders((r.data?.providers || []))
     })
     getRenderers().then((r) => {

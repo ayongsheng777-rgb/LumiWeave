@@ -186,6 +186,8 @@ async def upsert_model(request: Request):
         "user_agent": str(data.get("user_agent") or ""),
         "description": str(data.get("description") or ""),
         "scenario": str(data.get("scenario") or "general"),
+        # 适用场景分类（多选）：prompt/image/video/audio/kb/skills/general；空=通用
+        "scenes": data.get("scenes") if isinstance(data.get("scenes"), list) else [],
     }
     hit = next((m for m in CUSTOM_MODELS if m.get("id") == mid), None)
     if hit:

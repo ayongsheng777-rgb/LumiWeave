@@ -13,20 +13,23 @@ interface Profile {
   provider: string
   description: string
   scenario: string
+  scenes?: string[]
 }
 
 const inputCls =
   'w-full rounded-lg border border-edge bg-input px-2.5 py-1.5 text-sm text-ink outline-none transition focus:border-brand-500 placeholder:text-ink-3'
 
-const EMPTY_FORM = { id: '', name: '', model: '', base_url: '', api_key: '', proxy: '', description: '', scenario: 'general' }
+const EMPTY_FORM = { id: '', name: '', model: '', base_url: '', api_key: '', proxy: '', description: '', scenario: 'general', scenes: [] as string[] }
 
-const SCENARIOS: { key: string; label: string }[] = [
+/** 适用场景分类（多选）：节点生成时按场景过滤可调用的模型 */
+const SCENES: { key: string; label: string }[] = [
+  { key: 'prompt', label: '提示词生成' },
+  { key: 'image', label: '图片生成' },
+  { key: 'video', label: '视频生成' },
+  { key: 'audio', label: '音频生成' },
+  { key: 'kb', label: '知识库' },
+  { key: 'skills', label: '技能库' },
   { key: 'general', label: '通用' },
-  { key: 'chat', label: '对话助手' },
-  { key: 'copywriting', label: '文案创作' },
-  { key: 'video_prompt', label: '视频提示词' },
-  { key: 'image_prompt', label: '图片提示词' },
-  { key: 'kb', label: '知识问答' },
 ]
 
 export default function ModelPanel() {
@@ -58,7 +61,8 @@ export default function ModelPanel() {
   const applyPreset = (key: string) => {
     const p = PLATFORM_PRESETS.find((x) => x.key === key)
     if (!p) return
-    setForm((f) => ({ ...f, id: p.key, name: p.name, model: p.model, base_url: p.baseUrl }))
+    // 一键匹配：平台预设自动填好地址/模型 + 默认适用场景；没有对应的留空
+    setForm((f) => ({ ...f, id: p.key, name: p.name, model: p.model, base_url: p.baseUrl, scenes: p.scenes || [] }))
   }
 
   const save = async () => {
@@ -82,7 +86,11 @@ export default function ModelPanel() {
   }
 
   const edit = (p: Profile) => {
-    setForm({ id: p.id, name: p.name, model: p.model, base_url: p.base_url, api_key: p.api_key, proxy: p.proxy, description: p.description || '', scenario: p.scenario || 'general' })
+    setForm({
+      id: p.id, name: p.name, model: p.model, base_url: p.base_url, api_key: p.api_key,
+      proxy: p.proxy, description: p.description || '', scenario: p.scenario || 'general',
+      scenes: Array.isArray(p.scenes) ? p.scenes : [],
+    })
     setEditing(true)
     setShowForm(true)
     setMessage('')
@@ -219,12 +227,33 @@ export default function ModelPanel() {
               <input className={inputCls} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="例如：通用中文对话，性价比高" />
             </label>
             <label className="col-span-2 block">
-              <span className="mb-1 block text-[11px] text-ink-2">适用场景</span>
-              <select className={inputCls} value={form.scenario} onChange={(e) => setForm({ ...form, scenario: e.target.value })}>
-                {SCENARIOS.map((s) => (
-                  <option key={s.key} value={s.key}>{s.label}</option>
-                ))}
-              </select>
+              <span className="mb-1 block text-[11px] text-ink-2">
+                适用场景（多选，节点生成时按场景匹配可调用模型；不选=通用）
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {SCENES.map((s) => {
+                  const on = form.scenes.includes(s.key)
+                  return (
+                    <label
+                      key={s.key}
+                      className={`nodrag flex cursor-pointer items-center gap-1 rounded-lg border px-2 py-1 text-[11px] transition ${
+                        on ? 'border-brand-500 bg-brand-500/15 text-brand-300' : 'border-edge bg-soft text-ink-2 hover:text-ink'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="nodrag accent-brand-500"
+                        checked={on}
+                        onChange={() => {
+                          const next = on ? form.scenes.filter((k) => k !== s.key) : [...form.scenes, s.key]
+                          setForm({ ...form, scenes: next })
+                        }}
+                      />
+                      {s.label}
+                    </label>
+                  )
+                })}
+              </div>
             </label>
           </div>
           <div className="mt-3 flex gap-2">
@@ -278,7 +307,14 @@ export default function ModelPanel() {
               <span>模型：{p.model}</span>
               <span>地址：{p.base_url || '—'}</span>
               <span>Key：{p.api_key || '未配置'}</span>
-              <span>场景：{SCENARIOS.find((s) => s.key === p.scenario)?.label || p.scenario || '通用'}</span>
+              <span className="flex items-center gap-1">
+                场景：
+                {(Array.isArray(p.scenes) && p.scenes.length ? p.scenes : ['general']).map((k) => (
+                  <span key={k} className="rounded bg-soft px-1.5 py-0.5 text-[10px] text-ink-2">
+                    {SCENES.find((s) => s.key === k)?.label || k}
+                  </span>
+                ))}
+              </span>
             </div>
             {p.description && <div className="mt-1 text-[11px] text-ink-3">说明：{p.description}</div>}
           </div>

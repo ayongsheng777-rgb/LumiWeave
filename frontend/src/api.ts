@@ -477,12 +477,20 @@ export async function getProviders() {
   return request('GET', '/providers')
 }
 
-/** 模型库 → 生成方式候选列表（id=模型库 profile id，后端渲染时直连；替代商业接口 providers 预设） */
-export async function getModelChoices() {
+/** 模型库 → 生成方式候选列表（id=模型库 profile id，后端渲染时直连；替代商业接口 providers 预设）
+ *  scene 传 'image'|'video'|'audio'|'prompt'|'kb'|'skills' 时按「适用场景」过滤；不传=全部（含通用）。 */
+export async function getModelChoices(scene?: string) {
   const res = await getProfiles()
-  const list =
-    (((res.data as { profiles?: { id: string; name?: string; model?: string }[] } | undefined)?.profiles) || [])
-      .filter((p) => p && p.id && p.model)
+  const all =
+    (((res.data as { profiles?: { id: string; name?: string; model?: string; scenes?: string[] }[] } | undefined)?.profiles) ||
+      []).filter((p) => p && p.id && p.model)
+  const list = scene
+    ? all.filter((p) => {
+        const s = p.scenes
+        if (!s || !s.length) return true // 未设场景=通用
+        return s.includes('general') || s.includes(scene)
+      })
+    : all
   return {
     ok: res.ok,
     data: {

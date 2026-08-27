@@ -75,7 +75,7 @@ export function ShotGenerator({ shot, index, totalShots, nodeId, nodeLabel, onUp
   const activeProviders = outputType === 'video' ? videoProviders : imageProviders
 
   useEffect(() => {
-    getModelChoices().then((res) => {
+    getModelChoices('image').then((res) => {
       if (res.ok) {
         const all = (res.data.providers || []) as (ProviderInfo & { type?: string })[]
         setImageProviders(all.filter((p) => p.type === 'image'))

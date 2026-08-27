@@ -43,6 +43,13 @@ function isStoryNode(n: AnyObj | null | undefined): boolean {
   return t === 'story' || ot === 'story'
 }
 
+/** 模型库「适用场景」匹配：未设场景=通用，或含 general/目标场景 */
+function fitsScene(p: { scenes?: string[] }, need: string): boolean {
+  const s = p.scenes
+  if (!s || !s.length) return true
+  return s.includes('general') || s.includes(need)
+}
+
 /** 取「出场元素」段内某字段区间（startField 到任一 endField 之前），找不到返回 '' */
 function sectionOf(script: string, startField: string, endFields: string[]): string {
   const m = script.match(/# 出场元素([\s\S]*?)(?=\n# )/)
@@ -122,17 +129,43 @@ function parsePropsList(script: string): string[] {
   return out
 }
 
-/** 从剧本 script 实时解析「分镜」列表（parsed.shots 缺失时兜底，兼容不同剧本结构） */
+/** 从剧本 script 实时解析「分镜」完整信息（标题/目标/情绪/BGM/时长/镜头；括号内逗号不拆） */
 function parseShotsFromScript(script: string): ParsedShot[] {
   const shots: ParsedShot[] = []
   if (!script) return shots
-  const re = /##\s*分镜(\d+)[：:]?\s*（?([^）\n]*)）?/g
+  const re = /##\s*分镜(\d+)[：:]?\s*(.*)/g
   let m: RegExpExecArray | null
   while ((m = re.exec(script))) {
     const no = parseInt(m[1], 10)
-    const head = (m[2] || '').trim()
-    const [loc, tm] = head.split(/[,，]/).map((x) => x.trim())
-    shots.push({ no, location: loc || '', time: tm || '', goal: '', mood: '', bgm: '', duration: '', shots: [], dialogue: [] })
+    const parts = splitTopLevel((m[2] || '').trim()) // 括号内逗号不拆
+    const loc = (parts[0] || '').trim()
+    const tm = parts.slice(1).join('，').trim()
+    const start = m.index + m[0].length
+    const nxt = script.slice(start).match(/\n##\s*分镜/)
+    const block = nxt ? script.slice(start, start + (nxt.index ?? script.length)) : script.slice(start)
+    const get = (label: string) => {
+      const g = block.match(new RegExp(`-?\\s*${label}[：:]\\s*([^\\n]+)`))
+      return g ? g[1].trim() : ''
+    }
+    const shotArr: { no: string; desc: string }[] = []
+    const gm = block.match(/-?\s*关键画面[\s\S]*?\n((?:.*\n)*?)(?=\n?\s*-?\s*对白|$)/)
+    if (gm) {
+      for (const line of gm[1].split('\n')) {
+        const mm = line.match(/[-*]\s*镜头([\d\-]+)[：:]\s*(.+)/)
+        if (mm) shotArr.push({ no: mm[1].trim(), desc: mm[2].trim() })
+      }
+    }
+    shots.push({
+      no,
+      location: loc,
+      time: tm,
+      goal: get('分镜目标'),
+      mood: get('情绪基调'),
+      bgm: get('背景音乐'),
+      duration: get('时长'),
+      shots: shotArr,
+      dialogue: [],
+    })
   }
   return shots
 }
@@ -172,9 +205,10 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   const parsed: ParsedScript = (storyPayload.parsed as ParsedScript) || EMPTY_PARSED
   const charDescs = useMemo(() => parseCharacters(script), [script])
   const propList = useMemo(() => parsePropsList(script), [script])
+  // 分镜：优先前端实时解析（完整+括号不截断），无剧本才回退后端 parsed
   const mergedShots = useMemo(() => {
-    if (parsed.shots && parsed.shots.length) return parsed.shots
-    return parseShotsFromScript(script)
+    if (script) return parseShotsFromScript(script)
+    return parsed.shots || []
   }, [parsed, script])
 
   // ── 面板状态 ────────────────────────────────────────────────
@@ -183,7 +217,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   const [desc, setDesc] = useState('')
   const [rewriteReq, setRewriteReq] = useState('')
   const [rewriting, setRewriting] = useState(false)
-  const [profiles, setProfiles] = useState<{ id: string; name?: string; model?: string }[]>([])
+  const [profiles, setProfiles] = useState<{ id: string; name?: string; model?: string; scenes?: string[] }[]>([])
   const [aiProfileId, setAiProfileId] = useState(String(payload.profile_id ?? ''))
   const [skills, setSkills] = useState<AnyObj[]>([])
   const [skillId, setSkillId] = useState(String(payload.skill_ref ?? ''))
@@ -201,18 +235,23 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   const [generating, setGenerating] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
 
-  // ── 选项列表（按类别，合并剧本解析 + 手动添加）────────────────
+  // ── 选项列表：只用前端实时解析（干净，过滤后端脏数据）；无剧本回退 parsed；加手动项 ──
   const [manualItems, setManualItems] = useState<string[]>([])
   const [manualInput, setManualInput] = useState('')
   const options = useMemo(() => {
     if (category === '人物') {
-      return Array.from(new Set([...(parsed.characters || []), ...Object.keys(charDescs), ...manualItems]))
+      const names = script ? Object.keys(charDescs) : parsed.characters || []
+      return Array.from(new Set([...names, ...manualItems]))
     }
     if (category === '道具') {
-      return Array.from(new Set([...(parsed.props || []), ...propList, ...manualItems]))
+      const names = script ? propList : parsed.props || []
+      return Array.from(new Set([...names, ...manualItems]))
     }
-    return Array.from(new Set([...mergedShots.map((s) => `分镜${s.no} ${s.location || ''}`.trim()), ...manualItems]))
-  }, [category, parsed, charDescs, propList, mergedShots, manualItems])
+    const shots = script ? mergedShots : parsed.shots || []
+    return Array.from(
+      new Set([...shots.map((s) => `分镜${s.no}：${s.location}${s.time ? `，${s.time}` : ''}`.trim()), ...manualItems]),
+    )
+  }, [category, script, charDescs, propList, mergedShots, parsed, manualItems])
 
   // 类别切换 → 重置选中与描述
   const switchCategory = (c: Category) => {
@@ -226,7 +265,8 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     setSelected(val)
     patchObject(id, { purpose: category, title: `${category}·${val}` })
     if (category === '场景') {
-      const no = parseInt(val.replace(/^分镜\s*/, ''), 10)
+      const nm = val.match(/^分镜(\d+)/)
+      const no = nm ? parseInt(nm[1], 10) : NaN
       const s = mergedShots.find((x) => x.no === no)
       setDesc(s ? shotDesc(s) : val)
     } else {
@@ -246,10 +286,11 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   }
 
   // ── 数据加载 ────────────────────────────────────────────────
+  // 数据加载
   useEffect(() => {
     getProfiles()
       .then((r) => {
-        const list = ((r.data as AnyObj)?.profiles as { id: string; name?: string; model?: string }[]) || []
+        const list = ((r.data as AnyObj)?.profiles as { id: string; name?: string; model?: string; scenes?: string[] }[]) || []
         setProfiles(list)
         if (list.length && !aiProfileId) setAiProfileId(list[0].id)
       })
@@ -514,7 +555,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
                   title="AI 重写使用的模型"
                 >
                   <option value="">默认模型</option>
-                  {profiles.map((p) =>
+                  {profiles.filter((p) => fitsScene(p, 'prompt')).map((p) =>
                     p && p.id ? (
                       <option key={p.id} value={p.id}>
                         {String(p.name ?? p.id)}
@@ -611,7 +652,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
                 title="选择模型库中的模型（直连，不使用商业接口预设）"
               >
                 <option value="">默认模型（系统自动选）</option>
-                {profiles.map((p) =>
+                {profiles.filter((p) => fitsScene(p, 'image')).map((p) =>
                   p && p.id ? (
                     <option key={p.id} value={p.id}>
                       {String(p.name ?? p.id)}
