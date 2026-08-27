@@ -3,7 +3,6 @@ import { logout } from '../api'
 import ChatWorkspace from './ChatWorkspace'
 import KnowledgePanel from './KnowledgePanel'
 import ModelPanel from './ModelPanel'
-import ProviderPanel from './ProviderPanel'
 import AssetPanel from './AssetPanel'
 import RendererPanel from './RendererPanel'
 import SkillPanel from './SkillPanel'
@@ -13,7 +12,7 @@ interface DashboardProps {
   onLogout: () => void
 }
 
-type Tab = 'chat' | 'skills' | 'renderers' | 'kb' | 'model' | 'token' | 'providers' | 'assets'
+type Tab = 'chat' | 'skills' | 'renderers' | 'kb' | 'model' | 'token' | 'assets'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'chat', label: '画布' },
@@ -21,7 +20,6 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'renderers', label: '出图' },
   { key: 'kb', label: '知识库' },
   { key: 'model', label: '模型' },
-  { key: 'providers', label: '接口' },
   { key: 'assets', label: '素材' },
   { key: 'token', label: '计费' },
 ]
@@ -62,7 +60,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         {tab === 'renderers' && <RendererPanel />}
         {tab === 'kb' && <KnowledgePanel />}
         {tab === 'model' && <ModelPanel />}
-        {tab === 'providers' && <ProviderPanel />}
         {tab === 'assets' && <AssetPanel />}
         {tab === 'token' && <TokenPanel />}
       </main>

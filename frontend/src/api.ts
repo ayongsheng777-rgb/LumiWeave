@@ -478,10 +478,6 @@ export async function canvasToWorkflow(projectId: string, name: string) {
   return request('POST', '/canvas/to-workflow', { project_id: projectId, name })
 }
 
-export async function getProviders() {
-  return request('GET', '/providers')
-}
-
 /** 模型库 → 生成方式候选列表（id=模型库 profile id，后端渲染时直连；替代商业接口 providers 预设）
  *  scene 传 'image'|'video'|'audio'|'prompt'|'kb'|'skills' 时按「适用场景」过滤；不传=全部（含通用）。 */
 export async function getModelChoices(scene?: string) {
@@ -507,18 +503,6 @@ export async function getModelChoices(scene?: string) {
       })),
     },
   }
-}
-
-export async function upsertProvider(payload: Record<string, unknown>) {
-  return request('POST', '/providers', payload)
-}
-
-export async function deleteProvider(pid: string) {
-  return request('DELETE', `/providers/${encodeURIComponent(pid)}`)
-}
-
-export async function routeProviders(payload: Record<string, unknown>) {
-  return request('POST', '/providers/route', payload)
 }
 
 export async function getAssets(type?: string) {
