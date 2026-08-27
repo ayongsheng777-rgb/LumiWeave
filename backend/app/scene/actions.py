@@ -247,21 +247,39 @@ async def _act_generate_video(scene_id: str, obj_ids: list[str], params: dict) -
     prov = await _video_provider()
     if not prov:
         return {"ok": False, "error": "未配置可用视频 Provider"}
-    targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] in ("shot", "storyboard", "image")]
+    targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id)
+                          if o["object_type"] in ("shot", "storyboard", "image", "video")]
     created = []
     for oid in targets:
         obj = await service.get_object(oid)
         if not obj:
             continue
         d = obj["data"]
-        p = params.get("prompt") or d.get("prompt") or d.get("description") or ""
+        p = params.get("prompt") or d.get("prompt") or d.get("desc") or d.get("description") or ""
         if not p:
             continue
+        # 分镜视频配置（V2.7）：风格/运镜/清晰度拼进提示词，非默认运镜透传相机控制
+        style = str(params.get("style") or d.get("style") or "").strip()
+        motion = str(params.get("camera_motion") or d.get("camera_motion") or "").strip()
+        reso = str(params.get("resolution") or d.get("resolution") or "").strip()
+        extra = []
+        if style:
+            extra.append(f"【画面风格】{style}")
+        if motion:
+            extra.append(f"【运镜】{motion}")
+        if reso:
+            extra.append(f"【清晰度】{reso}")
+        if extra:
+            p = f"{p}\n" + "\n".join(extra)
+        native: dict[str, Any] = {}
+        if motion and motion != "固定镜头":
+            native["camera_movement"] = motion
         from app.providers.cloud_gen import cloud_video_generate
         res = await cloud_video_generate(prov["id"], p,
                                          image_url=d.get("url") or params.get("image_url", ""),
-                                         duration=int(params.get("duration", 5)),
-                                         ratio=params.get("ratio", "16:9"))
+                                         duration=int(params.get("duration") or d.get("duration") or 5),
+                                         ratio=str(params.get("ratio") or d.get("aspect_ratio") or "16:9"),
+                                         native=native or None)
         if not res.get("ok"):
             return {"ok": False, "error": res.get("error", "生视频失败"), "logs": res.get("logs")}
         urls = [i.get("url") for i in res.get("videos", []) if i.get("url")]
@@ -270,7 +288,11 @@ async def _act_generate_video(scene_id: str, obj_ids: list[str], params: dict) -
             nid = await service.create_object(scene_id, "video",
                                               x=base_x + 340, y=base_y + idx * 320,
                                               width=320, height=260,
-                                              data={"prompt": p, "url": u, "model": prov.get("name"), "source_object_id": oid})
+                                              data={"prompt": p, "url": u, "model": prov.get("name"),
+                                                    "source_object_id": oid,
+                                                    "shot_no": d.get("shot_no", ""),
+                                                    "style": style, "camera_motion": motion,
+                                                    "resolution": reso, "aspect_ratio": d.get("aspect_ratio", "16:9")})
             created.append(nid)
             await _register_asset(scene_id, "video", u, name=f"{_label(obj['object_type'])}视频", meta={"source_object_id": oid})
     return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 个视频"}
@@ -871,6 +893,77 @@ async def _act_skill(scene_id: str, skill_id: str, obj_ids: list[str], params: d
 # 短剧补全（§69）：配音稿 / 字幕 / 成片合成
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _shot_bgm(script: str, shot_no: int) -> str:
+    """从剧本 script 提取指定分镜的背景音乐描述（按分镜标题切片，末行无需换行）。"""
+    if not script:
+        return ""
+    m = re.search(rf"##\s*分镜{shot_no}[：:]?\s*[^\n]*\n", script)
+    if not m:
+        return ""
+    start = m.end()
+    nxt = re.search(r"\n##\s*分镜", script[start:])
+    block = script[start:start + (nxt.start() if nxt else len(script))]
+    g = re.search(r"-?\s*背景音乐[：:]\s*([^\n]+)", block)
+    return g.group(1).strip() if g else ""
+
+
+async def _act_generate_music(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """音频节点（BGM）：AI 识别分镜背景音乐 → 生成音乐风格/乐器/完整提示词，写回节点。
+
+    仅做「音乐提示词生成」（后端暂无音乐合成 API，真实音频需外部 Suno 类服务）。
+    自动连线剧情节点读取剧本，按节点选择的 shot_no 提取对应分镜 BGM 描述。
+    """
+    targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id)
+                          if o["object_type"] == "audio"]
+    if not targets:
+        return {"ok": False, "error": "请先选择音频节点"}
+    objs = {o["id"]: o for o in await service.list_objects(scene_id)}
+    edges = await service.list_edges(scene_id)
+
+    def _linked_story(o_id: str) -> dict | None:
+        for e in edges:
+            other = e["target_id"] if e["source_id"] == o_id else (e["source_id"] if e["target_id"] == o_id else None)
+            if other and objs.get(other, {}).get("object_type") == "story":
+                return objs[other]
+        return None
+
+    updated = []
+    for oid in targets:
+        obj = objs.get(oid)
+        if not obj:
+            continue
+        d = obj["data"]
+        shot_no = int(params.get("shot_no") or d.get("shot_no") or 0) or 0
+        script = ""
+        story = _linked_story(oid)
+        if story:
+            script = str((story.get("data") or {}).get("script") or "")
+        bgm = str(params.get("desc") or d.get("desc") or "").strip()
+        if not bgm and script and shot_no > 0:
+            bgm = _shot_bgm(script, shot_no)
+        if not bgm:
+            updated.append(oid)
+            continue
+        sys = ("你是影视配乐师。根据分镜的背景音乐描述，输出 JSON："
+               "{\"style\":\"音乐风格（如 轻松俏皮/悬疑紧张/温情治愈，给出具体风格名）\","
+               "\"instruments\":\"乐器设定（如 尤克里里+轻快鼓点+环境采样）\","
+               "\"prompt\":\"可直接用于音乐生成模型的完整中文提示词（含情绪/节奏/BPM/乐器/风格）\"}。"
+               "只输出 JSON，不要多余文字。")
+        r = await _llm_json(sys, f"分镜{shot_no}背景音乐描述：{bgm}")
+        if not r:
+            return {"ok": False, "error": "AI 生成音乐建议失败（检查 AI 配置）"}
+        style = str(r.get("style") or "").strip()
+        instruments = str(r.get("instruments") or "").strip()
+        prompt = str(r.get("prompt") or "").strip()
+        await service.update_object(oid, data={
+            **d, "prompt": prompt, "style": style, "instruments": instruments,
+            "desc": bgm, "shot_no": str(shot_no) if shot_no else d.get("shot_no", ""),
+        })
+        updated.append(oid)
+    return {"ok": bool(updated), "updated": updated,
+            "message": f"生成 {len(updated)} 段音乐提示词（风格/乐器建议已写回节点）"}
+
+
 async def _act_generate_voiceover(scene_id: str, obj_ids: list[str], params: dict) -> dict:
     targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id)
                           if o["object_type"] in ("product", "story")]
@@ -1008,6 +1101,8 @@ async def _run_action(scene_id: str, action: str, object_ids: list[str] | None =
             return await _act_skill(scene_id, action[6:], obj_ids, params)
         if action == "generate_voiceover":
             return await _act_generate_voiceover(scene_id, obj_ids, params)
+        if action == "generate_music":
+            return await _act_generate_music(scene_id, obj_ids, params)
         if action == "generate_subtitle":
             return await _act_generate_subtitle(scene_id, obj_ids, params)
         if action == "compose_final":

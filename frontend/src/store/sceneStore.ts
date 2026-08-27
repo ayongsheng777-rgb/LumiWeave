@@ -73,6 +73,7 @@ export const ACTION_LABELS: Record<string, string> = {
   generate_prompt: '生成 Prompt',
   generate_reference: '生成参考图',
   generate_voiceover: '生成配音稿',
+  generate_music: '生成音乐提示词',
   generate_subtitle: '生成字幕',
   compose_final: '合成成片',
 }

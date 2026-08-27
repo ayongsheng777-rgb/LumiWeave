@@ -46,11 +46,25 @@ OBJECT_LIBRARY: Dict[str, Dict[str, Any]] = {
               "default_data": {"prompt": "", "url": "", "purpose": "人物", "model": ""},
               "fields": {"prompt": "提示词", "url": "图片地址", "purpose": "用途", "model": "模型"}},
     "video": {"label": "视频", "color": "#8b5cf6", "icon": "▶",
-              "default_data": {"prompt": "", "url": "", "duration": 10, "model": ""},
-              "fields": {"prompt": "提示词", "url": "视频地址", "duration": "时长", "model": "模型"}},
+              "default_data": {
+                  "prompt": "", "url": "", "duration": 10, "model": "",
+                  "shot_no": "", "desc": "",
+                  "aspect_ratio": "16:9", "camera_motion": "固定镜头",
+                  "resolution": "1080p", "style": "",
+                  "dialogue_script": "", "sfx_desc": "", "subtitle_enabled": False,
+              },
+              "fields": {"prompt": "提示词", "url": "视频地址", "duration": "时长", "model": "模型",
+                         "shot_no": "分镜序号", "desc": "分镜内容", "aspect_ratio": "画面比例",
+                         "camera_motion": "运镜", "resolution": "清晰度", "style": "风格",
+                         "dialogue_script": "对白/画内画外音", "sfx_desc": "特效音效", "subtitle_enabled": "生成字幕"}},
     "audio": {"label": "音频", "color": "#f59e0b", "icon": "♪",
-              "default_data": {"text": "", "audio_type": "配音", "url": ""},
-              "fields": {"text": "文本", "audio_type": "音频类型", "url": "音频地址"}},
+              "default_data": {
+                  "text": "", "audio_type": "配音", "url": "",
+                  "prompt": "", "shot_no": "", "desc": "", "style": "", "instruments": "",
+              },
+              "fields": {"text": "文本", "audio_type": "音频类型", "url": "音频地址",
+                         "prompt": "音乐提示词", "shot_no": "分镜序号", "desc": "分镜描述",
+                         "style": "音乐风格", "instruments": "乐器设定"}},
 
     # ── 剧情（剧本）────────────────────────────────────────────────
     "story": {"label": "剧情", "color": "#a855f7", "icon": "📖",
@@ -106,7 +120,7 @@ registry.register(SceneDefinition(
     actions=[
         "generate_story", "generate_characters", "generate_scenes",
         "generate_storyboard", "generate_shots", "generate_images", "generate_video",
-        "generate_voiceover", "generate_subtitle", "compose_final",
+        "generate_voiceover", "generate_music", "generate_subtitle", "compose_final",
     ],
     toolbar=COMMON_TOOLBAR,
     inspector=COMMON_OBJECT_TYPES,

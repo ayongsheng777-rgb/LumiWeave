@@ -17,6 +17,9 @@ import { aiChat, getProfiles } from '../api'
 import SceneFieldPopover from './SceneFieldPopover'
 import SceneTextWriter from './SceneTextWriter'
 import SceneImageEditor from './SceneImageEditor'
+import SceneVideoEditor from './SceneVideoEditor'
+import SceneAudioEditor from './SceneAudioEditor'
+import { type ParsedScript, EMPTY_PARSED, isStoryNode } from './sceneScript'
 
 /** 长文本字段 → 用 AI 对话弹窗编辑 */
 const LONG_TEXT_KEYS = new Set([
@@ -24,13 +27,6 @@ const LONG_TEXT_KEYS = new Set([
   'appearance', 'marketing_plan', 'composition',
 ])
 
-/** 判断节点是否为剧情节点：兼容两种存储——新拖入 type='sceneObject'（业务类型在 data.objectType），重载后 type='story' */
-function isStoryNode(n: { type?: string; data?: unknown } | undefined | null): boolean {
-  if (!n) return false
-  const t = String(n.type ?? '').toLowerCase()
-  const ot = String(((n.data as { objectType?: string } | undefined)?.objectType ?? '')).toLowerCase()
-  return t === 'story' || ot === 'story'
-}
 /** 镜头术语字段 → 中英双文下拉 */
 const CAMERA_KEYS = new Set(['camera', 'motion', 'shot_size', 'camera_motion', 'lens'])
 const CAMERA_OPTIONS = Object.keys(CAMERA_ZH)
@@ -45,6 +41,7 @@ function sceneActionsFor(objectType: string, typeDef?: SceneTypeDef | null): str
   if (objectType === 'story') return [] // 文本生成节点走底部内置 AI 输入条，不显示动作按钮
   if (objectType === 'video') return acts.filter((a) => a.includes('video') || a.includes('shot') || a.includes('frame'))
   if (objectType === 'image') return acts.filter((a) => a === 'generate_video')
+  if (objectType === 'audio') return acts.filter((a) => a === 'generate_voiceover') // BGM 建议已内置在编辑器内
   return []
 }
 
@@ -76,24 +73,7 @@ type AnyProfile = { id: string; name?: string; model?: string }
 // ── V2.6 节点匹配：图片(用途)/音频(类型) 连线剧情后按顺序编号（人物一/道具一/分镜N/镜头N-M/分镜N音乐/对白…）──
 const MATCH_NUMS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
 
-/** 剧本结构化数据（后端 _parse_script 产出） */
-interface ParsedShot {
-  no: number
-  location: string
-  time: string
-  goal: string
-  mood: string
-  bgm: string
-  duration: string
-  shots: { no: string; desc: string }[]
-  dialogue: { speaker: string; emotion: string; line: string }[]
-}
-interface ParsedScript {
-  characters: string[]
-  props: string[]
-  shots: ParsedShot[]
-}
-const EMPTY_PARSED: ParsedScript = { characters: [], props: [], shots: [] }
+/** 剧本结构化数据（后端 _parse_script 产出，类型定义见 sceneScript.ts） */
 
 /** 需按连接顺序编号的基础类；其余具体索引项（人物名/道具名/分镜N/镜头N-M/分镜N音乐/对白N）直接显示 */
 const NUMBERED_KINDS = new Set(['人物', '道具', '配音', 'BGM', '音效', '对白'])
@@ -753,6 +733,10 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
             <SceneTextWriter id={id} locked={locked} />
           ) : objectType === 'image' ? (
             <SceneImageEditor id={id} locked={locked} />
+          ) : objectType === 'video' ? (
+            <SceneVideoEditor id={id} locked={locked} />
+          ) : objectType === 'audio' ? (
+            <SceneAudioEditor id={id} locked={locked} />
           ) : (
             <>
               {Object.keys(fields).length === 0 && (
