@@ -577,15 +577,24 @@ async def _act_generate_story(scene_id: str, obj_ids: list[str], params: dict) -
     m2 = re.search(r"# 项目设定\s*\n- 视频类型：(.+)", script)
     if m2:
         title = f"{m2.group(1).strip()}·商品短剧"
-    # 4) 写回/创建 story 对象
-    targets = [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] == "story"]
-    if targets:
-        oid = targets[0]
-        obj = await service.get_object(oid)
-        await service.update_object(oid, data={**obj["data"], "script": script, "parsed": parsed,
-                                               "text": summary or script[:500],
-                                               "summary": summary, "title": title or obj["data"].get("title", "")})
-        created = [oid]
+    # 4) 写回/创建 story 对象 —— 优先写回「当前触发生成的节点」（obj_ids 里第一个 story），
+    #    而不是场景里第一个 story：并发多剧本同时生成时，若都写 targets[0] 会互相覆盖、
+    #    导致结果莫名消失/内容被替换（阿勇 2026-08-27 反馈）
+    write_oid = None
+    for oid in (obj_ids or []):
+        o0 = await service.get_object(oid)
+        if o0 and o0["object_type"] == "story":
+            write_oid = oid
+            break
+    if not write_oid:
+        targets = [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] == "story"]
+        write_oid = targets[0] if targets else None
+    if write_oid:
+        obj = await service.get_object(write_oid)
+        await service.update_object(write_oid, data={**obj["data"], "script": script, "parsed": parsed,
+                                                     "text": summary or script[:500],
+                                                     "summary": summary, "title": title or obj["data"].get("title", "")})
+        created = [write_oid]
     else:
         existing = await service.list_objects(scene_id)
         base_y = max([float(o.get("y") or 0) + float(o.get("height") or 0) for o in existing] or [0]) + 80
