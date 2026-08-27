@@ -5,15 +5,16 @@
 //   · 版本资源管理（多版本缩略、点选切换、删除）
 //   · 上游输入只读展示（连线即输入）+ {{Ref N}} 语法提示
 // =====================================================================
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Node } from '@xyflow/react'
 import { ImagePlus, Trash2 } from 'lucide-react'
 import { useCanvasStore } from '../store/canvasStore'
 import { collectInputs, runLjNode, type LjResource } from '../canvas/ljEngine'
+import { getProfiles } from '../api'
 import { CAMERA_MOTIONS } from '../canvas/cameraMotions'
 
 type AnyObj = Record<string, unknown>
-type Widget = 'text' | 'textarea' | 'number' | 'bool' | 'select' | 'camera'
+type Widget = 'text' | 'textarea' | 'number' | 'bool' | 'select' | 'camera' | 'model' | 'shotDuration'
 
 interface FieldDef {
   key: string
@@ -74,13 +75,20 @@ const SCHEMA: Record<string, FieldDef[]> = {
     { key: 'label', label: '节点名称', widget: 'text' },
   ],
   lj_text_config: [
-    { key: 'prompt', label: '内容要求', widget: 'textarea' },
+    { key: 'prompt', label: '内容要求', widget: 'textarea', placeholder: '如：运动水杯短剧带货，突出防漏耐摔、单手开盖' },
+    { key: 'profile_id', label: 'AI 模型', widget: 'model' },
+    { key: 'duration', label: '总时长（秒）', widget: 'number' },
+    { key: 'shotCount', label: '分镜个数', widget: 'number' },
+    { key: '__shotDuration', label: '分镜时长（秒，自动）', widget: 'shotDuration' },
     { key: 'text', label: '产出内容', widget: 'textarea' },
     { key: 'label', label: '节点名称', widget: 'text' },
   ],
   lj_script_config: [
     { key: 'prompt', label: '剧本 brief', widget: 'textarea', placeholder: '如：末日荒原科幻短片，45s，史诗感' },
-    { key: 'duration', label: '目标时长（秒）', widget: 'number' },
+    { key: 'profile_id', label: 'AI 模型', widget: 'model' },
+    { key: 'duration', label: '总时长（秒）', widget: 'number' },
+    { key: 'shotCount', label: '分镜个数', widget: 'number' },
+    { key: '__shotDuration', label: '分镜时长（秒，自动）', widget: 'shotDuration' },
     { key: 'text', label: '产出剧本', widget: 'textarea' },
     { key: 'label', label: '节点名称', widget: 'text' },
   ],
@@ -102,6 +110,20 @@ export default function LjPropertyPanel({ node }: { node: Node }) {
   const update = useCanvasStore((s) => s.updateObject)
   const objects = useCanvasStore((s) => s.objects)
   const [busy, setBusy] = useState(false)
+  const [profiles, setProfiles] = useState<{ id: string; name?: string; model?: string }[]>([])
+
+  // 拉取已配置的 AI 模型（profile）列表，供「AI 模型」下拉选用
+  useEffect(() => {
+    let alive = true
+    getProfiles()
+      .then((r) => {
+        if (alive && r.ok) {
+          setProfiles(((r.data as AnyObj | undefined)?.profiles as { id: string; name?: string; model?: string }[]) || [])
+        }
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   const fields = SCHEMA[String(node.type)] ?? []
   const resources = Array.isArray(data.resources) ? (data.resources as LjResource[]) : []
@@ -209,6 +231,42 @@ export default function LjPropertyPanel({ node }: { node: Node }) {
                   ))}
                 </select>
               )
+            case 'model': {
+              const val = String(v ?? '')
+              if (profiles.length === 0) {
+                return (
+                  <input
+                    className={inputCls}
+                    value={val}
+                    placeholder="AI 模型（未获取到已配置模型，可填 profile id）"
+                    onChange={(e) => set(f.key, e.target.value)}
+                  />
+                )
+              }
+              return (
+                <select className={inputCls} value={val} onChange={(e) => set(f.key, e.target.value)}>
+                  <option value="">默认模型（系统自动选）</option>
+                  {profiles.map((p) =>
+                    p && p.id ? (
+                      <option key={p.id} value={p.id}>
+                        {String(p.name ?? p.id)}{p.model ? ` · ${String(p.model)}` : ''}
+                      </option>
+                    ) : null,
+                  )}
+                </select>
+              )
+            }
+            case 'shotDuration': {
+              const dur = Number(data.duration) || 0
+              const sc = Number(data.shotCount) || 0
+              const per = dur > 0 && sc > 0 ? dur / sc : null
+              return (
+                <div className="rounded-md border border-edge bg-soft px-2 py-1.5 text-[11px] leading-relaxed text-ink-2">
+                  每段约 <b className="text-ink">{per != null ? per.toFixed(1) : '—'}</b> 秒
+                  <span className="ml-1 text-ink-3">（总时长 ÷ 分镜个数，自动计算）</span>
+                </div>
+              )
+            }
             default:
               return <input className={inputCls} value={v == null ? '' : String(v)} placeholder={f.placeholder} onChange={(e) => set(f.key, e.target.value)} />
           }

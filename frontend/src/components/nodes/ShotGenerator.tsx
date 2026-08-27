@@ -6,7 +6,7 @@
  */
 import { useState, useEffect } from 'react'
 import { Wand2, ChevronDown, ChevronUp, Loader2, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react'
-import { getProviders, getRenderers, renderMedia } from '../../api'
+import { getModelChoices, getRenderers, renderMedia } from '../../api'
 import { cameraLabel } from '../../cameraLabels'
 import { emitLog, emitRenderLogs } from '../LogPanel'
 import { notifyShotChain } from '../ShotChainPanel'
@@ -75,7 +75,7 @@ export function ShotGenerator({ shot, index, totalShots, nodeId, nodeLabel, onUp
   const activeProviders = outputType === 'video' ? videoProviders : imageProviders
 
   useEffect(() => {
-    getProviders().then((res) => {
+    getModelChoices().then((res) => {
       if (res.ok) {
         const all = (res.data.providers || []) as (ProviderInfo & { type?: string })[]
         setImageProviders(all.filter((p) => p.type === 'image'))

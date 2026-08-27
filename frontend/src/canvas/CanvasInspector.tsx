@@ -10,6 +10,12 @@ export default function CanvasInspector() {
 
   const selected = objects.find((n) => n.id === selectedIds[0])
 
+  // 文本/剧本节点的 AI 配置与结果显示全部在节点内弹窗（LjAiChat）完成，右侧面板不再展示，省画布空间
+  if (selected && (selected.type === 'lj_text_config' || selected.type === 'lj_script_config')) {
+    return null
+  }
+
+
   if (!selected) {
     return (
       <aside className="canvas-inspector">

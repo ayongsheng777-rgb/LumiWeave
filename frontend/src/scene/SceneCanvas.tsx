@@ -14,13 +14,12 @@ import {
   useReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Settings2, X, Loader2, Sparkles, Undo2, Redo2, Upload, Clapperboard } from 'lucide-react'
+import { Loader2, Sparkles, Upload, Clapperboard } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
 import { sceneNodeTypes } from './SceneObjectNode'
 import { sceneFilmUpload, sceneFilmAnalyze } from '../api'
 import SceneSidebar from './SceneSidebar'
 import SceneToolbar from './SceneToolbar'
-import SceneInspector from './SceneInspector'
 import SceneBottomBar from './SceneBottomBar'
 
 function SceneCanvasInner() {
@@ -35,29 +34,14 @@ function SceneCanvasInner() {
   const typeDef = useSceneStore((s) => s.currentTypeDef())
   const loading = useSceneStore((s) => s.loading)
   const busy = useSceneStore((s) => s.busy)
-  const undo = useSceneStore((s) => s.undo)
-  const redo = useSceneStore((s) => s.redo)
-  const canUndo = useSceneStore((s) => s.canUndo)
-  const canRedo = useSceneStore((s) => s.canRedo)
   const loadAssets = useSceneStore((s) => s.loadAssets)
   const loadVersions = useSceneStore((s) => s.loadVersions)
+  const undo = useSceneStore((s) => s.undo)
+  const redo = useSceneStore((s) => s.redo)
   const { screenToFlowPosition } = useReactFlow()
 
-  const [showInspector, setShowInspector] = useState(() => window.innerWidth >= 1100)
   const [filmBusy, setFilmBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-
-  // 响应式（§49/§50 / 深度增强 #6）：窄屏自动收起 Inspector、布局改底部抽屉
-  const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 1100)
-  useEffect(() => {
-    const onResize = () => {
-      const narrow = window.innerWidth < 1100
-      setIsNarrow(narrow)
-      if (narrow) setShowInspector(false)
-    }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
 
   // 切换场景时加载素材库与版本列表（§35/§38）
   useEffect(() => {
@@ -157,25 +141,9 @@ function SceneCanvasInner() {
 
             <SceneToolbar />
 
-            {/* 左下：撤销/重做 + 影视拆镜上传（§32/§68） */}
-            <div className="absolute bottom-24 left-3 z-20 flex items-center gap-1.5">
-              <button
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-edge bg-panel/90 text-ink-2 shadow-node-dark backdrop-blur-md transition enabled:hover:text-ink disabled:opacity-40"
-                onClick={undo}
-                disabled={!canUndo}
-                title="撤销 (Ctrl+Z)"
-              >
-                <Undo2 size={15} />
-              </button>
-              <button
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-edge bg-panel/90 text-ink-2 shadow-node-dark backdrop-blur-md transition enabled:hover:text-ink disabled:opacity-40"
-                onClick={redo}
-                disabled={!canRedo}
-                title="重做 (Ctrl+Shift+Z)"
-              >
-                <Redo2 size={15} />
-              </button>
-              {isFilmScene && (
+            {/* 影视拆镜上传（§68）：放在缩放控件右侧，避免与底部栏/控件重叠 */}
+            {isFilmScene && (
+              <div className="absolute bottom-24 left-14 z-20">
                 <button
                   className="flex h-9 items-center gap-1.5 rounded-lg border border-brand-500/40 bg-panel/90 px-3 text-[11px] text-brand-500 shadow-node-dark backdrop-blur-md transition hover:bg-panel disabled:opacity-50"
                   onClick={() => fileRef.current?.click()}
@@ -190,49 +158,21 @@ function SceneCanvasInner() {
                   <Upload size={13} />
                   {filmBusy ? '拆镜中…' : '上传视频拆镜'}
                 </button>
-              )}
-              <input
-                ref={fileRef}
-                type="file"
-                accept="video/*,.mp4,.webm,.mov,.m4v"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) void handleFilmUpload(f)
-                  e.target.value = ''
-                }}
-              />
-            </div>
-
-            {/* 右上：Inspector 开关 */}
-            <button
-              className={`absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-lg border border-edge bg-panel/90 shadow-node-dark backdrop-blur-md transition ${
-                showInspector ? 'text-brand-500' : 'text-ink-2 hover:text-ink'
-              }`}
-              onClick={() => setShowInspector(!showInspector)}
-              title="属性面板"
-            >
-              <Settings2 size={17} />
-            </button>
-
-            {/* 右侧 Inspector 抽屉（窄屏变底部面板） */}
-            {showInspector && (
-              <div
-                className={`absolute z-20 flex flex-col overflow-hidden rounded-2xl border border-edge bg-panel/95 shadow-node-dark backdrop-blur-md ${
-                  isNarrow
-                    ? 'inset-x-3 bottom-24 top-auto h-56'
-                    : 'right-3 top-14 h-[calc(100%-8rem)] w-64'
-                }`}
-              >
-                <button
-                  className="absolute right-2 top-2 z-10 rounded p-0.5 text-ink-3 transition hover:text-ink"
-                  onClick={() => setShowInspector(false)}
-                >
-                  <X size={13} />
-                </button>
-                <SceneInspector />
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="video/*,.mp4,.webm,.mov,.m4v"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) void handleFilmUpload(f)
+                    e.target.value = ''
+                  }}
+                />
               </div>
             )}
+
+            {/* 右侧属性面板已移除：所有编辑交互已迁移到节点上（含 AI 对话弹窗） */}
 
             <SceneBottomBar />
 

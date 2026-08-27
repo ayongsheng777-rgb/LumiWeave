@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { useNodeAdapter } from '../../store/nodeAdapter'
 import type { NodeStatus } from '../../store/workflowStore'
-import { getProviders, renderMedia } from '../../api'
+import { getModelChoices, renderMedia } from '../../api'
 import { IMAGE_PRESETS, imagePreset, matchProvider, buildNative } from '../../data/mediaModels'
 import { MediaNodeShell, type LightingState, type LensState } from './media/MediaNodeShell'
 import { PromptTranslate } from './PromptTranslate'
@@ -15,11 +15,11 @@ const DEFAULT_LENS: LensState = { body: '', lens: '', focal: '', aperture: '' }
 export function ImageNode({ id, data, selected }: NodeProps) {
   const { update, getStatus } = useNodeAdapter()
   const d = data as Record<string, unknown>
-  const [providers, setProviders] = useState<{ id: string; name: string; type: string; endpoint: string }[]>([])
+  const [providers, setProviders] = useState<{ id: string; name: string; models?: string[]; status?: string }[]>([])
 
   useEffect(() => {
-    getProviders().then((r) => {
-      if (r.ok) setProviders((r.data.providers || []).filter((p: { type: string }) => p.type === 'image'))
+    getModelChoices().then((r) => {
+      if (r.ok) setProviders((r.data?.providers || []))
     })
   }, [])
 

@@ -34,18 +34,10 @@ export default function SceneSidebar() {
   const versions = useSceneStore((s) => s.versions)
   const saveVersion = useSceneStore((s) => s.saveVersion)
   const restoreVersion = useSceneStore((s) => s.restoreVersion)
-  const marketingTemplates = useSceneStore((s) => s.marketingTemplates)
-  const loadMarketingTemplates = useSceneStore((s) => s.loadMarketingTemplates)
-  const applyMarketingTemplate = useSceneStore((s) => s.applyMarketingTemplate)
 
   useEffect(() => {
     void init()
   }, [init])
-
-  // 打开场景时加载该场景可用的营销模板（§26 / P2-01）
-  useEffect(() => {
-    if (currentSceneId) void loadMarketingTemplates()
-  }, [currentSceneId, loadMarketingTemplates])
 
   if (collapsed) {
     return (
@@ -151,34 +143,6 @@ export default function SceneSidebar() {
         </div>
       </div>
 
-      {/* 营销模板（§26 / P2-01）：一键把模板对象铺进当前场景 */}
-      {currentSceneId && (
-        <div className="border-t border-edge px-2 py-2">
-          <div className="mb-1 px-1 text-[10px] text-ink-3">营销模板（{marketingTemplates.length}）</div>
-          <div className="max-h-36 space-y-0.5 overflow-y-auto">
-            {marketingTemplates.map((t) => (
-              <button
-                key={t.id}
-                className="group flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left transition hover:bg-hover"
-                title={t.description}
-                onClick={() => {
-                  if (confirm(`把模板「${t.name}」的 ${t.object_types.length} 类对象铺入当前场景？`)) {
-                    void applyMarketingTemplate(t.id)
-                  }
-                }}
-              >
-                <Plus size={11} className="shrink-0 text-ink-3 opacity-0 transition group-hover:opacity-100" />
-                <span className="min-w-0 flex-1 truncate text-[10px] text-ink-2">{t.name}</span>
-                <span className="shrink-0 text-[9px] text-ink-3">{t.object_types.join('/')}</span>
-              </button>
-            ))}
-            {!marketingTemplates.length && (
-              <div className="px-1 py-1 text-[10px] text-ink-3">该场景暂无营销模板</div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* 版本管理（§35：快照 / 恢复） */}
       {currentSceneId && (
         <div className="border-t border-edge px-2 py-2">
@@ -187,7 +151,9 @@ export default function SceneSidebar() {
             <button
               className="flex items-center gap-1 rounded-md border border-brand-500/40 px-1.5 py-0.5 text-[10px] text-brand-500 transition hover:bg-brand-500/10"
               onClick={() => {
-                const label = prompt('版本说明（可选）', '')
+                // 重新保存时带出上次使用的版本说明，不用重新输入
+                const lastLabel = versions.find((v) => v.label)?.label ?? ''
+                const label = prompt('版本说明（可选）', lastLabel)
                 if (label !== null) void saveVersion(label || '')
               }}
               title="把当前画布快照存为一个版本"

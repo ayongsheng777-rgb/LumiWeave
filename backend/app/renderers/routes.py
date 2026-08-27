@@ -113,6 +113,7 @@ async def media_generate(request: Request):
         provider_id=str(data.get("provider_id") or ""),
         model=str(data.get("model") or ""),
         renderer_id=str(data.get("renderer_id") or ""),
+        profile_id=str(data.get("profile_id") or ""),
     )
     return result
 

@@ -9,8 +9,8 @@ import {
 import { useSceneStore } from '../store/sceneStore'
 import { useUiStore } from '../store/uiStore'
 import {
-  aiChat, getProfiles, getProviders, getRenderers, getRendererWorkflows,
-  getSkills, promptLearningList, renderMedia, routeProviders,
+  aiChat, getProfiles, getRenderers, getRendererWorkflows,
+  getSkills, promptLearningList, renderMedia,
 } from '../api'
 import SceneImageEdit from './SceneImageEdit'
 
@@ -43,36 +43,83 @@ function isStoryNode(n: AnyObj | null | undefined): boolean {
   return t === 'story' || ot === 'story'
 }
 
-/** 从剧本 script 解析「人物」行：名字 → 完整描述行 */
+/** 取「出场元素」段内某字段区间（startField 到任一 endField 之前），找不到返回 '' */
+function sectionOf(script: string, startField: string, endFields: string[]): string {
+  const m = script.match(/# 出场元素([\s\S]*?)(?=\n# )/)
+  if (!m) return ''
+  const block = m[1]
+  const start = block.indexOf(startField)
+  if (start < 0) return ''
+  let end = block.length
+  for (const f of endFields) {
+    const i = block.indexOf(f, start + startField.length)
+    if (i >= 0 && i < end) end = i
+  }
+  return block.slice(start, end)
+}
+
+/** 顶层拆分：括号内的顿号/逗号不拆（"半杯珍珠奶茶（吸管插好、杯身有冷凝水珠）"保持一项） */
+function splitTopLevel(s: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let cur = ''
+  for (const ch of s) {
+    if (ch === '(' || ch === '（') depth++
+    if (ch === ')' || ch === '）') depth--
+    if ((ch === ',' || ch === '，' || ch === '、') && depth === 0) {
+      if (cur.trim()) out.push(cur.trim())
+      cur = ''
+    } else {
+      cur += ch
+    }
+  }
+  if (cur.trim()) out.push(cur.trim())
+  return out
+}
+
+/** 无效内容行（环境音/音效/分镜地点时间等）直接跳过 */
+function isJunkLine(l: string): boolean {
+  if (/^(（|\(|环境音|音效|旁白|画外音)/.test(l)) return true
+  if (/(地点|时间|环境)[：:]/.test(l)) return true
+  if (/^分镜\s*\d/.test(l)) return true
+  return false
+}
+
+/** 从剧本 script 解析「人物」：名字 → 完整描述行（只识别出场元素区，去编号、去重、过滤无效行） */
 function parseCharacters(script: string): Record<string, string> {
   const desc: Record<string, string> = {}
-  if (!script) return desc
-  const m = script.match(/# 出场元素([\s\S]*?)(?=\n# )/)
-  if (!m) return desc
-  const block = m[1]
-  const pm = block.match(/-\s*人物[：:]\s*\n((?:\s*-\s*[^\n]+\n?)+)/)
-  if (pm) {
-    for (const line of pm[1].split('\n')) {
-      const l = line.trim().replace(/^[-*]\s*/, '')
-      if (!l) continue
-      const name = l.split(/[（(]/)[0].trim()
-      if (name) desc[name] = l
-    }
+  const sec = sectionOf(script, '人物', ['道具', '分镜'])
+  if (!sec) return desc
+  for (const raw of sec.split('\n')) {
+    let l = raw.trim().replace(/^[-*]\s*/, '')
+    if (!l || l.startsWith('人物')) continue
+    if (isJunkLine(l)) continue
+    l = l.replace(/^\s*\d+[.、）)]?\s*/, '') // 去开头编号（1. / 2.）
+    const name = (l.split(/[：:（(]/)[0] || '').trim()
+    if (!name || name.length > 12) continue // 名字过长 = 错行
+    if (/[/\\]|\d{2}/.test(name)) continue // 名字含斜杠或两位数 = 描述片段
+    // 去重：同名字保留描述更完整的行
+    if (!desc[name] || l.length > desc[name].length) desc[name] = l
   }
   return desc
 }
 
-/** 从剧本 script 解析「道具」名字列表 */
+/** 从剧本 script 解析「道具」名字列表（只识别出场元素区，括号内不拆分，过滤无效行） */
 function parsePropsList(script: string): string[] {
-  if (!script) return []
-  const m = script.match(/# 出场元素([\s\S]*?)(?=\n# )/)
-  if (!m) return []
-  const pp = m[1].match(/-\s*道具[：:]\s*([^\n]+)/)
-  if (!pp) return []
-  return pp[1]
-    .split(/[、,，]/)
-    .map((x) => x.trim())
-    .filter(Boolean)
+  const out: string[] = []
+  const sec = sectionOf(script, '道具', ['分镜'])
+  if (!sec) return out
+  for (const raw of sec.split('\n')) {
+    let l = raw.trim().replace(/^[-*]\s*/, '')
+    if (!l) continue
+    if (l.startsWith('道具')) l = l.replace(/^道具[：:]\s*/, '')
+    if (!l || isJunkLine(l)) continue
+    l = l.replace(/^\s*\d+[.、）)]?\s*/, '')
+    splitTopLevel(l).forEach((x) => {
+      if (x && !out.includes(x)) out.push(x)
+    })
+  }
+  return out
 }
 
 /** 从剧本 script 实时解析「分镜」列表（parsed.shots 缺失时兜底，兼容不同剧本结构） */
@@ -144,15 +191,9 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   const [kbId, setKbId] = useState(String(payload.kb_ref ?? ''))
   const [errMsg, setErrMsg] = useState('')
 
-  // 生成方式：云端 provider 支持多选（不勾选=智能路由），ComfyUI 单选渲染器
+  // 生成方式：云端=模型库选模型（直连，不用商业接口）；ComfyUI=选渲染器
   const [mode, setMode] = useState<'cloud' | 'comfyui'>(String(payload.render_mode ?? 'cloud') === 'comfyui' ? 'comfyui' : 'cloud')
-  const [providers, setProviders] = useState<AnyObj[]>([])
-  const [selProviders, setSelProviders] = useState<string[]>(() => {
-    const v = String(payload.provider_ids ?? payload.provider_id ?? '')
-    return v ? v.split(',').filter(Boolean) : []
-  })
-  const [models, setModels] = useState<string[]>([])
-  const [model, setModel] = useState(String(payload.model ?? ''))
+  const [cloudModelId, setCloudModelId] = useState(String(payload.gen_profile_id ?? payload.profile_id ?? ''))
   const [renderers, setRenderers] = useState<AnyObj[]>([])
   const [rendererId, setRendererId] = useState(String(payload.renderer_id ?? ''))
   const [checkpoints, setCheckpoints] = useState<string[]>([])
@@ -227,14 +268,6 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
         setKbs(k)
       })
       .catch(() => {})
-    // 云端 Provider（image）：多选，不勾选=智能路由
-    getProviders()
-      .then((r) => {
-        const all = (r.data as AnyObj[]) || []
-        const list = all.filter((p) => String(p.type ?? '').includes('image') && p.status !== 'disabled')
-        setProviders(list.length ? list : all)
-      })
-      .catch(() => {})
     // ComfyUI 渲染器
     getRenderers()
       .then((r) => {
@@ -253,16 +286,6 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     if (payload.desc) setDesc(String(payload.desc))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // 主 provider 切换 → 刷新模型列表（仅单选时展示模型下拉）
-  useEffect(() => {
-    const p = providers.find((x) => String(x.id) === selProviders[0])
-    const ms = (p?.models as unknown) || []
-    const arr = Array.isArray(ms) ? ms.map((m) => String(m)) : []
-    setModels(arr)
-    if (arr.length && !model) setModel(arr[0])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selProviders, providers])
 
   // renderer 切换 → 拉 ComfyUI 能力（checkpoint）
   useEffect(() => {
@@ -327,14 +350,14 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     setGenerating(true)
     setErrMsg('')
     try {
-      const pids = mode === 'cloud' ? (selProviders.length ? selProviders : ['']) : ['']
+      // 云端：优先模型库直连（profile_id）；未选则智能路由（兼容旧数据）
+      const ids = mode === 'cloud' ? (cloudModelId ? [cloudModelId] : ['']) : ['']
       let lastErr = ''
-      for (const pid of pids) {
+      for (const pid of ids) {
         const res = await renderMedia({
           kind: 'image',
           render_mode: mode,
-          provider_id: mode === 'cloud' ? pid : undefined,
-          model: mode === 'cloud' && pids.length === 1 ? model : undefined,
+          profile_id: mode === 'cloud' ? pid : undefined,
           renderer_id: mode === 'comfyui' ? rendererId : undefined,
           params: {
             prompt: genPrompt.trim(),
@@ -349,10 +372,10 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
           patchObject(id, {
             url,
             prompt: genPrompt.trim(),
-            model: mode === 'cloud' ? (pids.length === 1 ? model : '') : checkpoint || '',
             render_mode: mode,
-            provider_ids: mode === 'cloud' ? selProviders.join(',') : '',
+            gen_profile_id: mode === 'cloud' ? cloudModelId : '',
             renderer_id: rendererId,
+            checkpoint: mode === 'comfyui' ? checkpoint : '',
             skill_ref: skillId,
             kb_ref: kbId,
             category,
@@ -371,25 +394,6 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
       setErrMsg(`生成异常：${String(e)}`)
     } finally {
       setGenerating(false)
-    }
-  }
-
-  // 自动优选：云端路由（把智能路由选中的 provider 勾选上）
-  const autoPick = async () => {
-    if (mode !== 'cloud') return
-    try {
-      const res = await routeProviders({ task_type: 'image', quality: 1, speed: 1, cost: 1, limit: 1 })
-      const chain = ((res.data as AnyObj)?.chain as AnyObj[]) || []
-      if (chain.length) {
-        const p = String(chain[0].id || '')
-        setSelProviders([p])
-        const prov = providers.find((x) => String(x.id) === p)
-        const arr = (prov?.models as unknown) || []
-        if (Array.isArray(arr) && arr.length) setModel(String(arr[0]))
-        patchObject(id, { provider_ids: p })
-      }
-    } catch {
-      /* 忽略 */
     }
   }
 
@@ -575,8 +579,8 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
         </select>
       </div>
 
-      {/* 生成方式 */}
-      <div className="space-y-1.5 rounded-lg border border-edge p-1.5">
+      {/* 生成方式：mt-auto 贴底，避免节点拉大后下方空白 */}
+      <div className="mt-auto space-y-1.5 rounded-lg border border-edge p-1.5">
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] text-ink-3">生成方式</span>
           <div className="flex flex-1 gap-1">
@@ -597,57 +601,29 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
 
         {mode === 'cloud' ? (
           <>
-            <div className="flex items-center justify-between gap-1.5">
-              <span className="text-[11px] text-ink-3">
-                云端 Provider（{selProviders.length ? `已选 ${selProviders.length} 个，按序尝试` : '未选=智能路由'}）
-              </span>
-              <button
-                className="nodrag shrink-0 rounded-md bg-soft px-2 py-1 text-[11px] text-ink-2 hover:text-ink"
-                onClick={() => void autoPick()}
-                title="智能路由选中的 Provider 自动勾选"
-              >
-                优选
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {providers.map((p) => {
-                const pid = String(p.id)
-                const on = selProviders.includes(pid)
-                return (
-                  <label
-                    key={pid}
-                    className={`nodrag flex cursor-pointer items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] transition ${
-                      on ? 'border-brand-500 bg-brand-500/15 text-brand-300' : 'border-edge bg-soft text-ink-2 hover:text-ink'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      className="nodrag accent-brand-500"
-                      checked={on}
-                      disabled={locked}
-                      onChange={() => {
-                        const next = on ? selProviders.filter((x) => x !== pid) : [...selProviders, pid]
-                        setSelProviders(next)
-                        patchObject(id, { provider_ids: next.join(',') })
-                      }}
-                    />
-                    <span>{String(p.name || p.id)}</span>
-                  </label>
-                )
-              })}
-            </div>
-            {selProviders.length === 1 && (
+            <div className="flex items-center gap-1.5">
+              <span className="shrink-0 text-[11px] text-ink-3">模型</span>
               <select
-                className="nodrag h-7 w-full rounded-md border border-edge bg-input px-1 text-[11px] text-ink outline-none focus:border-brand-500"
-                value={model}
-                onChange={(e) => { setModel(e.target.value); patchObject(id, { model: e.target.value }) }}
+                className="nodrag h-7 min-w-0 flex-1 rounded-md border border-edge bg-input px-1 text-[11px] text-ink outline-none focus:border-brand-500"
+                value={cloudModelId}
+                disabled={locked}
+                onChange={(e) => { setCloudModelId(e.target.value); patchObject(id, { gen_profile_id: e.target.value }) }}
+                title="选择模型库中的模型（直连，不使用商业接口预设）"
               >
-                <option value="">默认模型</option>
-                {models.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
+                <option value="">默认模型（系统自动选）</option>
+                {profiles.map((p) =>
+                  p && p.id ? (
+                    <option key={p.id} value={p.id}>
+                      {String(p.name ?? p.id)}
+                      {p.model ? ` · ${p.model}` : ''}
+                    </option>
+                  ) : null,
+                )}
               </select>
-            )}
+            </div>
+            <div className="text-[10px] leading-snug text-ink-3">
+              在「设置-模型」中添加出图模型（如硅基流动 Qwen-Image），即可在此选择
+            </div>
           </>
         ) : (
           <>

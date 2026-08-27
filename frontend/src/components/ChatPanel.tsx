@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Bot, Send } from 'lucide-react'
+import { Bot, Send, X, ShoppingBag, Clapperboard, Film } from 'lucide-react'
 import { aiChat } from '../api'
 import { useCanvasStore } from '../store/canvasStore'
 import { useLayoutStore } from '../store/layoutStore'
+import { useUiStore } from '../store/uiStore'
+import { useSceneStore } from '../store/sceneStore'
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -16,6 +18,9 @@ export default function ChatPanel() {
   const [streaming, setStreaming] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const setChatOpen = useUiStore((s) => s.setChatOpen)
+  const setMode = useUiStore((s) => s.setMode)
+  const createScene = useSceneStore((s) => s.createScene)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -75,6 +80,17 @@ export default function ChatPanel() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {/* 面板头部：标题 + 隐藏按钮 */}
+      <div className="flex shrink-0 items-center justify-between border-b border-edge px-3 py-2">
+        <span className="text-sm font-medium text-ink">AI 助手</span>
+        <button
+          onClick={() => setChatOpen(false)}
+          title="隐藏面板"
+          className="rounded p-1 text-ink-3 transition hover:bg-hover hover:text-ink"
+        >
+          <X size={14} />
+        </button>
+      </div>
       {/* 对话主区 */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex-1 space-y-3 overflow-y-auto p-3">
@@ -83,6 +99,37 @@ export default function ChatPanel() {
               <Bot size={28} className="mx-auto mb-2 text-ink-3" />
               <p>向 AI 提问，开启你的创作</p>
               <p className="mt-1 text-[11px] text-ink-3">回答会自动落到画布，也可手动「展开到画布」</p>
+              {/* 快速创作入口：替代顶部菜单 */}
+              <div className="mt-4 flex flex-col gap-1.5 px-4">
+                <div className="text-left text-[11px] text-ink-3">快速创作</div>
+                <button
+                  className="flex w-full items-center gap-2 rounded-lg border border-edge bg-soft px-3 py-2 text-left text-[11px] text-ink-2 transition hover:border-brand-500 hover:text-ink"
+                  onClick={() => {
+                    setMode('scene')
+                    void createScene('ecommerce-material')
+                  }}
+                >
+                  <ShoppingBag size={13} /> 电商商品营销物料
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 rounded-lg border border-edge bg-soft px-3 py-2 text-left text-[11px] text-ink-2 transition hover:border-brand-500 hover:text-ink"
+                  onClick={() => {
+                    setMode('scene')
+                    void createScene('ecommerce-drama')
+                  }}
+                >
+                  <Clapperboard size={13} /> 电商短剧带货
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 rounded-lg border border-edge bg-soft px-3 py-2 text-left text-[11px] text-ink-2 transition hover:border-brand-500 hover:text-ink"
+                  onClick={() => {
+                    setMode('scene')
+                    void createScene('film-analysis')
+                  }}
+                >
+                  <Film size={13} /> 影视拉片
+                </button>
+              </div>
             </div>
           )}
           {messages.map((m, i) => (

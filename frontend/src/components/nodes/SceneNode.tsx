@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { Mountain } from 'lucide-react'
 import { useNodeAdapter } from '../../store/nodeAdapter'
-import { getProviders, getRenderers, filmSceneGenerate } from '../../api'
+import { getModelChoices, getRenderers, filmSceneGenerate } from '../../api'
 import { cameraLabel } from '../../cameraLabels'
 import { NodeShell, Field, inputCls } from './NodeShell'
 import { GenerationModeField, type ProviderInfo, type RendererInfo } from './GenerationModeField'
@@ -23,8 +23,8 @@ export function SceneNode({ id, data, selected }: NodeProps) {
   const [renderers, setRenderers] = useState<RendererInfo[]>([])
 
   useEffect(() => {
-    getProviders().then((r) => {
-      if (r.ok) setProviders((r.data.providers || []).filter((p: { type: string }) => p.type === 'image'))
+    getModelChoices().then((r) => {
+      if (r.ok) setProviders((r.data?.providers || []))
     })
     getRenderers().then((r) => {
       if (r.ok) setRenderers((r.data.renderers || []).filter((rr: { type: string }) => rr.type === 'comfyui'))

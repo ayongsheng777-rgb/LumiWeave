@@ -233,6 +233,7 @@ export async function renderMedia(payload: {
   provider_id?: string
   model?: string
   renderer_id?: string
+  profile_id?: string
   params: Record<string, unknown>
 }) {
   return request('POST', '/renderers/media/generate', payload)
@@ -474,6 +475,25 @@ export async function canvasToWorkflow(projectId: string, name: string) {
 
 export async function getProviders() {
   return request('GET', '/providers')
+}
+
+/** 模型库 → 生成方式候选列表（id=模型库 profile id，后端渲染时直连；替代商业接口 providers 预设） */
+export async function getModelChoices() {
+  const res = await getProfiles()
+  const list =
+    (((res.data as { profiles?: { id: string; name?: string; model?: string }[] } | undefined)?.profiles) || [])
+      .filter((p) => p && p.id && p.model)
+  return {
+    ok: res.ok,
+    data: {
+      providers: list.map((p) => ({
+        id: p.id,
+        name: `${p.name || p.id} · ${p.model}`,
+        models: [p.model as string],
+        status: 'enabled',
+      })),
+    },
+  }
 }
 
 export async function upsertProvider(payload: Record<string, unknown>) {

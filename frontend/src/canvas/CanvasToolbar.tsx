@@ -1,16 +1,10 @@
 import { useState } from 'react'
 import { aiBuildWorkflow, canvasApplyLayout, canvasSaveGraph, canvasToWorkflow, runWorkflow } from '../api'
 import { useCanvasStore } from '../store/canvasStore'
-import { useUiStore } from '../store/uiStore'
 import { canvasToWorkflow as toWfGraph } from './workflowAdapter'
 import { dagLayout } from './layout'
 import { Play, Save, Undo2, Redo2, Trash2, Wand2, Workflow, LayoutGrid } from 'lucide-react'
 import { emitLog } from '../components/LogPanel'
-import {
-  LINGJING_CANVASES,
-  convertLingjingFlow,
-  fetchLingjingFlow,
-} from './lingjingImport'
 
 export default function CanvasToolbar() {
   const { undo, redo, clear, projectId, objects, edges, updateNodeStatus, load, applyAutoLayout } = useCanvasStore()
@@ -19,28 +13,6 @@ export default function CanvasToolbar() {
   const [buildPrompt, setBuildPrompt] = useState('')
   const [saved, setSaved] = useState(false)
   const [converting, setConverting] = useState(false)
-  const [importing, setImporting] = useState('')
-
-  // ── 导入灵境画布（原版复刻）───────────────────────────────────────
-  const importLingjing = async (file: string) => {
-    if (!file || importing) return
-    setImporting(file)
-    try {
-      const raw = await fetchLingjingFlow(file)
-      const { nodes, edges, sceneName } = convertLingjingFlow(raw)
-      if (!nodes.length) {
-        emitLog({ nodeId: 'lingjing', nodeLabel: '灵境导入', nodeType: 'import', status: 'failed', message: '画布数据为空或格式不识别' })
-        return
-      }
-      load(nodes as never, edges as never)
-      useUiStore.getState().setProjectName(sceneName)
-      emitLog({ nodeId: 'lingjing', nodeLabel: '灵境导入', nodeType: 'import', status: 'completed', message: `「${sceneName}」导入完成 · ${nodes.length} 节点 ${edges.length} 连线` })
-    } catch (e) {
-      emitLog({ nodeId: 'lingjing', nodeLabel: '灵境导入', nodeType: 'import', status: 'failed', message: `导入失败：${String(e).slice(0, 80)}` })
-    } finally {
-      setImporting('')
-    }
-  }
 
   const run = async () => {
     if (!objects.length || running) return
@@ -155,24 +127,6 @@ export default function CanvasToolbar() {
       <button className="ghost" onClick={toWorkflow} disabled={converting || objects.length === 0} title="把画布转回工作流">
         <Workflow size={14} /> {converting ? '转换中…' : '转回工作流'}
       </button>
-
-      {/* 灵境画布一键导入（原版复刻参考） */}
-      <select
-        className="nodrag nowheel"
-        value=""
-        disabled={!!importing}
-        onChange={(e) => importLingjing(e.target.value)}
-        title="导入灵境参考画布（复刻原版拓扑与参数）"
-      >
-        <option value="" disabled>
-          {importing ? '导入中…' : '⬇ 导入灵境画布…'}
-        </option>
-        {LINGJING_CANVASES.map((c) => (
-          <option key={c.id} value={c.file}>
-            {c.name}
-          </option>
-        ))}
-      </select>
 
       <div className="build-box nodrag nowheel">
         <Wand2 size={14} className="text-[var(--lw-ink-3)]" />

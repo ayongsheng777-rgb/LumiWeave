@@ -31,7 +31,9 @@ async def _get_provider(provider_id: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def _model(p: dict[str, Any], default: str) -> str:
+def _model(p: dict[str, Any] | None, default: str) -> str:
+    if not p:
+        return default
     models = p.get("models") or []
     if isinstance(models, str):
         try:
@@ -55,16 +57,26 @@ async def cloud_image_generate(
     model: str = "",
     reference_images: list[str] | None = None,
     native: dict[str, Any] | None = None,
+    profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """云端出图（同步）。带 reference_images 时走图生图/多图参考合成（Qwen-Image-Edit）。
     native 为模型专属字段（如 image_size/guidance_scale），直接合并进请求体。
+    profile 传「模型库」配置（base_url/api_key/model）时直连，不再查 providers 表。
     返回 {ok, images:[{url,filename}], logs, error}。"""
     logs: list[dict[str, Any]] = []
-    p = await _get_provider(provider_id)
-    if not p:
-        return {"ok": False, "error": "云端 Provider 不存在", "logs": logs}
-    endpoint = (p.get("endpoint") or "").rstrip("/")
-    key = p.get("api_key") or ""
+    p = await _get_provider(provider_id)  # profile 直连时可为 None，仅用于模型兜底
+    if profile:
+        endpoint = (str(profile.get("base_url") or "")).rstrip("/")
+        key = profile.get("api_key") or ""
+        prov_name = str(profile.get("name") or profile.get("provider") or provider_id)
+        if not model:
+            model = str(profile.get("model") or "")
+    else:
+        if not p:
+            return {"ok": False, "error": "云端 Provider 不存在", "logs": logs}
+        endpoint = (p.get("endpoint") or "").rstrip("/")
+        key = p.get("api_key") or ""
+        prov_name = p.get("name") or provider_id
     if not endpoint or not key:
         return {"ok": False, "error": "云端 Provider 未配置 endpoint/api_key", "logs": logs}
     refs = [r for r in (reference_images or []) if r and str(r).strip()]
@@ -72,7 +84,7 @@ async def cloud_image_generate(
     # 图生图（多图参考合成）：走 Qwen-Image-Edit-2509，image 为数组
     if refs:
         model_name = model or "Qwen/Qwen-Image-Edit-2509"
-        logs.append({"step": "provider", "message": f"云端图生图（参考合成）· {p.get('name') or provider_id}", "provider_id": provider_id, "endpoint": endpoint})
+        logs.append({"step": "provider", "message": f"云端图生图（参考合成）· {prov_name}", "provider_id": provider_id, "endpoint": endpoint})
         logs.append({"step": "model", "message": f"模型：{model_name}", "model": model_name})
         logs.append({"step": "refs", "message": f"参考图 {len(refs)} 张", "count": len(refs)})
         payload: dict[str, Any] = {
@@ -86,7 +98,7 @@ async def cloud_image_generate(
         logs.append({"step": "submit", "message": f"提交到 {endpoint}/images/generations（图生图）", "prompt": prompt[:200]})
     else:
         model_name = model or _model(p, "Qwen/Qwen-Image")
-        logs.append({"step": "provider", "message": f"云端出图 · {p.get('name') or provider_id}", "provider_id": provider_id, "endpoint": endpoint})
+        logs.append({"step": "provider", "message": f"云端出图 · {prov_name}", "provider_id": provider_id, "endpoint": endpoint})
         logs.append({"step": "model", "message": f"模型：{model_name}", "model": model_name})
         payload = {
             "model": model_name, "prompt": prompt,
@@ -137,25 +149,35 @@ async def cloud_video_generate(
     negative: str = "",
     model: str = "",
     native: dict[str, Any] | None = None,
+    profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """云端文生视频（异步：提交→轮询→取结果）。
     native 为模型专属字段（如 height/camera_control/camera_movement），直接合并进请求体。
+    profile 传「模型库」配置（base_url/api_key/model）时直连，不再查 providers 表。
     返回 {ok, videos, logs, error}。"""
     logs: list[dict[str, Any]] = []
     p = await _get_provider(provider_id)
-    if not p:
-        return {"ok": False, "error": "云端 Provider 不存在", "logs": logs}
-    endpoint = (p.get("endpoint") or "").rstrip("/")
-    key = p.get("api_key") or ""
+    if profile:
+        endpoint = (str(profile.get("base_url") or "")).rstrip("/")
+        key = profile.get("api_key") or ""
+        prov_name = str(profile.get("name") or profile.get("provider") or provider_id)
+        if not model:
+            model = str(profile.get("model") or "")
+    else:
+        if not p:
+            return {"ok": False, "error": "云端 Provider 不存在", "logs": logs}
+        endpoint = (p.get("endpoint") or "").rstrip("/")
+        key = p.get("api_key") or ""
+        prov_name = p.get("name") or provider_id
     if not endpoint or not key:
         return {"ok": False, "error": "云端 Provider 未配置 endpoint/api_key", "logs": logs}
     # 图生视频（有首帧图）走 I2V 模型，否则走 T2V
     if image_url:
         model_name = model or "Wan-AI/Wan2.2-I2V-A14B"
-        logs.append({"step": "provider", "message": f"云端图生视频 · {p.get('name') or provider_id}", "provider_id": provider_id, "endpoint": endpoint})
+        logs.append({"step": "provider", "message": f"云端图生视频 · {prov_name}", "provider_id": provider_id, "endpoint": endpoint})
     else:
         model_name = model or _model(p, "Wan-AI/Wan2.2-T2V-A14B")
-        logs.append({"step": "provider", "message": f"云端视频 · {p.get('name') or provider_id}", "provider_id": provider_id, "endpoint": endpoint})
+        logs.append({"step": "provider", "message": f"云端视频 · {prov_name}", "provider_id": provider_id, "endpoint": endpoint})
     logs.append({"step": "model", "message": f"模型：{model_name}", "model": model_name})
 
     payload: dict[str, Any] = {

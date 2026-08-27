@@ -15,6 +15,7 @@ import type { NodeProps } from '@xyflow/react'
 import { Film, ImageIcon, ListVideo, Loader2, Pause, PenLine, Play, Clapperboard, Camera, Captions } from 'lucide-react'
 import { useCanvasStore } from '../store/canvasStore'
 import NodeShell from './NodeShell'
+import LjAiChat from './LjAiChat'
 import { runLjNode, captureFrame, type LjResource } from './ljEngine'
 
 type AnyObj = Record<string, unknown>
@@ -95,7 +96,7 @@ function VersionStrip({ id, resources, selectedIndex }: { id: string; resources:
 function GenerateButton({ id, busy }: { id: string; busy: boolean }) {
   return (
     <button
-      className="nodrag nowheel flex w-full items-center justify-center gap-1 rounded-md bg-brand-600 px-2 py-1.5 text-xs text-white transition hover:bg-brand-500 disabled:opacity-50"
+      className="nodrag nowheel flex w-full items-center justify-center gap-1 rounded-md bg-brand-600 px-2 py-1.5 text-sm text-white transition hover:bg-brand-500 disabled:opacity-50"
       disabled={busy}
       onClick={() => void runLjNode(id)}
     >
@@ -272,7 +273,6 @@ export function LjTextLikeConfig({ id, data, selected, kind }: NodeProps & { kin
   const nid = String(id)
   const { d, prompt, contentHtml } = useLjData(nid, data)
   const label = String(d.label ?? (kind === 'script' ? '剧本生成' : '文本生成'))
-  const busy = String(d.status ?? 'idle') === 'running'
   const brief = String(asObj(d._params).brief ?? '')
   // 展示内容优先用户重跑结果（data.text），回退导入快照 HTML
   const plain = useMemo(() => {
@@ -297,15 +297,15 @@ export function LjTextLikeConfig({ id, data, selected, kind }: NodeProps & { kin
             📝 {brief.slice(0, 160)}
           </div>
         )}
-        {prompt && <div className={excerptCls}>{prompt.slice(0, 200)}</div>}
+        {/* 点文本框本身在其正下方弹出 AI 对话窗（仿京东云灵镜） */}
+        <LjAiChat nodeId={nid} kind={kind} />
         {plain ? (
           <div className={`${excerptCls} max-h-40`}>{plain.slice(0, 800)}</div>
         ) : (
-          <div className="flex h-12 items-center justify-center rounded-md border border-dashed border-edge bg-soft text-[11px] text-ink-3">
-            暂无内容
+          <div className="flex h-10 items-center justify-center rounded-md border border-dashed border-edge bg-soft text-[11px] text-ink-3">
+            点上方文本框唤出 AI 对话，生成内容显示于此
           </div>
         )}
-        <GenerateButton id={nid} busy={busy} />
       </div>
     </NodeShell>
   )
@@ -389,6 +389,15 @@ export function LjVideoClip({ data, selected }: NodeProps) {
 
 /** 注册表：供 objectNodes / CanvasCore 使用 */
 export const lingjingNodeTypes = {
+  // ── 灵境原始类型（双保险：覆盖未经 convert 直接加载原版 JSON 的路径）──
+  'image-source': LjImageSource,
+  'image-config': LjImageConfig,
+  'video-config': LjVideoConfig,
+  'text-config': (props: NodeProps) => <LjTextLikeConfig {...props} kind="text" />,
+  'script-config': (props: NodeProps) => <LjTextLikeConfig {...props} kind="script" />,
+  'storyboard-config': LjStoryboardConfig,
+  'video-clip': LjVideoClip,
+  // ── convert 后的 lj_ 前缀类型（常规导入路径）──
   lj_image_source: LjImageSource,
   lj_image_config: LjImageConfig,
   lj_video_config: LjVideoConfig,

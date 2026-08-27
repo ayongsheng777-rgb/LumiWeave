@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
 import { User } from 'lucide-react'
 import { useNodeAdapter } from '../../store/nodeAdapter'
-import { getProviders, getRenderers, filmCharacterGenerate } from '../../api'
+import { getModelChoices, getRenderers, filmCharacterGenerate } from '../../api'
 import { NodeShell, Field, inputCls } from './NodeShell'
 import { GenerationModeField, type ProviderInfo, type RendererInfo } from './GenerationModeField'
 import { PromptTranslate } from './PromptTranslate'
@@ -39,8 +39,8 @@ export function CharacterNode({ id, data, selected }: NodeProps) {
   const [renderers, setRenderers] = useState<RendererInfo[]>([])
 
   useEffect(() => {
-    getProviders().then((r) => {
-      if (r.ok) setProviders((r.data.providers || []).filter((p: { type: string }) => p.type === 'image'))
+    getModelChoices().then((r) => {
+      if (r.ok) setProviders((r.data?.providers || []))
     })
     getRenderers().then((r) => {
       if (r.ok) setRenderers((r.data.renderers || []).filter((rr: { type: string }) => rr.type === 'comfyui'))

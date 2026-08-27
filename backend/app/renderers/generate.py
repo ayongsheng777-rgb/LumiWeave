@@ -53,8 +53,10 @@ async def render_media(
     provider_id: str = "",
     model: str = "",
     renderer_id: str = "",
+    profile_id: str = "",
 ) -> dict[str, Any]:
-    """kind: 'image' | 'video'。params 含 prompt/negative/ratio/seed/steps/duration/reference_images 等。"""
+    """kind: 'image' | 'video'。params 含 prompt/negative/ratio/seed/steps/duration/reference_images 等。
+    profile_id 传「模型库」模型配置 id 时云端直连模型库（不再用商业接口 providers 预设）。"""
     kind = "video" if kind == "video" else "image"
     logs: list[dict[str, Any]] = []
     refs = _refs(params)
@@ -66,9 +68,26 @@ async def render_media(
 
     # ── 云端 API ────────────────────────────────────────────────
     if render_mode == "cloud":
-        # 智能路由：provider_id 为空或 "auto" 时，按能力+质量/速度/成本评分自动选路
+        # 模型库直连：profile_id 优先（阿勇 2026-08-28：移除商业接口，用模型配置）
+        profile = None
+        if profile_id:
+            try:
+                from app.ai import config as ai_config
+                profile = ai_config.get_profile(profile_id) or None
+            except Exception:  # noqa: BLE001
+                profile = None
+        # 兼容：provider_id 也可能是模型库 profile id（前端把模型库映射为候选列表）
+        if not profile and provider_id and provider_id != "auto":
+            try:
+                from app.ai import config as ai_config
+                profile = ai_config.get_profile(provider_id) or None
+            except Exception:  # noqa: BLE001
+                profile = None
         actual_provider_id = provider_id
-        if not provider_id or provider_id == "auto":
+        if profile:
+            actual_provider_id = ""
+            logs.append({"step": "route", "message": f"模型库直连：{profile.get('name') or profile.get('model') or profile_id}"})
+        elif not provider_id or provider_id == "auto":
             logs.append({"step": "route", "message": "智能路由：自动匹配最佳云端 Provider"})
             from app.providers.service import route as provider_route
             task_type = "image" if kind == "image" else "video"
@@ -94,7 +113,7 @@ async def render_media(
             steps = int(params.get("steps") or 20)
             res = await cloud_image_generate(
                 actual_provider_id, prompt, negative=negative, size=size, steps=steps,
-                model=model, reference_images=refs, native=native,
+                model=model, reference_images=refs, native=native, profile=profile,
             )
         else:
             from app.providers.cloud_gen import cloud_video_generate
@@ -103,7 +122,7 @@ async def render_media(
                 actual_provider_id, prompt,
                 image_url=first,
                 duration=int(params.get("duration") or 10),
-                ratio=ratio, negative=negative, model=model, native=native,
+                ratio=ratio, negative=negative, model=model, native=native, profile=profile,
             )
         res["logs"] = logs + (res.get("logs") or [])
         return res

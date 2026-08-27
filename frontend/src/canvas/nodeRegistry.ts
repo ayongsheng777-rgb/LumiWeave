@@ -151,24 +151,13 @@ export const NODE_REGISTRY: NodeDefinition[] = [
     outputs: ['image', 'text'],
     executable: true,
   },
-  // ── 兼容旧 type ──────────────────────────────────────────
+  // ── 文本便签 ──────────────────────────────────────────────
   {
-    type: 'output',
-    label: '输出',
-    category: '通用',
-    color: '#64748b',
-    description: '汇总展示节点结果',
-    inputs: ['image', 'video', 'audio', 'text', 'json'],
-    outputs: [],
-    executable: false,
-  },
-  // 旧名称兼容
-  {
-    type: 'input',
-    label: '输入',
+    type: 'text',
+    label: '文本',
     category: '通用',
     color: '#8b5cf6',
-    description: '（兼容）输入节点',
+    description: '文本 / 便签 / AI 结果：编辑文本或展示生成结果',
     inputs: [],
     outputs: ['text'],
     executable: false,

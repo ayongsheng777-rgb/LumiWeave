@@ -35,7 +35,9 @@ export const OBJECT_LIBRARY: { type: string; label: string; defaultData: Record<
   { type: 'export',      label: '导出',       defaultData: { format: 'mp4', video_url: '', subtitle_url: '', include_storyboard: true, include_subtitles: true, export_path: '' }, size: { width: 260, height: 220 } },
   // ── 通用辅助 ──────────────────────────────────────────────
   { type: 'prompt',      label: '提示词模板', defaultData: { template: '', query: '' }, size: { width: 260, height: 200 } },
-  { type: 'asset',       label: '资产',       defaultData: { prompt: '', assetType: '资产', url: '' }, size: { width: 260, height: 220 } },
+  { type: 'text',        label: '文本',       defaultData: { text: '', kind: 'text', url: '' }, size: { width: 260, height: 220 } },
+  { type: 'note',        label: '便签',       defaultData: { text: '', kind: 'text', url: '' }, size: { width: 240, height: 180 } },
+  { type: 'ai_result',   label: 'AI 结果',    defaultData: { text: '', kind: 'text', url: '' }, size: { width: 260, height: 220 } },
 ]
 
 let seq = 0

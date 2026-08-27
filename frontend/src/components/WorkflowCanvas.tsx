@@ -10,6 +10,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { Connection } from '@xyflow/react'
+import { Undo2, Redo2 } from 'lucide-react'
 import { defaultDataFor, useWorkflowStore } from '../store/workflowStore'
 import { useUiStore } from '../store/uiStore'
 import { canvasFromWorkflow } from '../api'
@@ -19,8 +20,10 @@ import { maybeChainVideoFrame } from './videoChain'
 const DND_KEY = 'application/lumiweave-node'
 
 function WorkflowCanvasInner() {
-  const { nodes, edges, running, runError, onNodesChange, onEdgesChange, addNode, clearAll, setRunError, save, workflowId, projectId, applyAutoLayout } =
+  const { nodes, edges, running, runError, onNodesChange, onEdgesChange, addNode, clearAll, setRunError, save, saveStatus, undo, redo, workflowId, projectId, applyAutoLayout } =
     useWorkflowStore()
+  const canUndo = useWorkflowStore((s) => s.undoStack.length > 0)
+  const canRedo = useWorkflowStore((s) => s.redoStack.length > 0)
   const theme = useUiStore((s) => s.theme)
   const { screenToFlowPosition } = useReactFlow()
   const [dragOver, setDragOver] = useState(false)
@@ -121,6 +124,30 @@ function WorkflowCanvasInner() {
         <Controls className="!shadow-node-dark !border !border-edge !bg-panel-2" showInteractive={false} />
         <Panel position="top-left">
           <div className="flex items-center gap-2">
+            <button
+              className="rounded-lg border border-edge bg-soft px-3 py-1.5 text-xs text-ink-2 transition hover:bg-soft disabled:opacity-40"
+              onClick={undo}
+              disabled={!canUndo || running}
+              title="返回（撤销，Ctrl+Z）"
+            >
+              <Undo2 size={13} className="inline" /> 返回
+            </button>
+            <button
+              className="rounded-lg border border-edge bg-soft px-3 py-1.5 text-xs text-ink-2 transition hover:bg-soft disabled:opacity-40"
+              onClick={redo}
+              disabled={!canRedo || running}
+              title="前进（重做，Ctrl+Shift+Z）"
+            >
+              <Redo2 size={13} className="inline" /> 前进
+            </button>
+            <button
+              className="rounded-lg border border-edge bg-soft px-3 py-1.5 text-xs text-ink-2 transition hover:bg-soft disabled:opacity-40"
+              onClick={() => void save()}
+              disabled={running || nodes.length === 0}
+              title="保存当前工作流状态"
+            >
+              {saveStatus === 'saving' ? '保存中…' : saveStatus === 'saved' ? '已保存' : '保存'}
+            </button>
             <button
               className="rounded-lg border border-edge bg-soft px-3 py-1.5 text-xs text-ink-2 transition hover:bg-soft disabled:opacity-40"
               onClick={applyAutoLayout}

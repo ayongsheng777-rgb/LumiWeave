@@ -1,7 +1,6 @@
 import { useUiStore } from '../store/uiStore'
 import TopHeader from './TopHeader'
 import FloatingToolbar from './FloatingToolbar'
-import SkillFloatingWindow from './SkillFloatingWindow'
 import NodeConfigDrawer from './NodeConfigDrawer'
 import WorkflowCanvas from './WorkflowCanvas'
 import ChatPanel from './ChatPanel'
@@ -28,14 +27,10 @@ export default function Workspace() {
       {/* 100% 占满的主画布区（顶栏悬浮其上） */}
       <div className="absolute inset-0 top-14">
         <div className="relative flex h-full">
-          {/* 节点库浮层 + 快捷技能浮窗：仅工作流/无限画布使用。
+          {/* 节点库浮层：仅工作流使用（工作流没有固定节点面板，靠悬浮菜单添加节点）。
+              无限画布有自己的固定节点库（NodePalette），不再显示悬浮菜单；
               专业场景画布有自己的动态工具条（SceneToolbar），避免两套工具条打架。 */}
-          {mode !== 'scene' && (
-            <>
-              <FloatingToolbar />
-              <SkillFloatingWindow />
-            </>
-          )}
+          {mode === 'workflow' && <FloatingToolbar />}
           <div className="relative min-w-0 flex-1">
             {mode === 'workflow' ? (
               <WorkflowCanvas />

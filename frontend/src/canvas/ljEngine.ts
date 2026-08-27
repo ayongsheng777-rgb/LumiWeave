@@ -210,12 +210,26 @@ export async function runLjNode(id: string): Promise<void> {
           : node.type === 'lj_storyboard_config'
             ? '你是分镜师。把用户给出的剧情拆成镜头表，每镜包含镜号/时长/画面描述/景别/运镜，逐行列出。'
             : '你是内容生成助手，按要求生成内容，直接输出结果，不要多余解释。'
+      // 总时长 / 分镜个数 / 分镜时长（自动算）拼进指令
+      const dur = Number(d.duration) || 0
+      const sc = Number(d.shotCount) || 0
+      const perShot = dur > 0 && sc > 0 ? dur / sc : 0
+      const timingLines: string[] = []
+      if (dur > 0) timingLines.push(`总时长：${dur} 秒`)
+      if (sc > 0) timingLines.push(`分镜个数：${sc} 个`)
+      if (perShot > 0) timingLines.push(`每个分镜时长约：${perShot.toFixed(1)} 秒（总时长 ÷ 分镜个数）`)
       const userText = [
         prompt,
-        ...(node.type === 'lj_script_config' && d.duration ? [`总时长约 ${String(d.duration)} 秒`] : []),
+        ...timingLines,
         ...(inputs.length ? ['\n参考素材：', ...inputs.map((i, n) => `- 图${n + 1}（${i.label}）: ${i.url}`)] : []),
       ].join('\n')
-      const res = await aiChat({ system: sys, user: userText, scenario: 'general' })
+      const chatPayload: { system: string; user: string; scenario: string; profile_id?: string } = {
+        system: sys,
+        user: userText,
+        scenario: 'general',
+      }
+      if (d.profile_id) chatPayload.profile_id = String(d.profile_id)
+      const res = await aiChat(chatPayload)
       if (!res.ok || !res.data.result) throw new Error(String(res.data.error || 'AI 未返回内容'))
       textResult = String(res.data.result)
     }

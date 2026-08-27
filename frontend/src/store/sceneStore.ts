@@ -524,6 +524,32 @@ export const useSceneStore = create<SceneState>((set, get) => ({
         },
       ],
     }))
+
+    // 分镜对话框：分镜(storyboard) / 镜头(shot) 连线进来时，自动复制提示词（只复制提示词）
+    const objs = get().objects
+    const src = objs.find((o) => o.id === c.source)
+    const tgt = objs.find((o) => o.id === c.target)
+    const typeOf = (n?: Node) => String((n?.data as { objectType?: string } | undefined)?.objectType || '')
+    const promptOf = (n?: Node) => {
+      const p = ((n?.data as { payload?: Record<string, unknown> } | undefined)?.payload || {}) as Record<string, unknown>
+      const t = typeOf(n)
+      if (t === 'storyboard') return String(p.description ?? '')
+      if (t === 'shot') return String(p.prompt ?? '')
+      return ''
+    }
+    let dialog: Node | undefined
+    let origin: Node | undefined
+    if (typeOf(tgt) === 'shot_dialog' && (typeOf(src) === 'storyboard' || typeOf(src) === 'shot')) {
+      dialog = tgt
+      origin = src
+    } else if (typeOf(src) === 'shot_dialog' && (typeOf(tgt) === 'storyboard' || typeOf(tgt) === 'shot')) {
+      dialog = src
+      origin = tgt
+    }
+    if (dialog && origin) {
+      const text = promptOf(origin)
+      if (text) get().patchObject(dialog.id, { prompt: text })
+    }
   },
 
   setSelected: (ids) => set({ selectedIds: ids }),

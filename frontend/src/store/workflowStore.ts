@@ -23,7 +23,7 @@ export type FilmNodeType =
   | 'story' | 'character' | 'scene' | 'prop'
   | 'storyboard' | 'image' | 'video'
   | 'audio' | 'subtitle' | 'layout' | 'export'
-  | 'prompt' | 'asset'
+  | 'prompt'
 
 export const NODE_DEFAULTS: Record<string, Record<string, unknown>> = {
   // ── 创作入口 ──────────────────────────────────────────────
@@ -179,12 +179,6 @@ export const NODE_DEFAULTS: Record<string, Record<string, unknown>> = {
     query: '',
     status: 'idle',
   },
-  asset: {
-    prompt: '',
-    assetType: '资产',
-    url: '',
-    status: 'idle',
-  },
 }
 
 // 兼容旧代码（外部可能传旧 type）
@@ -211,7 +205,7 @@ function toGraph(nodes: Node[], edges: Edge[]) {
   return {
     nodes: nodes.map((n) => ({
       id: n.id,
-      type: (n.type || 'input') as string,
+      type: (n.type || 'text') as string,
       data: (n.data || {}) as Record<string, unknown>,
       // position 必须落库：丢了坐标 React Flow 渲染时读 position.x 会直接崩掉整个应用（白板）
       position: n.position ?? { x: 0, y: 0 },
@@ -259,6 +253,18 @@ interface WorkflowState {
   save: () => Promise<void>
   loadWorkflow: (workflowId: string) => Promise<void>
   loadLastWorkflow: () => Promise<void>
+  // 撤销 / 重做（返回 / 前进）
+  undoStack: GraphSnapshot[]
+  redoStack: GraphSnapshot[]
+  snapshot: () => void
+  undo: () => void
+  redo: () => void
+}
+
+/** 画布历史快照（撤销/重做用） */
+export interface GraphSnapshot {
+  nodes: Node[]
+  edges: Edge[]
 }
 
 let nodeSeq = 0
@@ -288,30 +294,78 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   projectId: 'default',
   workflowId: '',
   saveStatus: 'idle',
+  undoStack: [],
+  redoStack: [],
+
+  // 撤销 / 重做：变更画布前先快照，最多保留 50 步
+  snapshot: () =>
+    set((s) => ({
+      undoStack: [...s.undoStack, { nodes: s.nodes, edges: s.edges }].slice(-50),
+      redoStack: [],
+    })),
+  undo: () =>
+    set((s) => {
+      if (s.undoStack.length === 0) return s
+      const prev = s.undoStack[s.undoStack.length - 1]
+      return {
+        nodes: prev.nodes,
+        edges: prev.edges,
+        undoStack: s.undoStack.slice(0, -1),
+        redoStack: [...s.redoStack, { nodes: s.nodes, edges: s.edges }],
+      }
+    }),
+  redo: () =>
+    set((s) => {
+      if (s.redoStack.length === 0) return s
+      const next = s.redoStack[s.redoStack.length - 1]
+      return {
+        nodes: next.nodes,
+        edges: next.edges,
+        redoStack: s.redoStack.slice(0, -1),
+        undoStack: [...s.undoStack, { nodes: s.nodes, edges: s.edges }],
+      }
+    }),
 
   onNodesChange: (changes) => set((s) => ({ nodes: applyNodeChanges(changes, s.nodes) })),
   onEdgesChange: (changes) => set((s) => ({ edges: applyEdgeChanges(changes, s.edges) })),
-  onConnect: (conn) => set((s) => ({ edges: addEdge(conn, s.edges) })),
+  onConnect: (conn) =>
+    set((s) => {
+      get().snapshot()
+      return { edges: addEdge(conn, s.edges) }
+    }),
 
-  addNode: (node) => set((s) => ({ nodes: [...s.nodes, node] })),
+  addNode: (node) =>
+    set((s) => {
+      get().snapshot()
+      return { nodes: [...s.nodes, node] }
+    }),
   updateNodeData: (id, data) =>
     set((s) => ({
       nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n)),
     })),
   removeNode: (id) =>
-    set((s) => ({
-      nodes: s.nodes.filter((n) => n.id !== id),
-      edges: s.edges.filter((e) => e.source !== id && e.target !== id),
-    })),
+    set((s) => {
+      get().snapshot()
+      return {
+        nodes: s.nodes.filter((n) => n.id !== id),
+        edges: s.edges.filter((e) => e.source !== id && e.target !== id),
+      }
+    }),
 
   toggleLock: (id) =>
-    set((s) => ({
-      nodes: s.nodes.map((n) =>
-        n.id === id ? { ...n, data: { ...(n.data as object), locked: !((n.data as Record<string, unknown>).locked === true) } } : n,
-      ),
-    })),
+    set((s) => {
+      get().snapshot()
+      return {
+        nodes: s.nodes.map((n) =>
+          n.id === id ? { ...n, data: { ...(n.data as object), locked: !((n.data as Record<string, unknown>).locked === true) } } : n,
+        ),
+      }
+    }),
 
-  clearAll: () => set({ nodes: [], edges: [], nodeStatus: {}, nodeOutputs: {}, workflowId: '' }),
+  clearAll: () => {
+    get().snapshot()
+    set({ nodes: [], edges: [], nodeStatus: {}, nodeOutputs: {}, workflowId: '' })
+  },
 
   applyAutoLayout: () => set((s) => ({ nodes: dagLayout(s.nodes, s.edges) })),
 

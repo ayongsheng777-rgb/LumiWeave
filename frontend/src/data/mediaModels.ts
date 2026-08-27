@@ -269,13 +269,13 @@ export function resolutionToP(resolution: string): string {
   return resolution === '1080p' ? '1080p' : '720p'
 }
 
-// 匹配已配置 Provider：按 family 关键词扫描 provider 的 endpoint/name/id
-export function matchProvider(preset: MediaPreset, providers: { id: string; name: string; type: string; endpoint: string }[]): string {
+// 匹配已配置 Provider（模型库候选：id=profile id，name 含平台·模型名）：按 family 关键词扫描
+export function matchProvider(preset: MediaPreset, providers: { id: string; name: string; endpoint?: string }[]): string {
   if (preset.renderMode === 'comfyui') return ''
   if (!providers.length) return 'auto'
   const fam = preset.family.toLowerCase()
   const hit = providers.find((p) => {
-    const hay = `${p.id} ${p.name} ${p.endpoint}`.toLowerCase()
+    const hay = `${p.id} ${p.name} ${p.endpoint ?? ''}`.toLowerCase()
     return fam.split(/[-_]/).some((seg) => seg && hay.includes(seg))
   })
   return hit ? hit.id : 'auto'

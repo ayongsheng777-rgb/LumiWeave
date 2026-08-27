@@ -44,6 +44,19 @@ export default function NodeConfigDrawer() {
 
   // 灵境复刻节点：走专用属性面板（字段化编辑 + 版本管理 + 输入展示）
   if (String(node.type ?? '').startsWith('lj_')) {
+    // 文本/剧本节点：AI 配置与生成已全部迁移到节点内弹窗（LjAiChat），右侧面板不再展示属性编辑
+    if (node.type === 'lj_text_config' || node.type === 'lj_script_config') {
+      return (
+        <div className="fixed right-0 top-0 z-[45] flex h-full w-[380px] flex-col border-l border-edge bg-panel shadow-xl animate-fade-in">
+          <DrawerHead onClose={close} title={`属性 · ${String(data.label || node.type || '')}`} />
+          <div className="nowheel min-h-0 flex-1 overflow-y-auto p-4 text-xs leading-relaxed text-ink-3">
+            该节点的 AI 配置与生成已改为「节点内对话窗」：<br />
+            请在画布上点击该节点中的「内容要求」文本框，即可在其正下方唤出 AI 对话窗口
+            （模型 / 总时长 / 分镜个数 / 分镜时长自动算 / 多轮对话均在其中）。
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="fixed right-0 top-0 z-[45] flex h-full w-[380px] flex-col border-l border-edge bg-panel shadow-xl animate-fade-in">
         <DrawerHead onClose={close} title={`属性 · ${String(data.label || node.type || '')}`} />

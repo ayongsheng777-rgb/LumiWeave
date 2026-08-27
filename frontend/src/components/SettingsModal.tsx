@@ -1,22 +1,20 @@
 import { useState } from 'react'
-import { X, Cpu, Coins, Wrench, Image, BookOpen, Plug, FolderOpen, Shield, Network } from 'lucide-react'
+import { X, Cpu, Coins, Wrench, Image, BookOpen, FolderOpen, Shield, Network } from 'lucide-react'
 import { useUiStore } from '../store/uiStore'
 import ModelPanel from './ModelPanel'
 import TokenPanel from './TokenPanel'
 import SkillPanel from './SkillPanel'
 import RendererPanel from './RendererPanel'
 import KnowledgePanel from './KnowledgePanel'
-import ProviderPanel from './ProviderPanel'
 import AssetPanel from './AssetPanel'
 import OtpPanel from './OtpPanel'
 import MCPStatus from './mcp/MCPStatus'
 import ToolPanel from './mcp/ToolPanel'
 
-type Tab = 'model' | 'token' | 'skills' | 'renderers' | 'kb' | 'providers' | 'assets' | 'security' | 'mcp'
+type Tab = 'model' | 'token' | 'skills' | 'renderers' | 'kb' | 'assets' | 'security' | 'mcp'
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'model', label: '模型', icon: <Cpu size={15} /> },
-  { key: 'providers', label: '接口', icon: <Plug size={15} /> },
   { key: 'renderers', label: '出图', icon: <Image size={15} /> },
   { key: 'skills', label: '技能库', icon: <Wrench size={15} /> },
   { key: 'kb', label: '知识库', icon: <BookOpen size={15} /> },
@@ -26,11 +24,12 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'mcp', label: 'MCP', icon: <Network size={15} /> },
 ]
 
-// 设置弹窗：承载各管理面板（模型/计费/技能/出图/知识库/接口/素材）
+// 设置弹窗：承载各管理面板（模型/计费/技能/出图/知识库/素材）
 export default function SettingsModal() {
   const close = () => useUiStore.getState().setManagementOpen(false)
-  // 支持从其它入口直达指定 tab（如节点里「配置」直达接口页）
-  const directTab = useUiStore((s) => s.managementTab) as Tab
+  // 支持从其它入口直达指定 tab（如节点里「配置」直达模型页）；旧 'providers' 入口重定向到 'model'
+  const tab0 = useUiStore((s) => s.managementTab)
+  const directTab = (tab0 === 'providers' ? 'model' : tab0) as Tab
   const [tab, setTab] = useState<Tab>(directTab || 'model')
 
   return (
@@ -74,7 +73,6 @@ export default function SettingsModal() {
             {tab === 'skills' && <SkillPanel />}
             {tab === 'renderers' && <RendererPanel />}
             {tab === 'kb' && <KnowledgePanel />}
-            {tab === 'providers' && <ProviderPanel />}
             {tab === 'assets' && <AssetPanel />}
             {tab === 'security' && <OtpPanel />}
             {tab === 'mcp' && (
