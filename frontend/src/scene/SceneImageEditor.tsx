@@ -35,8 +35,16 @@ interface ParsedScript {
 }
 const EMPTY_PARSED: ParsedScript = { characters: [], props: [], shots: [] }
 
-/** 从剧本 script 文本解析「人物/道具」的详细描述（匹配出场元素段） */
-function parseEntityDescs(script: string): Record<string, string> {
+/** 判断节点是否为剧情节点：兼容两种存储（新拖入 type='sceneObject' + data.objectType；重载后 type='story'） */
+function isStoryNode(n: AnyObj | null | undefined): boolean {
+  if (!n) return false
+  const t = String((n as AnyObj).type ?? '').toLowerCase()
+  const ot = String(((n as AnyObj).data as AnyObj)?.objectType ?? '').toLowerCase()
+  return t === 'story' || ot === 'story'
+}
+
+/** 从剧本 script 解析「人物」行：名字 → 完整描述行 */
+function parseCharacters(script: string): Record<string, string> {
   const desc: Record<string, string> = {}
   if (!script) return desc
   const m = script.match(/# 出场元素([\s\S]*?)(?=\n# )/)
@@ -51,17 +59,35 @@ function parseEntityDescs(script: string): Record<string, string> {
       if (name) desc[name] = l
     }
   }
-  const pp = block.match(/-\s*道具[：:]\s*([^\n]+)/)
-  if (pp) {
-    pp[1]
-      .split(/[、,，]/)
-      .map((x) => x.trim())
-      .filter(Boolean)
-      .forEach((x) => {
-        desc[x] = x
-      })
-  }
   return desc
+}
+
+/** 从剧本 script 解析「道具」名字列表 */
+function parsePropsList(script: string): string[] {
+  if (!script) return []
+  const m = script.match(/# 出场元素([\s\S]*?)(?=\n# )/)
+  if (!m) return []
+  const pp = m[1].match(/-\s*道具[：:]\s*([^\n]+)/)
+  if (!pp) return []
+  return pp[1]
+    .split(/[、,，]/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+}
+
+/** 从剧本 script 实时解析「分镜」列表（parsed.shots 缺失时兜底，兼容不同剧本结构） */
+function parseShotsFromScript(script: string): ParsedShot[] {
+  const shots: ParsedShot[] = []
+  if (!script) return shots
+  const re = /##\s*分镜(\d+)[：:]?\s*（?([^）\n]*)）?/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(script))) {
+    const no = parseInt(m[1], 10)
+    const head = (m[2] || '').trim()
+    const [loc, tm] = head.split(/[,，]/).map((x) => x.trim())
+    shots.push({ no, location: loc || '', time: tm || '', goal: '', mood: '', bgm: '', duration: '', shots: [], dialogue: [] })
+  }
+  return shots
 }
 
 /** 场景（分镜）描述组装 */
@@ -87,17 +113,22 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   const payload = ((obj?.data as AnyObj)?.payload || {}) as AnyObj
   const imageUrl = String(payload.url ?? '')
 
-  // ── 连线剧情节点：读剧本 + 解析数据 ──────────────────────────
+  // ── 连线剧情节点：读剧本 + 解析数据（兼容新拖入 type='sceneObject' 的节点）──
   const storyObj = useMemo(() => {
     const sid = edges
       .map((e) => (e.source === id ? e.target : e.target === id ? e.source : ''))
-      .find((x) => !!x && objects.find((o) => o.id === x)?.type === 'story')
+      .find((x) => !!x && isStoryNode(objects.find((o) => o.id === x)))
     return sid ? objects.find((o) => o.id === sid) : null
   }, [edges, objects, id])
   const storyPayload = ((storyObj?.data as AnyObj)?.payload || {}) as AnyObj
   const script = String(storyPayload.script ?? '')
   const parsed: ParsedScript = (storyPayload.parsed as ParsedScript) || EMPTY_PARSED
-  const entityDescs = useMemo(() => parseEntityDescs(script), [script])
+  const charDescs = useMemo(() => parseCharacters(script), [script])
+  const propList = useMemo(() => parsePropsList(script), [script])
+  const mergedShots = useMemo(() => {
+    if (parsed.shots && parsed.shots.length) return parsed.shots
+    return parseShotsFromScript(script)
+  }, [parsed, script])
 
   // ── 面板状态 ────────────────────────────────────────────────
   const [category, setCategory] = useState<Category>('人物')
@@ -124,12 +155,18 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   const [generating, setGenerating] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
 
-  // ── 选项列表（按类别）───────────────────────────────────────
+  // ── 选项列表（按类别，合并剧本解析 + 手动添加）────────────────
+  const [manualItems, setManualItems] = useState<string[]>([])
+  const [manualInput, setManualInput] = useState('')
   const options = useMemo(() => {
-    if (category === '人物') return parsed.characters || []
-    if (category === '道具') return parsed.props || []
-    return (parsed.shots || []).map((s) => `分镜${s.no} ${s.location || ''}`.trim())
-  }, [category, parsed])
+    if (category === '人物') {
+      return Array.from(new Set([...(parsed.characters || []), ...Object.keys(charDescs), ...manualItems]))
+    }
+    if (category === '道具') {
+      return Array.from(new Set([...(parsed.props || []), ...propList, ...manualItems]))
+    }
+    return Array.from(new Set([...mergedShots.map((s) => `分镜${s.no} ${s.location || ''}`.trim()), ...manualItems]))
+  }, [category, parsed, charDescs, propList, mergedShots, manualItems])
 
   // 类别切换 → 重置选中与描述
   const switchCategory = (c: Category) => {
@@ -144,11 +181,22 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     patchObject(id, { purpose: category }) // 同步用途，兼容节点匹配提示
     if (category === '场景') {
       const no = parseInt(val.replace(/^分镜\s*/, ''), 10)
-      const s = (parsed.shots || []).find((x) => x.no === no)
+      const s = mergedShots.find((x) => x.no === no)
       setDesc(s ? shotDesc(s) : val)
     } else {
-      setDesc(entityDescs[val] || val)
+      setDesc(charDescs[val] || val)
     }
+  }
+
+  // 手动添加对象（无剧本 / 剧本没识别到时直接手选）
+  const addManual = () => {
+    const v = manualInput.trim()
+    if (!v) return
+    setManualItems((prev) => [...prev, v])
+    setManualInput('')
+    setSelected(v)
+    setDesc(v)
+    patchObject(id, { purpose: category })
   }
 
   // ── 数据加载 ────────────────────────────────────────────────
@@ -365,41 +413,59 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
         </div>
       )}
 
-      {!storyObj && (
-        <div className="rounded-lg border border-dashed border-edge px-2 py-2 text-center text-[11px] text-ink-3">
-          连线「剧情」节点后，可自动识别人物 / 道具 / 场景
-        </div>
-      )}
-
-      {/* 类型识别 */}
-      {storyObj && (
-        <div className="flex gap-1.5">{catBtn('人物')}{catBtn('道具')}{catBtn('场景')}</div>
-      )}
+      {/* 类型识别：始终显示，连剧情自动识别，也可手动选择 */}
+      <div className="flex gap-1.5">{catBtn('人物')}{catBtn('道具')}{catBtn('场景')}</div>
 
       {/* 列表选择 + 描述 */}
-      {storyObj && (
-        <>
-          {options.length > 0 ? (
-            <div>
-              <select
-                className="nodrag h-8 w-full rounded-md border border-edge bg-input px-1.5 text-sm text-ink outline-none focus:border-brand-500"
-                value={selected}
-                disabled={locked}
-                onChange={(e) => pickOption(e.target.value)}
-              >
-                <option value="">选择{category}…</option>
-                {options.map((o) => (
-                  <option key={o} value={o}>{o}</option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div className="rounded bg-soft px-2 py-1.5 text-[11px] text-ink-3">
-              剧本中暂无{category}（先去剧情节点生成剧本）
-            </div>
-          )}
+      <div className="space-y-1.5">
+        {!storyObj && (
+          <div className="rounded-lg border border-dashed border-edge px-2 py-1.5 text-[11px] text-ink-3">
+            未连线剧情节点：可手动选择/添加对象；连线剧情后自动识别人物/道具/场景
+          </div>
+        )}
+        {options.length > 0 ? (
+          <select
+            className="nodrag h-8 w-full rounded-md border border-edge bg-input px-1.5 text-sm text-ink outline-none focus:border-brand-500"
+            value={selected}
+            disabled={locked}
+            onChange={(e) => pickOption(e.target.value)}
+          >
+            <option value="">选择{category}…</option>
+            {options.map((o) => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </select>
+        ) : (
+          <div className="rounded bg-soft px-2 py-1.5 text-[11px] text-ink-3">
+            暂无识别到{category}，可在下方手动添加
+          </div>
+        )}
 
-          {selected && (
+        {/* 手动添加 */}
+        <div className="flex items-center gap-1.5">
+          <input
+            className="nodrag h-8 min-w-0 flex-1 rounded-md border border-edge bg-input px-2 text-sm text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
+            placeholder={`手动添加${category}名…`}
+            value={manualInput}
+            disabled={locked}
+            onChange={(e) => setManualInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                addManual()
+              }
+            }}
+          />
+          <button
+            className="nodrag flex h-8 shrink-0 items-center rounded-md bg-soft px-2.5 text-sm text-ink-2 transition hover:text-ink"
+            disabled={locked || !manualInput.trim()}
+            onClick={addManual}
+          >
+            + 添加
+          </button>
+        </div>
+
+        {selected && (
             <>
               <textarea
                 className="nodrag nowheel w-full resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500"
@@ -434,8 +500,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
               </div>
             </>
           )}
-        </>
-      )}
+      </div>
 
       {/* 技能库 / 知识库参考 */}
       <div className="grid grid-cols-2 gap-1.5">

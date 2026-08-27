@@ -23,6 +23,14 @@ const LONG_TEXT_KEYS = new Set([
   'description', 'prompt', 'text', 'summary', 'analysis', 'dialogue',
   'appearance', 'marketing_plan', 'composition',
 ])
+
+/** 判断节点是否为剧情节点：兼容两种存储——新拖入 type='sceneObject'（业务类型在 data.objectType），重载后 type='story' */
+function isStoryNode(n: { type?: string; data?: unknown } | undefined | null): boolean {
+  if (!n) return false
+  const t = String(n.type ?? '').toLowerCase()
+  const ot = String(((n.data as { objectType?: string } | undefined)?.objectType ?? '')).toLowerCase()
+  return t === 'story' || ot === 'story'
+}
 /** 镜头术语字段 → 中英双文下拉 */
 const CAMERA_KEYS = new Set(['camera', 'motion', 'shot_size', 'camera_motion', 'lens'])
 const CAMERA_OPTIONS = Object.keys(CAMERA_ZH)
@@ -105,7 +113,7 @@ function computeMatchLabel(
   // 找到它连的剧情节点
   const linked = edges
     .map((e) => (e.source === oid ? e.target : e.target === oid ? e.source : ''))
-    .find((x) => !!x && objects.find((o) => o.id === x)?.type === 'story')
+    .find((x) => !!x && isStoryNode(objects.find((o) => o.id === x)))
   if (!linked) return ''
   // 具体索引项直接显示（小偷/分镜2/镜头1-2/分镜2音乐…）
   if (!NUMBERED_KINDS.has(kind)) return kind
@@ -466,7 +474,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
   const matchLabel = computeMatchLabel(objects, edges, id)
   const linkedStory = edges
     .map((e) => (e.source === id ? e.target : e.target === id ? e.source : ''))
-    .some((x) => !!x && objects.find((o) => o.id === x)?.type === 'story')
+    .some((x) => !!x && isStoryNode(objects.find((o) => o.id === x)))
   const needPurpose = linkedStory && objectType !== 'story' && objectType !== 'video' && !matchLabel
   const videoRefs =
     objectType === 'video'
@@ -483,7 +491,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
   const linkedStoryParsed = (() => {
     const sid = edges
       .map((e) => (e.source === id ? e.target : e.target === id ? e.source : ''))
-      .find((x) => !!x && objects.find((o) => o.id === x)?.type === 'story')
+      .find((x) => !!x && isStoryNode(objects.find((o) => o.id === x)))
     if (!sid) return null
     const so = objects.find((o) => o.id === sid)
     return (((so?.data as Payload)?.payload as Payload)?.parsed as ParsedScript) || EMPTY_PARSED
@@ -517,7 +525,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
     ? (() => {
         const sid = edges
           .map((e) => (e.source === id ? e.target : e.target === id ? e.source : ''))
-          .find((x) => !!x && objects.find((o) => o.id === x)?.type === 'story')
+          .find((x) => !!x && isStoryNode(objects.find((o) => o.id === x)))
         if (!sid) return null
         const so = objects.find((o) => o.id === sid)
         const pp = ((so?.data as Payload)?.payload as Payload) || {}
