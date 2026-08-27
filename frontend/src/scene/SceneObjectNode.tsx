@@ -16,6 +16,7 @@ import type { SceneTypeDef } from '../api'
 import { aiChat, getProfiles } from '../api'
 import SceneFieldPopover from './SceneFieldPopover'
 import SceneTextWriter from './SceneTextWriter'
+import SceneImageEditor from './SceneImageEditor'
 
 /** 长文本字段 → 用 AI 对话弹窗编辑 */
 const LONG_TEXT_KEYS = new Set([
@@ -296,11 +297,12 @@ function InlineAiBar({
           分镜时长：每段约 <b className="text-ink">{per}</b> 秒（总时长 ÷ 分镜个数）
         </div>
       )}
-      {/* 输入 + 发送 */}
-      <div className="flex items-center gap-1.5">
-        <input
-          className="nodrag h-8 min-w-0 flex-1 rounded-md border border-edge bg-input px-2 text-sm text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
-          placeholder="告诉我写什么，回车发送"
+      {/* 输入 + 发送：多行文本框，文字超长自动换行（不横向一条线），回车发送 / Shift+Enter 换行 */}
+      <div className="flex items-end gap-1.5">
+        <textarea
+          className="nodrag nowheel min-h-8 max-h-32 min-w-0 flex-1 resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
+          placeholder="告诉我写什么，回车发送（Shift+Enter 换行）"
+          rows={Math.min(4, Math.max(1, prompt.split('\n').length))}
           value={prompt}
           disabled={disabled || running}
           onChange={(e) => setPrompt(e.target.value)}
@@ -725,7 +727,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
               className="mb-1.5 w-full rounded-lg bg-black"
               style={{ maxHeight: 200 }}
             />
-          ) : imageUrl ? (
+          ) : imageUrl && objectType !== 'image' ? (
             <img
               src={imageUrl}
               alt={meta.label}
@@ -741,6 +743,8 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
             <ShotDialogEditor id={id} payload={payload} locked={locked} />
           ) : objectType === 'text' ? (
             <SceneTextWriter id={id} locked={locked} />
+          ) : objectType === 'image' ? (
+            <SceneImageEditor id={id} locked={locked} />
           ) : (
             <>
               {Object.keys(fields).length === 0 && (

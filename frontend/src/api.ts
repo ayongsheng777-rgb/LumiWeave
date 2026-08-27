@@ -156,6 +156,16 @@ export async function getSkills() {
   return request('GET', '/skills')
 }
 
+// ==================== 知识库 Prompt Learning ====================
+
+export async function promptLearningList() {
+  return request('GET', '/prompt-learning/list')
+}
+
+export async function promptLearningSearch(q: string, k = 5) {
+  return request('GET', `/prompt-learning/search?q=${encodeURIComponent(q)}&k=${k}`)
+}
+
 export async function getSkillDetail(skillId: string) {
   return request('GET', `/skills/${skillId}`)
 }

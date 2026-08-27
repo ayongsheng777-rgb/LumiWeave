@@ -66,11 +66,10 @@ export default function SceneTextWriter({
   }
 
   return (
-    <div className="space-y-1.5">
-      {/* 文本框：直接编辑，AI 结果也填回这里（长文在节点内可见） */}
+    <div className="flex h-full min-h-0 flex-col space-y-1.5">
+      {/* 文本框：撑满节点高度（随框体变化），AI 结果也填回这里 */}
       <textarea
-        className="nodrag nowheel w-full resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500"
-        rows={Math.min(6, Math.max(3, value.split('\n').length))}
+        className="nodrag nowheel w-full flex-1 resize-none rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500"
         placeholder="在此输入内容，或直接点下方「AI 编写」让 AI 撰写…"
         value={value}
         disabled={locked}
