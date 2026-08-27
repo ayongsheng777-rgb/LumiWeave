@@ -7,16 +7,49 @@ from pathlib import Path
 from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import JSONResponse
 
+from app import db
 from app.assets import service
 from app.config import DATA_DIR
 from app.services import video_service
 
 router = APIRouter()
 
-# 图片一等公民（V2.3）：本地上传图片，落盘 DATA_DIR/uploads/ 并入素材库
-UPLOAD_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20MB
+
+
+async def _assets_dir() -> Path:
+    """素材保存目录：可配置（app_kv assets_dir），默认 DATA_DIR/uploads。"""
+    row = await db.fetchrow("SELECT value FROM app_kv WHERE key=$1", "assets_dir")
+    if row and row["value"]:
+        return Path(str(row["value"]))
+    return DATA_DIR / "uploads"
+
+
+@router.get("/dir")
+async def get_assets_dir():
+    d = await _assets_dir()
+    return {"dir": str(d), "exists": d.exists()}
+
+
+@router.post("/dir")
+async def set_assets_dir(request: Request):
+    """设置素材保存目录（本地路径；也可配置后把旧目录文件迁移）。"""
+    data = await request.json() or {}
+    d = str(data.get("dir") or "").strip()
+    if not d:
+        return JSONResponse(status_code=400, content={"error": "目录不能为空"})
+    p = Path(d)
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(status_code=400, content={"error": f"无法创建目录：{exc}"})
+    await db.execute(
+        "INSERT INTO app_kv (key, value, updated_at) VALUES ('assets_dir', $1, NOW()) "
+        "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()",
+        d,
+    )
+    return {"ok": True, "dir": d}
 
 
 @router.post("/upload")
@@ -30,9 +63,10 @@ async def upload_asset(file: UploadFile = File(...)):
     if not data:
         return JSONResponse(status_code=400, content={"error": "空文件"})
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    upload_dir = await _assets_dir()
+    upload_dir.mkdir(parents=True, exist_ok=True)
     fname = f"{uuid.uuid4().hex[:16]}{ext}"
-    (UPLOAD_DIR / fname).write_bytes(data)
+    (upload_dir / fname).write_bytes(data)
 
     url = f"/uploads/{fname}"
     aid = await service.add_asset(
@@ -42,7 +76,7 @@ async def upload_asset(file: UploadFile = File(...)):
         metadata={"source": "upload", "filename": file.filename or "", "size": len(data)},
         name=Path(file.filename or "").stem,
     )
-    return {"id": aid, "url": url}
+    return {"id": aid, "url": url, "file_path": str(upload_dir / fname)}
 
 
 @router.post("/video/extract-frame")
@@ -61,7 +95,16 @@ async def extract_video_frame(request: Request):
 async def list_assets(request: Request):
     asset_type = request.query_params.get("type", "")
     limit = int(request.query_params.get("limit", 100))
-    return {"assets": await service.list_assets(asset_type, limit)}
+    assets = await service.list_assets(asset_type, limit)
+    adir = await _assets_dir()
+    # 本地素材补磁盘路径（V2.8：素材面板显示保存路径）
+    for a in assets:
+        u = str(a.get("url") or "")
+        if u.startswith("/uploads/"):
+            a["file_path"] = str(adir / u[len("/uploads/"):])
+        else:
+            a["file_path"] = ""
+    return {"assets": assets, "dir": str(adir)}
 
 
 @router.post("")

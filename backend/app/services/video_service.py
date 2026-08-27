@@ -14,7 +14,16 @@ import httpx
 
 from app.config import DATA_DIR
 
-UPLOAD_DIR = DATA_DIR / "uploads"
+UPLOAD_DIR = DATA_DIR / "uploads"  # 兼容默认；实际以配置 assets_dir 为准（见 _assets_dir）
+
+
+async def _assets_dir():
+    """素材保存目录：可配置（app_kv assets_dir），默认 DATA_DIR/uploads。"""
+    from app import db
+    row = await db.fetchrow("SELECT value FROM app_kv WHERE key=$1", "assets_dir")
+    if row and row["value"]:
+        return Path(str(row["value"]))
+    return DATA_DIR / "uploads"
 
 
 def _err(msg: str) -> dict[str, Any]:
@@ -71,10 +80,11 @@ async def extract_frame(video_url: str, mode: str = "last", time_seconds: float 
         finally:
             cap.release()
 
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        adir = await _assets_dir()
+        adir.mkdir(parents=True, exist_ok=True)
         tag = "cur" if mode == "current" else mode
         fname = f"frame_{tag}_{uuid.uuid4().hex[:12]}.jpg"
-        ok = cv2.imwrite(str(UPLOAD_DIR / fname), frame)
+        ok = cv2.imwrite(str(adir / fname), frame)
         if not ok:
             return _err("保存截帧图片失败")
         return {"ok": True, "image_url": f"/uploads/{fname}", "mode": mode}

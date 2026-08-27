@@ -525,6 +525,15 @@ export async function getAssets(type?: string) {
   return request('GET', `/assets${type ? `?type=${encodeURIComponent(type)}` : ''}`)
 }
 
+/** 素材保存目录：读取/设置（本地目录，默认 DATA_DIR/uploads） */
+export async function getAssetsDir() {
+  return request('GET', '/assets/dir')
+}
+
+export async function setAssetsDir(dir: string) {
+  return request('POST', '/assets/dir', { dir })
+}
+
 export async function renameAsset(assetId: string, name: string) {
   return request('PATCH', `/assets/${encodeURIComponent(assetId)}`, { name })
 }

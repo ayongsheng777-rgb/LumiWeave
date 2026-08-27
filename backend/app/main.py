@@ -175,8 +175,23 @@ app.include_router(render_kernel_ws_router, prefix="/api/render")
 app.include_router(scene_router, prefix="/api/scenes")
 
 # 本地上传图片静态服务（V2.3 图片一等公民）
+# V2.8：/uploads/ 改为动态路由，跟随可配置的素材保存目录（assets_dir），未命中回退默认目录
+from pathlib import Path  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
+
 from app.config import DATA_DIR  # noqa: E402
 
 _UPLOAD_DIR = DATA_DIR / "uploads"
 _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=_UPLOAD_DIR), name="uploads")
+
+
+@app.get("/uploads/{fname:path}")
+async def _uploads_file(fname: str):
+    from app.assets.routes import _assets_dir
+    d = await _assets_dir()
+    p = d / fname
+    if not p.is_file():
+        p = _UPLOAD_DIR / fname  # 回退默认目录（历史文件）
+    if not p.is_file():
+        return JSONResponse(status_code=404, content={"error": "文件不存在"})
+    return FileResponse(p)
