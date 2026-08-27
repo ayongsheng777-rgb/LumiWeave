@@ -1,15 +1,40 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from app import db
 from app.ai import auto_best, client, config, persist, registry
 from app import config as app_config
 from app.config import CUSTOM_MODELS
 
 router = APIRouter()
+
+# 场景默认模型映射（按「适用场景」一键优选后持久化，供节点生成时取默认）
+_SCENE_DEFAULTS_KEY = "ai_scene_defaults"
+
+
+async def _scene_defaults() -> dict[str, Any]:
+    row = await db.fetchrow("SELECT value FROM app_kv WHERE key=$1", _SCENE_DEFAULTS_KEY)
+    if not row:
+        return {}
+    try:
+        return json.loads(row["value"]) or {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+async def _save_scene_default(scene: str, profile_id: str, model: str) -> None:
+    cur = await _scene_defaults()
+    cur[scene] = {"profile_id": profile_id, "model": model}
+    await db.execute(
+        "INSERT INTO app_kv (key, value, updated_at) VALUES ($1, $2, NOW()) "
+        "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()",
+        _SCENE_DEFAULTS_KEY, json.dumps(cur, ensure_ascii=False),
+    )
 
 
 def _serialize_profile(p: dict[str, Any]) -> dict[str, Any]:
@@ -24,6 +49,7 @@ def _serialize_profile(p: dict[str, Any]) -> dict[str, Any]:
         "provider": p.get("provider", ""),
         "description": p.get("description", ""),
         "scenario": p.get("scenario", "general"),
+        "scenes": p.get("scenes") or [],  # 适用场景多选（V2.8）：缺省空=通用
         "tags": p.get("tags") or registry.infer_tags(p.get("model", "")),
     }
 
@@ -81,14 +107,25 @@ async def ai_probe(request: Request):
 async def ai_auto_best(request: Request):
     data = await request.json() or {}
     profile_id = data.get("profile_id")
-    result = await auto_best.auto_best(profile_id)
+    scene = data.get("scene")
+    result = await auto_best.auto_best(profile_id, scene)
     if not result["ok"]:
         return JSONResponse(status_code=503, content=result)
+    if scene:
+        # 按场景一键优选：把胜出模型写为「场景默认模型」
+        await _save_scene_default(scene, str(result.get("provider_id") or ""), str(result.get("model") or ""))
+        return {**result, "applied": True}
     # 步骤④：把胜出模型写回配置并持久化（guide 04 §8.1）
     target_id = profile_id or config.settings.ai_active
     app_config.AI_OVERRIDES["models"][target_id] = result["model"]
     await persist.save_overrides()
     return {**result, "applied_to": target_id, "applied": True}
+
+
+@router.get("/scene-defaults")
+async def get_scene_defaults():
+    """按「适用场景」优选出的默认模型映射：{scene: {profile_id, model}}。"""
+    return {"defaults": await _scene_defaults()}
 
 
 @router.post("/recommend")

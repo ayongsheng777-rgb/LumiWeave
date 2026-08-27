@@ -81,8 +81,48 @@ async def _test_one(profile: dict[str, Any], model_id: str, sem: asyncio.Semapho
         return {"model": model_id, "success": True, "latency_ms": latency_ms, "error": ""}
 
 
-async def auto_best(profile_id: str | None = None) -> dict[str, Any]:
+async def auto_best(profile_id: str | None = None, scene: str | None = None) -> dict[str, Any]:
+    """自动优选。scene 传入时：在「适用场景」勾选该场景（或未设场景=通用）的模型配置中，
+    逐个测连通选最佳，返回 {ok, model, provider_id, scene} 供按场景一键优选。"""
     profiles = model_profiles()
+    if scene:
+        # 按场景过滤：勾选了该场景，或未设场景（通用）
+        scene_profiles = []
+        for p in profiles:
+            scenes = p.get("scenes") or []
+            if not scenes or "general" in scenes or scene in scenes:
+                scene_profiles.append(p)
+        if not scene_profiles:
+            return {"ok": False, "reason": f"没有勾选「{scene}」场景的模型配置", "tested": []}
+        # 逐个配置：测连通性（用配置里第一个/默认模型），挑可用且延迟最低的
+        best_p, best_lat = None, float("inf")
+        tested = []
+        sem = asyncio.Semaphore(2)
+        for p in scene_profiles:
+            key = (p.get("api_key") or "").strip()
+            if not key or _is_placeholder(key):
+                continue
+            try:
+                r = await _test_one(p, p.get("model") or "", sem)
+            except Exception:  # noqa: BLE001
+                r = {"success": False, "model": p.get("model", ""), "error": "异常"}
+            tested.append({"provider_id": p.get("id"), "provider": p.get("provider", ""),
+                           "model": p.get("model", ""), "success": bool(r and r.get("success")),
+                           "latency_ms": (r or {}).get("latency_ms", 0)})
+            if r and r.get("success") and (r.get("latency_ms") or 0) < best_lat:
+                best_p, best_lat = p, r.get("latency_ms") or 0
+        if not best_p:
+            return {"ok": False, "reason": f"「{scene}」场景候选模型全部实测失败，请检查 API Key/额度", "tested": tested}
+        return {
+            "ok": True,
+            "model": best_p.get("model", ""),
+            "provider_id": best_p.get("id", ""),
+            "provider": best_p.get("provider", ""),
+            "scene": scene,
+            "latency_ms": best_lat,
+            "tested": tested,
+        }
+
     profile = None
     if profile_id:
         profile = next((p for p in profiles if p.get("id") == profile_id), None)

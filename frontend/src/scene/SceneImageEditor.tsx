@@ -10,7 +10,7 @@ import { useSceneStore } from '../store/sceneStore'
 import { useUiStore } from '../store/uiStore'
 import {
   aiChat, getProfiles, getRenderers, getRendererWorkflows,
-  getSkills, promptLearningList, renderMedia,
+  getSceneDefaults, getSkills, promptLearningList, renderMedia,
 } from '../api'
 import SceneImageEdit from './SceneImageEdit'
 import ErrorBanner from '../components/ErrorBanner'
@@ -317,6 +317,18 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
         const all = ((r.data as AnyObj)?.renderers as AnyObj[]) || (r.data as AnyObj[]) || []
         const list = all.filter((p) => String(p.type ?? '').includes('comfyui') && p.status !== 'disabled')
         setRenderers(list.length ? list : all)
+      })
+      .catch(() => {})
+    // 「图片生成」场景的一键优选默认模型（未手动选模型时自动带出）
+    getSceneDefaults()
+      .then((r) => {
+        const d = (((r.data as AnyObj)?.defaults as AnyObj) || {}) as AnyObj
+        const imgDef = (d.image as AnyObj) || {}
+        const pid = String(imgDef.profile_id ?? '')
+        if (pid) {
+          setCloudModelId((cur) => cur || pid)
+          if (!cloudModelId) patchObject(id, { gen_profile_id: pid })
+        }
       })
       .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps

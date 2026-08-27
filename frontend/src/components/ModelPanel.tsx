@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { autoBest, deleteModel, getAiStats, getProfiles, listPlatformModels, probe, upsertModel } from '../api'
+import { autoBest, deleteModel, getAiStats, getProfiles, getSceneDefaults, listPlatformModels, probe, upsertModel } from '../api'
 import { Plus, Trash2, Pencil, Zap, Gauge, ListPlus } from 'lucide-react'
 import { PLATFORM_PRESETS } from '../platformPresets'
 
@@ -43,6 +43,8 @@ export default function ModelPanel() {
   const [busy, setBusy] = useState(false)
   const [platformModels, setPlatformModels] = useState<string[]>([])
   const [showModels, setShowModels] = useState(false)
+  // 按场景优选出的默认模型映射 {scene: {profile_id, model}}
+  const [sceneDefaults, setSceneDefaults] = useState<Record<string, { profile_id?: string; model?: string }>>({})
 
   const load = async () => {
     const pRes = await getProfiles()
@@ -52,6 +54,8 @@ export default function ModelPanel() {
     }
     const sRes = await getAiStats()
     if (sRes.ok) setStats(sRes.data || {})
+    const dRes = await getSceneDefaults()
+    if (dRes.ok) setSceneDefaults(dRes.data?.defaults || {})
   }
 
   useEffect(() => {
@@ -122,6 +126,20 @@ export default function ModelPanel() {
       load()
     } else {
       setMessage(`自动优选失败：${res.data.reason || res.data.error || '未知'}`)
+    }
+  }
+
+  // 按「适用场景」一键优选：在该场景勾选（或通用）的模型里实测选最佳，写入场景默认
+  const handleSceneBest = async (scene: string) => {
+    setBusy(true)
+    setMessage('')
+    const res = await autoBest(undefined, scene)
+    setBusy(false)
+    if (res.ok) {
+      setMessage(`「${SCENES.find((s) => s.key === scene)?.label || scene}」优选完成：${res.data.model}`)
+      load()
+    } else {
+      setMessage(`「${SCENES.find((s) => s.key === scene)?.label || scene}」优选失败：${res.data.reason || res.data.error || '未知'}`)
     }
   }
 
@@ -278,6 +296,63 @@ export default function ModelPanel() {
             <div className="text-lg font-semibold text-ink">{String(v ?? 0)}</div>
           </div>
         ))}
+      </div>
+
+      {/* 场景模型一览：每个适用场景列出可用模型 + 一键优选（实测选最佳，写入场景默认） */}
+      <div className="rounded-xl border border-edge bg-panel-2 p-3">
+        <div className="mb-2 text-sm font-medium text-ink">场景模型一览（按适用场景一键优选）</div>
+        <div className="space-y-3">
+          {SCENES.filter((s) => s.key !== 'general').map((s) => {
+            const inScene = profiles.filter((p) => {
+              const sc = p.scenes
+              return !sc || !sc.length || sc.includes('general') || sc.includes(s.key)
+            })
+            const def = sceneDefaults[s.key]
+            const defProfile = def?.profile_id ? profiles.find((p) => p.id === def?.profile_id) : null
+            return (
+              <div key={s.key}>
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="text-[11px] font-medium text-ink-2">{s.label}</span>
+                  <span className="text-[10px] text-ink-3">{inScene.length} 个模型</span>
+                  <button
+                    onClick={() => void handleSceneBest(s.key)}
+                    disabled={busy || inScene.length === 0}
+                    className="ml-auto flex items-center gap-1 rounded-md bg-brand-500/10 px-2 py-0.5 text-[11px] text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-40"
+                    title={`在勾选「${s.label}」的模型里实测连通，选最佳作为该场景默认模型`}
+                  >
+                    <Zap size={11} /> 一键优选
+                  </button>
+                </div>
+                {inScene.length === 0 ? (
+                  <div className="text-[10px] text-ink-3">暂无勾选该场景的模型（可在下方给模型勾选「{s.label}」）</div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {inScene.map((p) => {
+                      const isDef = def?.profile_id === p.id
+                      return (
+                        <span
+                          key={p.id}
+                          className={`flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] ${
+                            isDef ? 'border-brand-500 bg-brand-500/15 text-brand-300' : 'border-edge bg-soft text-ink-2'
+                          }`}
+                          title={isDef ? '当前该场景默认模型' : p.model}
+                        >
+                          {p.name} · {p.model}
+                          {isDef && ' ✓'}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+                {defProfile && (
+                  <div className="mt-0.5 text-[10px] text-ink-3">
+                    当前优选：{defProfile.name} · {def?.model}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       {/* 模型列表 */}

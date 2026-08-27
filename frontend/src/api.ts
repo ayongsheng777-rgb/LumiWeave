@@ -86,8 +86,13 @@ export async function probe(profileId?: string) {
   return request('POST', '/ai/probe', { profile_id: profileId })
 }
 
-export async function autoBest(profileId?: string) {
-  return request('POST', '/ai/auto-best', { profile_id: profileId })
+export async function autoBest(profileId?: string, scene?: string) {
+  return request('POST', '/ai/auto-best', { profile_id: profileId, scene })
+}
+
+/** 按「适用场景」优选出的默认模型映射：{scene: {profile_id, model}} */
+export async function getSceneDefaults() {
+  return request('GET', '/ai/scene-defaults')
 }
 
 export async function aiChat(payload: {
