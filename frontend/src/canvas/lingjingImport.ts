@@ -125,7 +125,7 @@ export function convertLingjingFlow(raw: unknown): LingjingImportResult {
       source: String(e.source),
       target: String(e.target),
       type: 'workflow',
-      animated: true,
+      animated: false,
     }))
 
   return { nodes, edges, sceneName, skipped: rawNodes.length - nodes.length - groupCount }

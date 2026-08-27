@@ -75,7 +75,7 @@ export default function TokenPanel() {
           type: 'line',
           smooth: true,
           areaStyle: { opacity: 0.2 },
-          itemStyle: { color: '#8b5cf6' },
+          itemStyle: { color: 'var(--brand)' },
         },
       ],
       grid: { left: 50, right: 20, top: 30, bottom: 30 },

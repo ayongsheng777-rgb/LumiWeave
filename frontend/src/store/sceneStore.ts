@@ -109,8 +109,8 @@ function toEdge(e: SceneEdgeDTO): Edge {
     source: e.source_id,
     target: e.target_id,
     type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#8b5cf6', strokeWidth: 2 },
+    animated: false,
+    style: { stroke: 'var(--brand)', strokeWidth: 2 },
   }
 }
 
@@ -519,8 +519,8 @@ export const useSceneStore = create<SceneState>((set, get) => ({
           source: c.source as string,
           target: c.target as string,
           type: 'smoothstep',
-          animated: true,
-          style: { stroke: '#8b5cf6', strokeWidth: 2 },
+          animated: false,
+          style: { stroke: 'var(--brand)', strokeWidth: 2 },
         },
       ],
     }))

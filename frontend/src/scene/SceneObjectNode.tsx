@@ -584,8 +584,8 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
       <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-none !bg-brand-500" />
 
       <div
-        className={`flex h-full flex-col overflow-hidden rounded-xl border bg-panel text-[11px] shadow-node-dark transition ${
-          selected ? 'border-brand-500' : 'border-edge'
+        className={`canvas-node flex h-full flex-col overflow-hidden rounded-xl text-[11px] transition ${
+          selected ? 'ring-2 ring-[var(--lw-edge-active)]' : ''
         }`}
         style={{ height: '100%' }}
         onContextMenu={onContextMenu}

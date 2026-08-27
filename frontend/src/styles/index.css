@@ -5,12 +5,15 @@
 @tailwind utilities;
 
 :root {
-  --brand: #8b5cf6;
-  --brand-dark: #7c3aed;
+  /* 品牌色：明色模式适度降饱和（避免纯白底刺眼），暗色模式保持亮紫（.dark 覆盖） */
+  --brand: #7c6ef0;
+  --brand-dark: #6d5ae8;
+  --brand-grad: linear-gradient(135deg, #8a6ff0 0%, #6d5ae8 100%);
+  --brand-ink: #ffffff;
 
   /* ===== 浅色主题（默认） ===== */
   --lw-canvas: #f4f5f7;        /* 画布底色 */
-  --lw-canvas-dot: #d3d6dd;    /* 画布点阵 */
+  --lw-canvas-dot: #e5e7eb;    /* 画布点阵（弱化，保持干净呼吸感） */
   --lw-panel: #ffffff;         /* 面板/侧栏 */
   --lw-panel-2: #f7f8fa;       /* 次面板/节点 */
   --lw-edge: rgba(15, 23, 42, 0.10);  /* 边框 */
@@ -20,12 +23,32 @@
   --lw-input-bg: #f1f3f7;      /* 输入框底 */
   --lw-hover: rgba(15, 23, 42, 0.05); /* 悬浮 */
   --lw-soft: rgba(15, 23, 42, 0.04);  /* 微表面 */
+
+  /* ===== 节点卡片令牌（V2.8 画布优化） ===== */
+  --lw-node-bg: #ffffff;                  /* 节点底：明色白底 */
+  --lw-node-border: rgba(15, 23, 42, 0.08); /* 节点细边（选中态用） */
+  --lw-node-inner: inset 0 0 0 1px rgba(255, 255, 255, 0.6); /* 明色内高光 */
+  --lw-node-shadow: 0 2px 8px rgba(15, 23, 42, 0.06), 0 8px 28px rgba(15, 23, 42, 0.08); /* 柔和底层大阴影 */
+  --lw-node-shadow-hover: 0 4px 12px rgba(15, 23, 42, 0.08), 0 12px 36px rgba(15, 23, 42, 0.12);
+
+  /* ===== 选中/强调/玻璃令牌 ===== */
+  --lw-edge-active: #7c6ef0;             /* 连线选中（降饱和紫） */
+  --lw-accent-soft: rgba(124, 110, 240, 0.10);  /* 品牌柔色底 */
+  --lw-accent-ring: 0 0 0 2px rgba(124, 110, 240, 0.35);
+  --lw-glass-bg: rgba(255, 255, 255, 0.72);    /* 玻璃底 */
+  --lw-glass-edge: rgba(255, 255, 255, 0.6);   /* 玻璃边 */
+  --lw-glow: none;                              /* 明色不发散光 */
+  --lw-toast-bg: rgba(255, 255, 255, 0.92);    /* 报错条底 */
 }
 
 .dark {
   /* ===== 暗色主题 ===== */
+  --brand: #8b5cf6;
+  --brand-dark: #7c3aed;
+  --brand-grad: linear-gradient(135deg, #9f7bfa 0%, #7c3aed 100%);
+  --brand-ink: #ffffff;
   --lw-canvas: #121212;
-  --lw-canvas-dot: #333333;
+  --lw-canvas-dot: #2a2a2e;
   --lw-panel: #161616;
   --lw-panel-2: #1b1b1f;
   --lw-edge: rgba(255, 255, 255, 0.10);
@@ -35,6 +58,22 @@
   --lw-input-bg: rgba(0, 0, 0, 0.30);
   --lw-hover: rgba(255, 255, 255, 0.06);
   --lw-soft: rgba(255, 255, 255, 0.05);
+
+  /* ===== 节点卡片令牌（暗色：浅阶底 + 内描边，不用外阴影） ===== */
+  --lw-node-bg: #1e1e22;
+  --lw-node-border: rgba(255, 255, 255, 0.08);
+  --lw-node-inner: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --lw-node-shadow: none;
+  --lw-node-shadow-hover: 0 0 0 1px rgba(255, 255, 255, 0.10), 0 8px 32px rgba(0, 0, 0, 0.5);
+
+  /* ===== 选中/强调/玻璃/发光令牌 ===== */
+  --lw-edge-active: #a78bfa;
+  --lw-accent-soft: rgba(167, 139, 250, 0.14);
+  --lw-accent-ring: 0 0 0 2px rgba(167, 139, 250, 0.4), 0 0 16px rgba(139, 92, 246, 0.25);
+  --lw-glass-bg: rgba(24, 24, 27, 0.72);
+  --lw-glass-edge: rgba(255, 255, 255, 0.08);
+  --lw-glow: 0 0 10px rgba(139, 92, 246, 0.45);
+  --lw-toast-bg: rgba(30, 30, 34, 0.92);
 }
 
 html,
@@ -67,6 +106,28 @@ body {
   background-clip: padding-box;
 }
 
+/* ===== 节点卡片质感（V2.8）：去边框化，明色白底软影 / 暗色浅阶+内描边 ===== */
+.canvas-node {
+  background: var(--lw-node-bg);
+  border: none;
+  box-shadow: var(--lw-node-inner), var(--lw-node-shadow);
+}
+.canvas-node:hover {
+  box-shadow: var(--lw-node-inner), var(--lw-node-shadow-hover);
+}
+.canvas-node.ring-2 {
+  box-shadow: var(--lw-node-inner), var(--lw-accent-ring), var(--lw-node-shadow);
+}
+.dark .canvas-node {
+  box-shadow: var(--lw-node-inner);
+}
+.dark .canvas-node:hover {
+  box-shadow: var(--lw-node-inner), 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+.dark .canvas-node.ring-2 {
+  box-shadow: var(--lw-node-inner), var(--lw-accent-ring);
+}
+
 /* React Flow 主题适配（浅色默认 + 暗色覆盖） */
 .react-flow__background {
   background-color: var(--lw-canvas);
@@ -96,7 +157,12 @@ body {
 }
 .react-flow__edge.selected .react-flow__edge-path,
 .react-flow__edge:focus .react-flow__edge-path {
-  stroke: #8b5cf6;
+  stroke: var(--lw-edge-active);
+  stroke-width: 2.5;
+}
+.dark .react-flow__edge.selected .react-flow__edge-path,
+.dark .react-flow__edge:focus .react-flow__edge-path {
+  filter: drop-shadow(0 0 5px var(--lw-edge-active));
 }
 .react-flow__handle {
   border-color: var(--lw-canvas);

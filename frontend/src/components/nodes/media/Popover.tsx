@@ -39,7 +39,7 @@ export function SliderRow({
         type="range"
         min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="nodrag w-full accent-[#8b5cf6]"
+        className="nodrag w-full accent-[var(--brand)]"
       />
     </div>
   )

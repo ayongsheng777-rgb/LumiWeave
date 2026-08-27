@@ -27,6 +27,9 @@ export default function SceneTextWriter({
   const [profiles, setProfiles] = useState<{ id: string; name?: string; model?: string }[]>([])
   const [profileId, setProfileId] = useState(String(payload.profile_id ?? ''))
   const [busy, setBusy] = useState(false)
+  // T4.1 长文本折叠：默认收起为 3 行摘要，点开看全文
+  const [collapsed, setCollapsed] = useState(true)
+  const isLong = value.split('\n').length > 3 || value.length > 120
 
   useEffect(() => {
     getProfiles()
@@ -67,17 +70,37 @@ export default function SceneTextWriter({
 
   return (
     <div className="flex h-full min-h-0 flex-col space-y-1.5">
-      {/* 文本框：撑满节点高度（随框体变化），AI 结果也填回这里 */}
-      <textarea
-        className="nodrag nowheel w-full flex-1 resize-none rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500"
-        placeholder="在此输入内容，或直接点下方「AI 编写」让 AI 撰写…"
-        value={value}
-        disabled={locked}
-        onChange={(e) => patchObject(id, { text: e.target.value })}
-      />
+      {/* 内容区：默认收起 3 行摘要（降低画布视觉疲劳），点摘要/按钮展开全文编辑 */}
+      {collapsed && isLong ? (
+        <button
+          className="nodrag block w-full flex-1 cursor-pointer overflow-hidden whitespace-pre-wrap break-words rounded-md border border-edge bg-input px-2 py-1.5 text-left text-sm leading-relaxed text-ink-2 transition hover:border-brand-400"
+          onClick={() => setCollapsed(false)}
+          title="点击展开编辑"
+          disabled={locked}
+        >
+          <span className="line-clamp-3">{value}</span>
+        </button>
+      ) : (
+        <textarea
+          className="nodrag nowheel w-full flex-1 resize-none rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500"
+          placeholder="在此输入内容，或直接点下方「AI 编写」让 AI 撰写…"
+          value={value}
+          disabled={locked}
+          onChange={(e) => patchObject(id, { text: e.target.value })}
+        />
+      )}
 
-      {/* 操作行：只有一个模型选择框 + AI 编写键 */}
+      {/* 操作行：模型选择 + AI 编写键；长文本附带 展开/收起 */}
       <div className="flex items-center gap-1.5">
+        {isLong && (
+          <button
+            className="nodrag h-8 shrink-0 rounded-md bg-soft px-2 text-[11px] text-ink-2 transition hover:text-ink"
+            onClick={() => setCollapsed((v) => !v)}
+            title={collapsed ? '展开全文' : '收起为摘要'}
+          >
+            {collapsed ? '展开' : '收起'}
+          </button>
+        )}
         <select
           className="nodrag h-8 min-w-0 flex-1 rounded-md border border-edge bg-input px-1.5 text-sm text-ink outline-none focus:border-brand-500"
           style={{ minWidth: 120, maxWidth: 220 }}

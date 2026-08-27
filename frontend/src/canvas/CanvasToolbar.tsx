@@ -98,7 +98,7 @@ export default function CanvasToolbar() {
         source: idMap[e.source] || e.source,
         target: idMap[e.target] || e.target,
         type: 'workflow',
-        animated: true,
+        animated: false,
       }))
       load(dagLayout(nodes as never, edges as never) as never, edges as never)
       setBuildPrompt('')

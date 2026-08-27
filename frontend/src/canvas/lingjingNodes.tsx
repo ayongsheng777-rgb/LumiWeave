@@ -287,7 +287,7 @@ export function LjTextLikeConfig({ id, data, selected, kind }: NodeProps & { kin
   return (
     <NodeShell
       title={label}
-      color={kind === 'script' ? '#f97316' : '#8b5cf6'}
+      color={kind === 'script' ? '#f97316' : 'var(--brand)'}
       selected={!!selected}
       status={String(d.status ?? 'idle')}
     >

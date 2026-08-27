@@ -24,11 +24,10 @@ function WorkflowCanvasInner() {
     useWorkflowStore()
   const canUndo = useWorkflowStore((s) => s.undoStack.length > 0)
   const canRedo = useWorkflowStore((s) => s.redoStack.length > 0)
-  const theme = useUiStore((s) => s.theme)
   const { screenToFlowPosition } = useReactFlow()
   const [dragOver, setDragOver] = useState(false)
   const [converting, setConverting] = useState(false)
-  const dotColor = theme === 'dark' ? '#333333' : '#d3d6dd'
+  const dotColor = 'var(--lw-canvas-dot)'
 
   const toCanvas = async () => {
     if (converting || nodes.length === 0) return
@@ -116,12 +115,12 @@ function WorkflowCanvasInner() {
         }}
         defaultEdgeOptions={{
           type: 'smoothstep',
-          animated: true,
-          style: { stroke: '#8b5cf6', strokeWidth: 1.8 },
+          animated: false,
+          style: { stroke: 'var(--lw-ink-3)', strokeWidth: 1.5 },
         }}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.6} color={dotColor} />
-        <Controls className="!shadow-node-dark !border !border-edge !bg-panel-2" showInteractive={false} />
+        <Controls className="!shadow-node-dark !border !border-[var(--lw-glass-edge)] !bg-[var(--lw-glass-bg)] backdrop-blur-md" showInteractive={false} />
         <Panel position="top-left">
           <div className="flex items-center gap-2">
             <button

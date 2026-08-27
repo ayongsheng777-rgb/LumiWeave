@@ -55,14 +55,6 @@ function IconBtn({ active, onClick, children, title }: { active?: boolean; onCli
   )
 }
 
-const ringOf: Record<NodeStatus, string> = {
-  idle: 'ring-edge',
-  running: 'ring-status-running/60',
-  completed: 'ring-status-completed/60',
-  failed: 'ring-status-failed/60',
-  cancelled: 'ring-status-failed/60',
-}
-
 export function MediaNodeShell({
   id, selected, kind, status, url, error, presets, modelKey, durations, resolutions, ratios,
   durationValue, resolutionValue, ratioValue,
@@ -100,8 +92,8 @@ export function MediaNodeShell({
   const isVideo = kind === 'video'
 
   return (
-    <div className={`group relative overflow-visible rounded-2xl border border-edge bg-panel-2 ring-1 ${ringOf[status]} shadow-node-dark transition-all duration-300`} style={{ width: 340 }}>
-      <NodeResizer isVisible={!!selected && !locked} minWidth={260} minHeight={140} color="#8b5cf6" lineStyle={{ borderWidth: 1.5 }} />
+    <div className={`canvas-node group relative overflow-visible rounded-2xl transition-all duration-300 ${selected ? 'ring-2 ring-[var(--lw-edge-active)]' : ''}`} style={{ width: 340 }}>
+      <NodeResizer isVisible={!!selected && !locked} minWidth={260} minHeight={140} color="var(--brand)" lineStyle={{ borderWidth: 1.5 }} />
 
       <Handle type="target" position={Position.Left} className="!h-3 !w-3 !border-2 !border-canvas !bg-brand-500" />
 

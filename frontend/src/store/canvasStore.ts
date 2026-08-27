@@ -114,7 +114,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
 
   onConnect: (connection) =>
     set((s) => ({
-      edges: addEdge({ ...connection, type: 'workflow', animated: true }, s.edges),
+      edges: addEdge({ ...connection, type: 'workflow', animated: false }, s.edges),
     })),
 
   load: (nodes, edges = []) =>

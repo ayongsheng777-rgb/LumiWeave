@@ -13,6 +13,7 @@ import {
   getSkills, promptLearningList, renderMedia,
 } from '../api'
 import SceneImageEdit from './SceneImageEdit'
+import ErrorBanner from '../components/ErrorBanner'
 
 type AnyObj = Record<string, unknown>
 type Category = '人物' | '道具' | '场景'
@@ -224,6 +225,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   const [kbs, setKbs] = useState<AnyObj[]>([])
   const [kbId, setKbId] = useState(String(payload.kb_ref ?? ''))
   const [errMsg, setErrMsg] = useState('')
+  const [errDetail, setErrDetail] = useState('')
 
   // 生成方式：云端=模型库选模型（直连，不用商业接口）；ComfyUI=选渲染器
   const [mode, setMode] = useState<'cloud' | 'comfyui'>(String(payload.render_mode ?? 'cloud') === 'comfyui' ? 'comfyui' : 'cloud')
@@ -362,7 +364,8 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
       patchObject(id, { desc: out }) // 持久化，避免刷新丢失
       setRewriteReq('')
     } catch (e) {
-      setErrMsg(`AI 重写异常：${String(e)}`)
+      setErrMsg('AI 重写失败，请检查模型配置或网络后重试')
+      setErrDetail(String(e))
     } finally {
       setRewriting(false)
     }
@@ -430,9 +433,11 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
         const logs = (d?.logs as { message?: string }[] | undefined) || []
         if (logs.length) lastErr += `｜${logs[logs.length - 1]?.message ?? ''}`
       }
-      setErrMsg(`生成失败：${lastErr}`)
+      setErrMsg('生成失败，请检查所选模型/网络配置后重试')
+      setErrDetail(lastErr)
     } catch (e) {
-      setErrMsg(`生成异常：${String(e)}`)
+      setErrMsg('生成异常，请稍后重试')
+      setErrDetail(String(e))
     } finally {
       setGenerating(false)
     }
@@ -701,9 +706,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
           {generating ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
           {generating ? '生成中…' : '生成图片'}
         </button>
-        {errMsg && (
-          <div className="rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] leading-snug text-red-400">{errMsg}</div>
-        )}
+        {errMsg && <ErrorBanner message={errMsg} detail={errDetail || undefined} />}
       </div>
 
       {editOpen && imageUrl && (

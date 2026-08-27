@@ -88,7 +88,7 @@ export default function SceneToolbar() {
   }
 
   return (
-    <div className="pointer-events-auto absolute left-3 top-3 z-20 flex flex-col items-center gap-1 rounded-2xl border border-edge bg-panel/90 px-1.5 py-2 shadow-node-dark backdrop-blur-md">
+    <div className="pointer-events-auto absolute left-3 top-3 z-20 flex flex-col items-center gap-1 rounded-2xl border border-[var(--lw-glass-edge)] bg-[var(--lw-glass-bg)] px-1.5 py-2 shadow-node-dark backdrop-blur-md">
       <div className="mb-0.5 max-w-[52px] truncate text-center text-[9px] text-ink-3" title={typeDef.name}>
         {typeDef.name}
       </div>
@@ -159,7 +159,7 @@ export default function SceneToolbar() {
 
       {/* 浮层：向右展开 */}
       {menu && (
-        <div className="absolute left-full top-0 z-30 ml-2 w-64 rounded-xl border border-edge bg-panel-2 p-3 shadow-node-dark">
+        <div className="absolute left-full top-0 z-30 ml-2 w-64 rounded-xl border border-[var(--lw-glass-edge)] bg-[var(--lw-glass-bg)] p-3 shadow-node-dark backdrop-blur-md">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[11px] font-medium text-ink">
               {menu === 'net' ? '上传网络资源' : menu === 'local' ? '从本地上传' : '从资产选择'}

@@ -6,7 +6,7 @@ import { Lock, LockOpen, Trash2 } from 'lucide-react'
 // 保留原有 props 签名，画布专属节点无需改动即可换皮。
 export default function NodeShell({
   title,
-  color = '#8b5cf6',
+  color = 'var(--brand)',
   selected,
   locked,
   status,
@@ -27,15 +27,6 @@ export default function NodeShell({
   output?: boolean
   children: ReactNode
 }) {
-  const ring =
-    status === 'running'
-      ? 'ring-status-running/70'
-      : status === 'completed'
-        ? 'ring-status-completed/70'
-        : status === 'failed' || status === 'error'
-          ? 'ring-status-failed/70'
-          : 'ring-edge'
-
   const badge =
     status && status !== 'idle'
       ? status === 'completed'
@@ -47,14 +38,16 @@ export default function NodeShell({
 
   return (
     <div
-      className={`flex flex-col rounded-xl bg-panel-2 ring-1 border border-edge shadow-node-dark animate-fade-in ${ring} ${selected ? '!border-brand-400' : ''}`}
+      className={`canvas-node flex flex-col rounded-xl animate-fade-in ${
+        selected ? 'ring-2 ring-[var(--lw-edge-active)]' : ''
+      }`}
       style={{ width: '100%', height: '100%', minWidth: 180 }}
     >
       <NodeResizer
         isVisible={!!selected && !locked}
         minWidth={180}
         minHeight={60}
-        color="#8b5cf6"
+        color="var(--brand)"
         lineStyle={{ borderWidth: 1.5 }}
       />
       {input && <Handle type="target" position={Position.Left} className="!h-3 !w-3 !border-2 !border-canvas !bg-brand-500" />}

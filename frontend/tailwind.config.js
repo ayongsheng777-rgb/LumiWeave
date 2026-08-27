@@ -16,15 +16,15 @@ export default {
         'ink-3': 'var(--lw-ink-3)',
         soft: 'var(--lw-soft)',
         input: 'var(--lw-input-bg)',
-        // 品牌强调色：克制的紫/蓝渐变
+        // 品牌强调色：500/600 引用主题变量（明色降饱和，暗色亮紫），其余档位静态
         brand: {
           50: '#f5f3ff',
           100: '#ede9fe',
           200: '#ddd6fe',
           300: '#c4b5fd',
           400: '#a78bfa',
-          500: '#8b5cf6',
-          600: '#7c3aed',
+          500: 'var(--brand)',
+          600: 'var(--brand-dark)',
           700: '#6d28d9',
           800: '#5b21b6',
           900: '#4c1d95',

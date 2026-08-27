@@ -101,7 +101,7 @@ export const objectNodeTypes = {
   // ── 画布专属类型 ──────────────────────────────────────────────
   storyboard: StoryboardNodeCanvas,
   // 文本 / 便签 / AI 结果整合：三个旧 type 统一指向同一组件（旧画布不丢节点）
-  text: makeTextNode('文本', '#8b5cf6', '双击编辑文本', 3),
+  text: makeTextNode('文本', 'var(--brand)', '双击编辑文本', 3),
   note: makeTextNode('便签', '#f59e0b', '记一笔…', 2),
   ai_result: makeTextNode('AI 结果', '#ef4444', 'AI 回答 / 媒体结果', 3),
   // ── 灵境复刻节点（原版画布导入用）──────────────────────────────────

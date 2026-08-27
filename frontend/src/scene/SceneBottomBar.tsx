@@ -137,7 +137,7 @@ export default function SceneBottomBar() {
                     type="checkbox"
                     checked={asyncMode}
                     onChange={(e) => setAsyncMode(e.target.checked)}
-                    className="accent-[#8b5cf6]"
+                    className="accent-[var(--brand)]"
                   />
                   异步执行（后台运行，可继续操作画布）
                 </label>
