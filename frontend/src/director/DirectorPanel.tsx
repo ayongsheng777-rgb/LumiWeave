@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Clapperboard, Loader2, Play, RefreshCw, Film, Check } from 'lucide-react'
 import { directorCreate, directorTaskGet, directorTasks, directorTaskVideo } from '../api'
 import { useSceneStore } from '../store/sceneStore'
+import { emitLog } from '../components/LogPanel'
 
 const STEPS = [
   { key: 'ANALYZING', label: '分析故事' },
@@ -42,9 +43,20 @@ export default function DirectorPanel({ sceneId }: { sceneId: string }) {
   const [task, setTask] = useState<Task | null>(null)
   const [busy, setBusy] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastStatusRef = useRef('')
   const storyId = useSceneStore((s) =>
     s.objects.find((o) => String((o.data as Record<string, unknown>).objectType) === 'story')?.id,
   )
+
+  const pushRunLog = (ok: boolean, message: string) => {
+    useSceneStore.getState().pushLog({ ts: Date.now(), action: 'director_start', ok, message })
+    // 同步到右侧「运行日志」抽屉（两个画布共用）
+    emitLog({
+      nodeId: '', nodeLabel: '导演台', nodeType: 'director',
+      status: ok ? 'completed' : 'failed',
+      message: `导演台：${message}`,
+    })
+  }
 
   const stopPoll = useCallback(() => {
     if (pollRef.current) {
@@ -58,9 +70,21 @@ export default function DirectorPanel({ sceneId }: { sceneId: string }) {
     if (res.ok && res.data?.task) {
       const t = res.data.task as Task
       setTask(t)
+      // 状态终态变化 → 同步一条运行日志（历史页签可见）
+      const terminal = ['REVIEWING', 'APPROVED', 'FAILED'].includes(t.status)
+      if (terminal && lastStatusRef.current !== t.status) {
+        lastStatusRef.current = t.status
+        pushRunLog(
+          t.status !== 'FAILED',
+          t.status === 'FAILED'
+            ? `导演排片失败：${String(((t.log || []).slice(-1)[0] as { message?: string } | undefined)?.message ?? t.current_step)}`
+            : `导演排片${t.status === 'APPROVED' ? '完成' : '完成，待审核'}（${t.progress}%）`,
+        )
+      }
       return t
     }
     return null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const refresh = useCallback(async () => {
@@ -97,9 +121,13 @@ export default function DirectorPanel({ sceneId }: { sceneId: string }) {
     try {
       const res = await directorCreate({ scene_id: sceneId, story_id: storyId || '' })
       if (res.ok && res.data?.task_id) {
+        lastStatusRef.current = ''
+        pushRunLog(true, '导演排片已启动（故事→资产→分镜→审核）')
         setTaskId(res.data.task_id)
         await loadTask(res.data.task_id)
         startPoll(res.data.task_id)
+      } else {
+        pushRunLog(false, String(res.data?.error || '导演排片启动失败'))
       }
     } finally {
       setBusy(false)

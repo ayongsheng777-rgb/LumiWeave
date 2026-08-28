@@ -507,6 +507,70 @@ function SceneShotDialogEditor({ id, payload, locked }: { id: string; payload: P
   )
 }
 
+// ── 分镜脚本编辑器：全字段分镜表（影视复刻拉片）──
+const SB_FIELDS: [string, string][] = [
+  ['duration', '时长(秒)'], ['shot_size', '景别'], ['lens', '焦距'], ['camera_angle', '机位'],
+  ['camera_motion', '运镜'], ['composition', '构图'], ['lighting', '光线'], ['color', '色调'],
+  ['character', '人物'], ['character_action', '动作'], ['emotion', '情绪'],
+  ['dialogue', '对白'], ['description', '画面描述'], ['prompt', '提示词'],
+]
+
+function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: Payload; locked: boolean }) {
+  const patchObject = useSceneStore((s) => s.patchObject)
+  const runAction = useSceneStore((s) => s.runAction)
+  const busy = useSceneStore((s) => s.busy)
+  const shots = Array.isArray(payload.shots) ? (payload.shots as Payload[]) : []
+  const setShot = (i: number, k: string, v: string) => {
+    const next = shots.map((s, j) => (j === i ? { ...s, [k]: v } : s))
+    patchObject(id, { shots: next })
+  }
+  return (
+    <div className="flex h-full min-h-[160px] flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] font-medium text-ink-2">分镜脚本（{shots.length}）</div>
+        <button
+          className="nodrag flex h-7 items-center gap-1 rounded-md bg-brand-600 px-2.5 text-[11px] text-white transition hover:bg-brand-500 disabled:opacity-50"
+          disabled={locked || !!busy}
+          onClick={() => void runAction('generate_storyboard', [])}
+          title="基于场景内的剧情节点生成全字段分镜，写入本节点"
+        >
+          {busy === 'generate_storyboard' ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+          {busy === 'generate_storyboard' ? '生成中…' : 'AI 生成分镜'}
+        </button>
+      </div>
+      {shots.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-edge bg-canvas text-[11px] text-ink-3">
+          暂无分镜——点「AI 生成分镜」（需场景内有剧情节点），或由导演台一键排片自动写入
+        </div>
+      ) : (
+        <div className="max-h-[420px] space-y-2 overflow-y-auto pr-0.5">
+          {shots.map((s, i) => {
+            const sb = (s || {}) as Record<string, unknown>
+            return (
+              <div key={i} className="rounded-lg border border-edge bg-soft/40 p-2">
+                <div className="mb-1.5 text-[10px] font-semibold text-brand-300">镜头 {String(sb.shot_no ?? i + 1)}</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {SB_FIELDS.map(([k, label]) => (
+                    <label key={k} className="block">
+                      <span className="mb-0.5 block text-[9px] text-ink-3">{label}</span>
+                      <input
+                        className="nodrag nowheel w-full rounded-md border border-edge bg-input px-1.5 py-1 text-[11px] text-ink outline-none focus:border-brand-500"
+                        disabled={locked}
+                        value={String(sb[k] ?? '')}
+                        onChange={(e) => setShot(i, k, e.target.value)}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function SceneNodeEditPanel({ id }: { id: string }) {
   const patchObject = useSceneStore((s) => s.patchObject)
   const runAction = useSceneStore((s) => s.runAction)
@@ -559,6 +623,8 @@ export default function SceneNodeEditPanel({ id }: { id: string }) {
       {/* 专用编辑器 */}
       {objectType === 'story' ? (
         <SceneStoryEditor id={id} payload={payload} locked={locked} />
+      ) : objectType === 'storyboard' ? (
+        <SceneStoryboardEditor id={id} payload={payload} locked={locked} />
       ) : objectType === 'shot_dialog' ? (
         <SceneShotDialogEditor id={id} payload={payload} locked={locked} />
       ) : objectType === 'text' ? (

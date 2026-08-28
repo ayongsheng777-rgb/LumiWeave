@@ -954,7 +954,31 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
         "}\n"
         "要求：镜头衔接有叙事逻辑、覆盖完整故事线；单个镜头时长 3~8 秒；总时长与目标时长尽量匹配；全部中文。"
     )
-    r = await _llm_json(sys, story_ctx)
+    # 全字段分镜输出很长（每镜 13 字段 × 多镜头），默认 2000 tokens 会被截断导致解析失败 → 用 6000
+    r2 = await _chat_full(sys, story_ctx, json_mode=True, temperature=0.5, max_tokens=6000)
+    await _record_usage("", r2)
+    r: dict | None = None
+    if r2.ok and r2.content:
+        m = re.search(r"\{.*\}", r2.content, re.S)
+        if m:
+            try:
+                r = json.loads(m.group(0))
+            except Exception:  # noqa: BLE001
+                r = None
+    # 兜底：解析失败/分镜太少 → 换格式最稳的可用模型（硅基流动）重试一次
+    if not r or not isinstance(r.get("shots"), list) or not r["shots"]:
+        fb = await _siliconflow_profile()
+        if fb:
+            r3 = await _chat_full(sys, story_ctx, json_mode=True, temperature=0.4,
+                                  max_tokens=6000, model_profile=fb)
+            await _record_usage("", r3)
+            if r3.ok and r3.content:
+                m3 = re.search(r"\{.*\}", r3.content, re.S)
+                if m3:
+                    try:
+                        r = json.loads(m3.group(0))
+                    except Exception:  # noqa: BLE001
+                        r = None
     if not r:
         return {"ok": False, "error": "分镜生成失败（请检查 AI 配置）"}
     shots = r.get("shots") or []

@@ -71,6 +71,27 @@ OBJECT_LIBRARY: Dict[str, Dict[str, Any]] = {
               "default_data": {"title": "", "summary": "", "text": "", "script": ""},
               "fields": {"title": "标题", "summary": "梗概", "text": "正文", "script": "剧本"}},
 
+    # ── 导演台资产（导演编排自动生成，左侧菜单不展示）────────────────
+    "character": {"label": "角色", "color": "#f43f5e", "icon": "👤",
+                  "default_data": {"name": "", "appearance": "", "clothing": "", "personality": "", "prompt": ""},
+                  "fields": {"name": "姓名", "appearance": "外貌", "clothing": "服装", "personality": "性格", "prompt": "提示词"}},
+    "scene": {"label": "场景", "color": "#10b981", "icon": "🏞",
+              "default_data": {"name": "", "location": "", "time": "", "weather": "", "lighting": "", "style": "", "prompt": ""},
+              "fields": {"name": "名称", "location": "地点", "time": "时间", "weather": "天气", "lighting": "光线", "style": "风格", "prompt": "提示词"}},
+    "prop": {"label": "道具", "color": "#f59e0b", "icon": "📦",
+             "default_data": {"name": "", "description": "", "prompt": ""},
+             "fields": {"name": "名称", "description": "描述", "prompt": "提示词"}},
+    "shot": {"label": "镜头", "color": "#f97316", "icon": "🎬",
+             "default_data": {"shot_no": "", "shot_size": "", "camera_motion": "", "lighting": "",
+                              "duration": 5, "dialogue": "", "description": "", "prompt": ""},
+             "fields": {"shot_no": "镜头号", "shot_size": "景别", "camera_motion": "运镜", "lighting": "光线",
+                        "duration": "时长", "dialogue": "对白", "description": "画面描述", "prompt": "提示词"}},
+
+    # ── 分镜脚本（影视复刻拉片：全字段分镜表）────────────────────────
+    "storyboard": {"label": "分镜脚本", "color": "#f97316", "icon": "🎞",
+                   "default_data": {"title": "", "shots": []},
+                   "fields": {"title": "标题", "shots": "分镜列表"}},
+
     # ── 导演台（分镜 / 镜头 / 台词统筹节点）────────────────────────
     "director": {"label": "导演台", "color": "#6366f1", "icon": "🎬",
                  "default_data": {"storyboard": [], "notes": ""},
@@ -132,12 +153,12 @@ registry.register(SceneDefinition(
     name="影视复刻拉片",
     category="film",
     description="文本故事→三幕式剧情→分镜→素材→成片；可叠加视频拉片参考镜头语言（省 token 批量分析）。",
-    object_types=COMMON_OBJECT_TYPES,
+    object_types=COMMON_OBJECT_TYPES + ["storyboard"],
     actions=[
         "director_start", "generate_story_from_text", "generate_storyboard", "generate_images", "generate_video",
         "analyze_video", "detect_shots", "extract_frames",
     ],
     toolbar=COMMON_TOOLBAR,
-    inspector=COMMON_OBJECT_TYPES,
+    inspector=COMMON_OBJECT_TYPES + ["storyboard"],
     timeline_enabled=True,
 ))
