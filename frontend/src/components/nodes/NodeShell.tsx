@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { Lock, LockOpen, Trash2, Settings2, ChevronUp, ChevronDown, Loader2 } from 'lucide-react'
 import { useNodeAdapter } from '../../store/nodeAdapter'
-import { useUiStore } from '../../store/uiStore'
 import StatusBadge from './StatusBadge'
 
 export const inputCls =
@@ -43,7 +42,6 @@ export function NodeShell({
   resultView?: ReactNode
 }) {
   const { getStatus, getOutput, getLocked, toggleLock, remove, setSize } = useNodeAdapter()
-  const openNodeConfig = useUiStore((s) => s.openNodeConfig)
   const status = getStatus(id)
   const output = getOutput(id)
   const locked = getLocked(id)
@@ -87,6 +85,7 @@ export function NodeShell({
         color="var(--brand)"
         lineStyle={{ borderWidth: 1.5 }}
       />
+
       <Handle
         type="target"
         position={Position.Left}
@@ -98,11 +97,11 @@ export function NodeShell({
         {!isCompact && <span className="text-brand-300">{icon}</span>}
         <span className={`truncate font-medium text-ink ${isCompact ? 'text-[11px] text-ink-2' : 'text-sm'}`}>{title}</span>
         <span className="ml-auto flex items-center gap-0.5">
-          {/* 齿轮：弹出右侧参数配置抽屉（实质性面板） */}
+          {/* 齿轮：在节点内展开配置表单（V2.8 抽屉已移除） */}
           <button
             className="nodrag rounded p-1 text-ink-3 transition hover:bg-soft hover:text-brand-400"
             title="参数配置面板"
-            onClick={(e) => { e.stopPropagation(); openNodeConfig(id) }}
+            onClick={(e) => { e.stopPropagation(); expandConfig() }}
           >
             <Settings2 size={13} />
           </button>

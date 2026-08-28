@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -12,12 +12,14 @@ import '@xyflow/react/dist/style.css'
 import type { Connection } from '@xyflow/react'
 import { Undo2, Redo2 } from 'lucide-react'
 import { defaultDataFor, useWorkflowStore } from '../store/workflowStore'
-import { useUiStore } from '../store/uiStore'
 import { canvasFromWorkflow } from '../api'
 import { nodeTypes } from './nodes'
 import { maybeChainVideoFrame } from './videoChain'
+import { getNodeDef } from '../canvas/nodeRegistry'
 
 const DND_KEY = 'application/lumiweave-node'
+
+type AnyObj = Record<string, unknown>
 
 function WorkflowCanvasInner() {
   const { nodes, edges, running, runError, onNodesChange, onEdgesChange, addNode, clearAll, setRunError, save, saveStatus, undo, redo, workflowId, projectId, applyAutoLayout } =
@@ -28,6 +30,25 @@ function WorkflowCanvasInner() {
   const [dragOver, setDragOver] = useState(false)
   const [converting, setConverting] = useState(false)
   const dotColor = 'var(--lw-canvas-dot)'
+
+  // 语义连线（V2.8）：每条边用 source 节点类型色；端点节点运行中时加蚂蚁线动画
+  const coloredEdges = useMemo(() => {
+    const byId = new Map(nodes.map((n) => [n.id, n]))
+    return edges.map((e) => {
+      const src = byId.get(e.source)
+      const def = src ? getNodeDef(String(src.type ?? '')) : undefined
+      const color = def?.color || 'var(--lw-ink-3)'
+      const srcStatus = String(((src?.data as AnyObj)?.status) || 'idle')
+      const tgt = byId.get(e.target)
+      const tgtStatus = String(((tgt?.data as AnyObj)?.status) || 'idle')
+      const anim = running || srcStatus === 'running' || tgtStatus === 'running'
+      return {
+        ...e,
+        style: { ...(e.style || {}), stroke: color, strokeWidth: 2 },
+        className: anim ? 'scene-edge-anim' : undefined,
+      }
+    })
+  }, [nodes, edges, running])
 
   const toCanvas = async () => {
     if (converting || nodes.length === 0) return
@@ -96,7 +117,7 @@ function WorkflowCanvasInner() {
     >
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={coloredEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
@@ -104,15 +125,6 @@ function WorkflowCanvasInner() {
         fitView
         deleteKeyCode={['Backspace', 'Delete']}
         proOptions={{ hideAttribution: true }}
-        // 上下文感知 Inspector：单选节点自动滑出右侧参数抽屉（商业画布方案）
-        onSelectionChange={({ nodes: sel }) => {
-          const uc = useUiStore.getState()
-          if (sel.length === 1) {
-            uc.openNodeConfig(sel[0].id)
-          } else if (uc.nodeConfig.open) {
-            uc.closeNodeConfig()
-          }
-        }}
         defaultEdgeOptions={{
           type: 'smoothstep',
           animated: false,

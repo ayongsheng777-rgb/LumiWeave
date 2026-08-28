@@ -6,6 +6,8 @@ import { BookOpen, User, Mountain, Package, Clapperboard,
   ImageIcon, Film, Music, Type, Layout, Download,
   FileText, Sparkles, LayoutGrid, ImagePlus } from 'lucide-react'
 import { makeNode, defaultDataFor, useWorkflowStore } from '../store/workflowStore'
+import { useCanvasStore } from '../store/canvasStore'
+import { useUiStore } from '../store/uiStore'
 
 const ITEMS: { type: string; label: string; icon: React.ReactNode; color: string }[] = [
   // ── 创作入口 ──────────────────────────────────────────────
@@ -32,13 +34,20 @@ const ITEMS: { type: string; label: string; icon: React.ReactNode; color: string
 
 export default function FloatingToolbar() {
   const [open, setOpen] = useState(false)
+  const mode = useUiStore((s) => s.mode)
   const add = (type: string) => {
+    if (mode === 'infinite') {
+      // 无限画布：canvasStore（lj/影视节点同款类型），点击添加落在画布中部偏上随机错开
+      const n = (Date.now() % 7) - 3
+      useCanvasStore.getState().addObject(type, { x: 200 + n * 40, y: 160 + n * 30 })
+      return
+    }
     const node = makeNode(type, defaultDataFor(type))
     useWorkflowStore.getState().addNode(node)
   }
 
   return (
-    <div className="pointer-events-none absolute left-3 top-1/2 z-20 -translate-y-1/2">
+    <div className="pointer-events-none absolute left-3 top-3 z-20">
       {/* 收起态：单圆钮 */}
       <button
         className={`pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-edge bg-panel/90 text-ink-2 shadow-node-dark backdrop-blur-md transition hover:text-ink ${open ? 'bg-brand-500 !text-white' : ''}`}
@@ -48,9 +57,9 @@ export default function FloatingToolbar() {
         <LayoutGrid size={19} />
       </button>
 
-      {/* 展开态：浮动图标列（从圆钮向上展开，限高可视区；nowheel 让滚轮滚动面板而不是画布） */}
+      {/* 展开态：浮动图标列（从圆钮向下展开，限高可视区；nowheel 让滚轮滚动面板而不是画布） */}
       {open && (
-        <div className="nowheel pointer-events-auto absolute bottom-full left-0 mb-2 flex max-h-[calc(50vh-3rem)] w-14 flex-col items-center gap-1 overflow-y-auto rounded-2xl border border-edge bg-panel/90 py-2 shadow-node-dark backdrop-blur-md">
+        <div className="nowheel pointer-events-auto absolute top-full left-0 mt-2 flex max-h-[calc(70vh-3rem)] w-14 flex-col items-center gap-1 overflow-y-auto rounded-2xl border border-edge bg-panel/90 py-2 shadow-node-dark backdrop-blur-md">
           <div className="mb-1 text-[10px] text-ink-3">节点</div>
           {ITEMS.map((it) => (
             <button

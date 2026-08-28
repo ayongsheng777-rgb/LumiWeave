@@ -1,7 +1,6 @@
 import { useUiStore } from '../store/uiStore'
 import TopHeader from './TopHeader'
 import FloatingToolbar from './FloatingToolbar'
-import NodeConfigDrawer from './NodeConfigDrawer'
 import WorkflowCanvas from './WorkflowCanvas'
 import ChatPanel from './ChatPanel'
 import Lightbox from './Lightbox'
@@ -27,10 +26,9 @@ export default function Workspace() {
       {/* 100% 占满的主画布区（顶栏悬浮其上） */}
       <div className="absolute inset-0 top-14">
         <div className="relative flex h-full">
-          {/* 节点库浮层：仅工作流使用（工作流没有固定节点面板，靠悬浮菜单添加节点）。
-              无限画布有自己的固定节点库（NodePalette），不再显示悬浮菜单；
+          {/* 节点库浮层：工作流与无限画布共用悬浮节点菜单（V2.8：无限画布移除固定 NodePalette 后同款设计）。
               专业场景画布有自己的动态工具条（SceneToolbar），避免两套工具条打架。 */}
-          {mode === 'workflow' && <FloatingToolbar />}
+          {mode !== 'scene' && <FloatingToolbar />}
           <div className="relative min-w-0 flex-1">
             {mode === 'workflow' ? (
               <WorkflowCanvas />
@@ -50,8 +48,6 @@ export default function Workspace() {
 
       {lightbox && <Lightbox />}
       {managementOpen && <SettingsModal />}
-      {/* 节点参数配置抽屉（齿轮按钮/选中节点唤出），两个画布共用 */}
-      <NodeConfigDrawer />
       {/* 全局运行日志（右侧） + 分镜链信息框（左侧），两个画布共用 */}
       <LogPanel />
       <ShotChainPanel />
