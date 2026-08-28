@@ -1,7 +1,7 @@
 // SceneNodeEditPanel —— 场景对象编辑面板（V2.8 UI 重构）
 // 节点改为「内容优先」外壳后，全部编辑能力收敛到此面板，由 SceneNodeModal 弹窗承载。
 // 内容：6 个专用编辑器 + 通用字段渲染 + 场景动作按钮（从 SceneObjectNode 迁移）。
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Loader2, Sparkles, Send, LayoutGrid } from 'lucide-react'
 import { useSceneStore, ACTION_LABELS } from '../store/sceneStore'
 import { CAMERA_ZH, cameraLabel } from '../cameraLabels'
@@ -507,21 +507,132 @@ function SceneShotDialogEditor({ id, payload, locked }: { id: string; payload: P
   )
 }
 
-// ── 分镜脚本编辑器：全字段分镜表（影视复刻拉片，对齐 D:/分镜.pdf 13 列 + 生成字段）──
-const SB_FIELDS: [string, string][] = [
-  ['duration', '时长(秒)'], ['shot_size', '景别'], ['lens', '焦距'], ['camera_angle', '机位'],
-  ['camera_motion', '运镜'], ['composition', '构图'], ['lighting', '光影'], ['color', '色调'],
-  ['character', '人物'], ['character_action', '动作'], ['props', '道具(、分隔)'], ['emotion', '情绪'],
-  ['dialogue', '对白'], ['voice_over', '旁白'], ['sound_effect', '音效'],
-  ['camera_control_description', '镜头控制描述'],
-  ['description', '画面描述'], ['prompt', '分镜提示词'],
+// ── 分镜脚本编辑器：横向全字段表格（V2.9 对齐「分镜.pdf」样式：镜号列 + 实体词彩色高亮）──
+// 列：镜号 | 时长 | 画面描述 | 景别 | 角色 | 场景 | 道具 | 光影 | 音效 | 对白 | 旁白 | 分镜提示词 | 镜头控制描述
+// 阅读态按实体词高亮渲染（角色=琥珀/场景=青/道具=黄绿），点击进入编辑态（textarea），失焦保存。
+type TbCol = { key: string; label: string; cls: string; entity?: 'character' | 'scene' | 'props' }
+const TB_COLS: TbCol[] = [
+  { key: 'duration', label: '时长(秒)', cls: 'w-14 shrink-0' },
+  { key: 'description', label: '画面描述', cls: 'min-w-[220px] flex-1' },
+  { key: 'shot_size', label: '景别', cls: 'w-14 shrink-0' },
+  { key: 'character', label: '角色', cls: 'w-20 shrink-0', entity: 'character' },
+  { key: 'scene', label: '场景', cls: 'w-20 shrink-0', entity: 'scene' },
+  { key: 'props', label: '道具', cls: 'w-20 shrink-0', entity: 'props' },
+  { key: 'lighting', label: '光影', cls: 'min-w-[130px] flex-1' },
+  { key: 'sound_effect', label: '音效', cls: 'min-w-[120px] flex-1' },
+  { key: 'dialogue', label: '对白', cls: 'min-w-[120px] flex-1' },
+  { key: 'voice_over', label: '旁白', cls: 'min-w-[120px] flex-1' },
+  { key: 'prompt', label: '分镜提示词', cls: 'min-w-[200px] flex-1' },
+  { key: 'camera_control_description', label: '镜头控制描述', cls: 'min-w-[140px] flex-1' },
 ]
+
+interface TbEntities { chars: string[]; scenes: string[]; props: string[] }
+
+/** 实体词高亮渲染：角色=琥珀、场景=青、道具=黄绿（长词优先匹配，避免短词截断） */
+function TbHiText({ text, entities }: { text: string; entities: TbEntities }) {
+  const t = String(text ?? '').trim()
+  if (!t || t === '-') return <span className="text-ink-3">-</span>
+  const pool: { word: string; cls: string }[] = [
+    ...entities.chars.map((w) => ({ word: w, cls: 'font-medium text-amber-600 dark:text-amber-400' })),
+    ...entities.scenes.map((w) => ({ word: w, cls: 'font-medium text-cyan-600 dark:text-cyan-400' })),
+    ...entities.props.map((w) => ({ word: w, cls: 'font-medium text-lime-600 dark:text-lime-400' })),
+  ]
+    .filter((e) => e.word && e.word.length >= 2)
+    .sort((a, b) => b.word.length - a.word.length)
+  if (!pool.length) return <>{t}</>
+  const out: ReactNode[] = []
+  let rest = t
+  let guard = 0
+  while (rest && guard++ < 200) {
+    let hitPos = -1
+    let hitWord = ''
+    let hitCls = ''
+    for (const e of pool) {
+      const p = rest.indexOf(e.word)
+      if (p >= 0 && (hitPos < 0 || p < hitPos)) {
+        hitPos = p
+        hitWord = e.word
+        hitCls = e.cls
+      }
+    }
+    if (hitPos < 0) {
+      out.push(rest)
+      break
+    }
+    if (hitPos > 0) out.push(rest.slice(0, hitPos))
+    out.push(<span key={out.length} className={hitCls}>{hitWord}</span>)
+    rest = rest.slice(hitPos + hitWord.length)
+  }
+  return <>{out}</>
+}
+
+/** 表格单元格：阅读态（高亮渲染）→ 点击进入编辑态（textarea），失焦保存 */
+function TbCell({
+  value,
+  entities,
+  locked,
+  onSave,
+}: {
+  value: string
+  entities: TbEntities
+  locked: boolean
+  onSave: (v: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  useEffect(() => setDraft(value), [value])
+  if (locked || !editing) {
+    return (
+      <div
+        className={`h-full w-full whitespace-pre-wrap break-words px-2 py-2 leading-relaxed ${
+          locked ? 'cursor-default' : 'cursor-text hover:bg-[var(--lw-hover)]'
+        }`}
+        onClick={() => { if (!locked) setEditing(true) }}
+        title={locked ? undefined : '点击编辑'}
+      >
+        <TbHiText text={value} entities={entities} />
+      </div>
+    )
+  }
+  return (
+    <textarea
+      autoFocus
+      className="nodrag nowheel h-full min-h-[56px] w-full resize-y bg-[var(--lw-input-bg)] px-2 py-2 text-[10px] leading-relaxed text-ink outline-none focus:ring-1 focus:ring-brand-500"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => { onSave(draft); setEditing(false) }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') { setDraft(value); setEditing(false) }
+      }}
+    />
+  )
+}
 
 function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: Payload; locked: boolean }) {
   const patchObject = useSceneStore((s) => s.patchObject)
   const runAction = useSceneStore((s) => s.runAction)
   const busy = useSceneStore((s) => s.busy)
   const shots = Array.isArray(payload.shots) ? (payload.shots as Payload[]) : []
+
+  /** 实体词库：从全部分镜收集 角色/场景/道具（用于彩色高亮） */
+  const entities = useMemo<TbEntities>(() => {
+    const chars = new Set<string>()
+    const scenes = new Set<string>()
+    const props = new Set<string>()
+    for (const s of shots) {
+      const sb = (s || {}) as Record<string, unknown>
+      const c = String(sb.character ?? '').trim()
+      if (c && c !== '-') chars.add(c)
+      const sc = String(sb.scene ?? sb.location ?? '').trim()
+      if (sc && sc !== '-') scenes.add(sc)
+      const ps = Array.isArray(sb.props)
+        ? (sb.props as unknown[]).map((x) => String(x).trim())
+        : String(sb.props ?? '').split(/[、,，]/).map((x) => x.trim()).filter(Boolean)
+      ps.forEach((p) => { if (p && p !== '-') props.add(p) })
+    }
+    return { chars: [...chars], scenes: [...scenes], props: [...props] }
+  }, [shots])
+
   const setShot = (i: number, k: string, v: string) => {
     const next = shots.map((s, j) => {
       if (j !== i) return s
@@ -532,10 +643,19 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
     })
     patchObject(id, { shots: next })
   }
+
+  const cellVal = (sb: Record<string, unknown>, k: string): string =>
+    k === 'props'
+      ? Array.isArray(sb[k]) ? (sb[k] as unknown[]).join('、') : String(sb[k] ?? '')
+      : String(sb[k] ?? '')
+
   return (
     <div className="flex h-full min-h-[160px] flex-col gap-2">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] font-medium text-ink-2">分镜脚本（{shots.length}）</div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-sm font-bold text-brand-300">分镜脚本</span>
+          <span className="text-[11px] text-ink-3">{shots.length} 镜 · 点击单元格编辑 · Esc 取消</span>
+        </div>
         <button
           className="nodrag flex h-7 items-center gap-1 rounded-md bg-brand-600 px-2.5 text-[11px] text-white transition hover:bg-brand-500 disabled:opacity-50"
           disabled={locked || !!busy}
@@ -551,28 +671,40 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
           暂无分镜——点「AI 生成分镜」（需场景内有剧情节点），或由导演台一键排片自动写入
         </div>
       ) : (
-        <div className="max-h-[420px] space-y-2 overflow-y-auto pr-0.5">
-          {shots.map((s, i) => {
-            const sb = (s || {}) as Record<string, unknown>
-            return (
-              <div key={i} className="rounded-lg border border-edge bg-soft/40 p-2">
-                <div className="mb-1.5 text-[10px] font-semibold text-brand-300">镜头 {String(sb.shot_no ?? i + 1)}</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {SB_FIELDS.map(([k, label]) => (
-                    <label key={k} className={k === 'camera_control_description' || k === 'description' ? 'col-span-2 block' : 'block'}>
-                      <span className="mb-0.5 block text-[9px] text-ink-3">{label}</span>
-                      <input
-                        className="nodrag nowheel w-full rounded-md border border-edge bg-input px-1.5 py-1 text-[11px] text-ink outline-none focus:border-brand-500"
-                        disabled={locked}
-                        value={k === 'props' ? (Array.isArray(sb[k]) ? (sb[k] as unknown[]).join('、') : String(sb[k] ?? '')) : String(sb[k] ?? '')}
-                        onChange={(e) => setShot(i, k, e.target.value)}
+        <div className="max-h-[420px] overflow-auto nowheel rounded-lg border border-edge">
+          <div className="min-w-[1480px]">
+            {/* 表头（固定，滚动不跟随） */}
+            <div className="sticky top-0 z-10 flex items-stretch border-b border-white/10 bg-slate-800 text-[10px] font-semibold text-white dark:bg-slate-800">
+              <div className="w-16 shrink-0 px-2 py-1.5 text-violet-300">镜号</div>
+              {TB_COLS.map((c) => (
+                <div key={c.key} className={`${c.cls} px-2 py-1.5`}>{c.label}</div>
+              ))}
+            </div>
+            {/* 数据行 */}
+            {shots.map((s, i) => {
+              const sb = (s || {}) as Record<string, unknown>
+              return (
+                <div
+                  key={i}
+                  className="flex items-stretch border-b border-[var(--lw-edge)] last:border-b-0 hover:bg-[var(--lw-hover)]"
+                >
+                  <div className="w-16 shrink-0 px-2 py-2 font-mono text-[10px] font-semibold text-violet-600 dark:text-violet-400">
+                    #01_{String(sb.shot_no ?? i + 1).padStart(2, '0')}
+                  </div>
+                  {TB_COLS.map((c) => (
+                    <div key={c.key} className={`${c.cls} min-h-[56px]`}>
+                      <TbCell
+                        value={cellVal(sb, c.key)}
+                        entities={entities}
+                        locked={locked}
+                        onSave={(v) => setShot(i, c.key, v)}
                       />
-                    </label>
+                    </div>
                   ))}
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
