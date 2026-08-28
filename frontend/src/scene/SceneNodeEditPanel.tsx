@@ -2,7 +2,7 @@
 // 节点改为「内容优先」外壳后，全部编辑能力收敛到此面板，由 SceneNodeModal 弹窗承载。
 // 内容：6 个专用编辑器 + 通用字段渲染 + 场景动作按钮（从 SceneObjectNode 迁移）。
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Sparkles, Send, LayoutGrid } from 'lucide-react'
+import { Loader2, Sparkles, Send, LayoutGrid, Clock, ChevronDown, Wand2 } from 'lucide-react'
 import { useSceneStore, ACTION_LABELS } from '../store/sceneStore'
 import { CAMERA_ZH, cameraLabel } from '../cameraLabels'
 import type { SceneTypeDef } from '../api'
@@ -550,56 +550,60 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
   const objects = useSceneStore((s) => s.objects)
   const edges = useSceneStore((s) => s.edges)
   const shots = Array.isArray(payload.shots) ? (payload.shots as Payload[]) : []
-  // 生成设置：模型选择 + 自定义要求（V2.9j）
+  const history = Array.isArray(payload.storyboard_history) ? (payload.storyboard_history as Payload[]) : []
+  // 生成设置：模型选择 + 技能库 + 自定义要求（V2.9j/n）
   const [profiles, setProfiles] = useState<AnyProfile[]>([])
   const [profileId, setProfileId] = useState('')
+  const [skills, setSkills] = useState<AnyObj[]>([])
+  const [skillId, setSkillId] = useState(String(payload.skill_ref ?? ''))
   const [extraReq, setExtraReq] = useState('')
+  // 历史预览（V2.9n）：点击历史条目预览，可应用回选
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [preview, setPreview] = useState<Payload[] | null>(null)
+  const [previewLabel, setPreviewLabel] = useState('')
 
   useEffect(() => {
     getProfiles().then((res) => {
       const list = (res.ok ? (res.data as { profiles?: AnyProfile[] }).profiles : []) || []
       setProfiles(list)
     })
+    getSkills()
+      .then((r) => {
+        const d = r.data as AnyObj
+        const list = Array.isArray(d) ? d : Array.isArray((d as AnyObj)?.skills) ? (d as AnyObj).skills : []
+        setSkills((list as AnyObj[]) || [])
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /** 从剧情节点剧本直接解析引入（不调 AI）：优先连线关联，其次场景内第一个剧情节点 */
-  const importFromScript = () => {
-    if (locked) return
+  /** 找剧情节点（连线优先，其次场景内第一个）→ {script, parsed} */
+  const findStory = (): { script: string; parsed: ReturnType<typeof parseShotsFromScript> } | null => {
     const linked = edges
       .map((e) => (e.source === id ? e.target : e.target === id ? e.source : ''))
       .map((x) => objects.find((o) => o.id === x))
       .find((o) => o && isStoryNode(o))
     const story = linked || objects.find((o) => isStoryNode(o))
-    if (!story) {
-      pushLog({ ts: Date.now(), action: 'storyboard_import', ok: false, message: '没有找到剧情节点——请先创建剧情节点并生成剧本' })
-      return
-    }
+    if (!story) return null
     const script = String((((story.data as Payload)?.payload as Payload)?.script) ?? '')
-    if (!script.trim()) {
-      pushLog({ ts: Date.now(), action: 'storyboard_import', ok: false, message: '剧情节点还没有剧本内容，请先生成故事' })
-      return
-    }
-    const parsed = parseShotsFromScript(script)
-    if (!parsed.length) {
-      pushLog({ ts: Date.now(), action: 'storyboard_import', ok: false, message: '剧本中未解析到分镜/场景块' })
-      return
-    }
-    // 剧本全局元素（出场元素段）：人物 / 道具 → 供分镜列回填
+    if (!script.trim()) return null
+    return { script, parsed: parseShotsFromScript(script) }
+  }
+
+  /** 物理映射：剧本 → 13 列分镜（供物理引入 + AI 引入的 initial_shots） */
+  const buildInitialShots = (script: string, parsed: ReturnType<typeof parseShotsFromScript>) => {
     const allChars = Object.keys(parseCharacters(script))
     const allProps = parsePropsList(script)
-    const next = parsed.map((sh, i) => {
+    return parsed.map((sh, i) => {
       const dialogs = sh.dialogue || []
       const isVo = (d: { speaker: string }) => /旁白|画外/.test(d.speaker)
       const vo = dialogs.filter(isVo).map((d) => d.line).filter(Boolean)
       const chars = dialogs.filter((d) => !isVo(d)).map((d) => d.speaker).filter(Boolean)
-      // 关键画面/正文中出现的剧本人物 → 该镜角色（长词优先，避免短名误匹配）
       const bodyText = [sh.body, ...(sh.shots || []).map((x) => x.desc)].join(' ')
       const sceneChars = allChars.filter((c) => c.length >= 2 && bodyText.includes(c))
       const character = [...new Set([...chars, ...sceneChars])].join('、')
-      // 画面描述：正文 + 关键画面（完整提取，不丢内容）
       const frames = (sh.shots || []).map((x) => x.desc).filter(Boolean)
       const desc = [sh.body, ...frames].filter(Boolean).join('；')
-      // 分镜提示词：电影级完整组合（地点/时间/目标/氛围/正文/关键画面）
       const prompt = [
         sh.location ? `场景：${sh.location}` : '',
         sh.time ? `时间：${sh.time}` : '',
@@ -608,9 +612,7 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
         sh.body ? `画面：${sh.body}` : '',
         frames.length ? `关键画面：${frames.join('；')}` : '',
       ].filter(Boolean).join('\n')
-      // 镜头控制描述：规则生成（以第一句画面/正文主体为对象）
       const subject = (frames[0] || sh.body || sh.location || '主体').slice(0, 24)
-      const camera_control_description = `固定机位、${sh.mood ? `氛围${sh.mood}` : '自然光'}，交代「${subject}」的景别与环境细节，运镜平稳`
       return {
         shot_no: i + 1,
         duration: Number(sh.duration) || 0,
@@ -618,18 +620,88 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
         shot_size: '',
         character,
         scene: sh.location || '',
+        location: sh.location || '',
         props: allProps,
         lighting: '',
         sound_effect: (sh.sfx || []).join('；'),
         dialogue: dialogs.filter((d) => !isVo(d)).map((d) => d.line).join('\n'),
         voice_over: vo.join('\n'),
         prompt,
-        camera_control_description,
+        camera_control_description: `固定机位、${sh.mood ? `氛围${sh.mood}` : '自然光'}，交代「${subject}」的景别与环境细节，运镜平稳`,
       }
     })
-    patchObject(id, { shots: next })
-    pushLog({ ts: Date.now(), action: 'storyboard_import', ok: true, message: `已从剧本引入 ${next.length} 个分镜（含画面正文/关键画面/角色/道具/对白/旁白/音效）` })
   }
+
+  const saveHistory = (label: string, nextShots: Payload[]) => {
+    const h = [{ ts: Date.now(), label, shots: nextShots }, ...history].slice(0, 10)
+    patchObject(id, { storyboard_history: h })
+  }
+
+  /** 物理引入（不调 AI，秒级） */
+  const importFromScript = () => {
+    if (locked) return
+    const story = findStory()
+    if (!story) {
+      pushLog({ ts: Date.now(), action: 'storyboard_import', ok: false, message: '没有找到剧情节点或剧本为空——请先创建剧情节点并生成剧本' })
+      return
+    }
+    if (!story.parsed.length) {
+      pushLog({ ts: Date.now(), action: 'storyboard_import', ok: false, message: '剧本中未解析到分镜/场景块' })
+      return
+    }
+    const next = buildInitialShots(story.script, story.parsed)
+    patchObject(id, { shots: next })
+    saveHistory('物理引入', next)
+    pushLog({ ts: Date.now(), action: 'storyboard_import', ok: true, message: `已从剧本引入 ${next.length} 个分镜（物理解析，可用 AI 引入修正实体）` })
+  }
+
+  /** AI 智能引入（依托剧本只识别修正实体，不做美化；可选模型对比效果） */
+  const importFromScriptAI = async () => {
+    if (locked) return
+    const story = findStory()
+    if (!story) {
+      pushLog({ ts: Date.now(), action: 'storyboard_import_ai', ok: false, message: '没有找到剧情节点或剧本为空——请先创建剧情节点并生成剧本' })
+      return
+    }
+    if (!story.parsed.length) {
+      pushLog({ ts: Date.now(), action: 'storyboard_import_ai', ok: false, message: '剧本中未解析到分镜/场景块' })
+      return
+    }
+    const initial = buildInitialShots(story.script, story.parsed)
+    const res = (await runAction('storyboard_import_ai', [id], {
+      initial_shots: initial,
+      model_profile: profileId || undefined,
+      skill_ref: skillId || undefined,
+      prompt: extraReq.trim() || undefined,
+    })) as AnyObj | undefined
+    const corrected = res?.storyboard as Payload[] | undefined
+    if (res?.ok === true && Array.isArray(corrected) && corrected.length) {
+      saveHistory(`AI 引入${profileId ? '' : '（默认模型）'}`, corrected)
+      pushLog({ ts: Date.now(), action: 'storyboard_import_ai', ok: true, message: `AI 智能引入完成 · ${corrected.length} 镜（实体识别已校正）` })
+    }
+  }
+
+  /** AI 生成分镜（依托剧本 + 技能/知识库 + 自定义要求） */
+  const generateByAI = async () => {
+    if (locked) return
+    const res = (await runAction('generate_storyboard', [id], {
+      prompt: extraReq.trim() || undefined,
+      model_profile: profileId || undefined,
+      skill_ref: skillId || undefined,
+    })) as AnyObj | undefined
+    const shotsOut = res?.storyboard as Payload[] | undefined
+    if (res?.ok === true && Array.isArray(shotsOut) && shotsOut.length) {
+      saveHistory(`AI 生成${profileId ? '' : '（默认模型）'}`, shotsOut)
+    }
+  }
+
+  const applyPreview = () => {
+    if (preview) patchObject(id, { shots: preview })
+    setPreview(null)
+    setHistoryOpen(false)
+  }
+
+  const displayShots = preview ?? shots
 
   return (
     <div className="flex h-full min-h-[160px] flex-col gap-2">
@@ -643,35 +715,39 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
             className="nodrag flex h-7 items-center gap-1 rounded-md border border-edge bg-soft px-2.5 text-[11px] text-ink-2 transition hover:bg-soft-2 disabled:opacity-50"
             disabled={locked || !!busy}
             onClick={importFromScript}
-            title="解析剧情节点剧本，直接把分镜/场景数据填入本表（不调 AI）"
+            title="解析剧情节点剧本物理填入（不调 AI）；实体识别不准可用「AI 引入」修正"
           >
             <LayoutGrid size={11} />
-            从剧本引入
+            物理引入
+          </button>
+          <button
+            className="nodrag flex h-7 items-center gap-1 rounded-md border border-brand-500/40 bg-brand-500/10 px-2.5 text-[11px] text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-50"
+            disabled={locked || !!busy}
+            onClick={() => void importFromScriptAI()}
+            title="AI 识别修正引入：依托剧本校正角色/道具/场景（排除环境音标签、识别关键道具与真实地点），不做美化"
+          >
+            {busy === 'storyboard_import_ai' ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+            {busy === 'storyboard_import_ai' ? 'AI 引入中…' : 'AI 引入'}
           </button>
           <button
             className="nodrag flex h-7 items-center gap-1 rounded-md bg-brand-600 px-2.5 text-[11px] text-white transition hover:bg-brand-500 disabled:opacity-50"
             disabled={locked || !!busy}
-            onClick={() =>
-              void runAction('generate_storyboard', [id], {
-                prompt: extraReq.trim() || undefined,
-                model_profile: profileId || undefined,
-              })
-            }
-            title="基于场景内的剧情节点生成全字段分镜，写入本节点"
+            onClick={() => void generateByAI()}
+            title="依托剧情节点原始剧本 + 技能/知识库 + 自定义要求，AI 生成全字段分镜（优化画面观感与故事描述）"
           >
-            {busy === 'generate_storyboard' ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+            {busy === 'generate_storyboard' ? <Loader2 size={11} className="animate-spin" /> : <Wand2 size={11} />}
             {busy === 'generate_storyboard' ? '生成中…' : 'AI 生成分镜'}
           </button>
         </div>
       </div>
-      {/* 生成设置：模型选择 + 自定义要求（可选，作创作要求附加给 AI） */}
+      {/* 生成设置：模型选择 + 技能库 + 自定义要求 */}
       <div className="flex items-center gap-2">
         <select
-          className="nodrag nowheel h-7 w-44 shrink-0 rounded-md border border-edge bg-input px-1.5 text-[11px] text-ink outline-none focus:border-brand-500"
+          className="nodrag nowheel h-7 w-40 shrink-0 rounded-md border border-edge bg-input px-1.5 text-[11px] text-ink outline-none focus:border-brand-500"
           value={profileId}
           disabled={locked || !!busy}
           onChange={(e) => setProfileId(e.target.value)}
-          title="选择生成分镜使用的 AI 模型，留空为系统自动选择"
+          title="选择 AI 引入 / AI 生成使用的模型，留空为系统自动选择（不同模型可对比引入效果）"
         >
           <option value="">默认模型（系统自动选）</option>
           {profiles.map((p) =>
@@ -683,6 +759,14 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
             ) : null,
           )}
         </select>
+        <SkillPicker
+          value={skillId}
+          skills={skills}
+          disabled={locked || !!busy}
+          onChange={(v) => { setSkillId(v); patchObject(id, { skill_ref: v }) }}
+          placeholder="技能库（AI 引入/生成注入）"
+          className="w-44 shrink-0"
+        />
         <input
           className="nodrag nowheel h-7 min-w-0 flex-1 rounded-md border border-edge bg-input px-2 text-[11px] text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
           value={extraReq}
@@ -691,8 +775,50 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
           onChange={(e) => setExtraReq(e.target.value)}
         />
       </div>
+      {/* 历史记录：多次生成/引入回选 */}
+      <div className="flex items-center gap-2">
+        <button
+          className="nodrag flex h-6 items-center gap-1 rounded-md border border-edge px-2 text-[10px] text-ink-3 transition hover:bg-soft disabled:opacity-50"
+          disabled={locked}
+          onClick={() => setHistoryOpen((v) => !v)}
+          title="历史生成/引入记录，点击条目预览，可回选应用"
+        >
+          <Clock size={10} />
+          历史 {history.length} 条
+          <ChevronDown size={10} className={`transition-transform ${historyOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {preview && (
+          <div className="flex items-center gap-1.5 text-[10px] text-brand-300">
+            <span>预览：{previewLabel}</span>
+            <button className="rounded border border-brand-500/40 bg-brand-500/10 px-1.5 py-0.5 hover:bg-brand-500/20" onClick={applyPreview}>
+              应用此版本
+            </button>
+            <button className="rounded border border-edge px-1.5 py-0.5 text-ink-3 hover:bg-soft" onClick={() => setPreview(null)}>
+              取消
+            </button>
+          </div>
+        )}
+      </div>
+      {historyOpen && (
+        <div className="nowheel max-h-32 overflow-y-auto rounded-lg border border-edge bg-panel">
+          {history.length === 0 && <div className="px-2 py-2 text-[10px] text-ink-3">暂无历史——生成或引入后自动记录（最多 10 条）</div>}
+          {history.map((h, i) => (
+            <button
+              key={i}
+              type="button"
+              className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[10px] text-ink-2 transition hover:bg-soft"
+              onClick={() => { setPreview((h.shots as Payload[]) || []); setPreviewLabel(`${String(h.label ?? '')} · ${new Date(Number(h.ts)).toLocaleTimeString('zh-CN', { hour12: false })}`); setHistoryOpen(false) }}
+            >
+              <span className="truncate">
+                {String(h.label ?? '')} · {Array.isArray(h.shots) ? h.shots.length : 0} 镜
+              </span>
+              <span className="shrink-0 text-ink-3">{new Date(Number(h.ts)).toLocaleTimeString('zh-CN', { hour12: false })}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <StoryboardTable
-        shots={shots}
+        shots={displayShots}
         locked={locked}
         onPatch={(next) => patchObject(id, { shots: next })}
       />

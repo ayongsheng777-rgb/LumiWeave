@@ -224,7 +224,7 @@ interface SceneState {
   onConnect: (c: Connection) => Promise<void>
   setSelected: (ids: string[]) => void
 
-  runAction: (action: string, objectIds?: string[], params?: Record<string, unknown>) => Promise<void>
+  runAction: (action: string, objectIds?: string[], params?: Record<string, unknown>) => Promise<Record<string, unknown> | undefined>
   pushLog: (e: RunLogEntry) => void
   openNodeModal: (id: string) => void
   closeNodeModal: () => void
@@ -643,6 +643,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       }
       // 动作会新增/改写对象，重新拉取当前场景
       if (ok) await get().openScene(sceneId)
+      return res
     } catch (err) {
       get().pushLog({ ts: Date.now(), action, ok: false, message: String(err) })
       set((st) => {
@@ -650,6 +651,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
         for (const id of targetIds) next[id] = 'failed'
         return { objectStatus: next }
       })
+      return undefined
     } finally {
       set({ busy: '' })
     }

@@ -1327,6 +1327,10 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
     extra = str(params.get("prompt") or "").strip()
     if extra:
         story_ctx += f"\n\n【创作要求】{extra}"
+    # 技能库 + 知识库内容注入（V2.9n：分镜生成同样支持技能/知识库增强画面描述）
+    qctx = await _story_quality_context(story_ctx, params)
+    if qctx:
+        story_ctx += f"\n\n{qctx}"
 
     # 模型选择：params.model_profile 指定 → 第一轮直接用该模型；否则默认模型 + 失败走硅基流动兜底
     sel_profile = None
@@ -1434,6 +1438,170 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
                 await service.update_object(write_oid, data={**obj["data"], "storyboard": shots})
     return {"ok": True, "created": [write_oid] if write_oid else [],
             "storyboard": shots, "message": f"分镜生成完成 · {len(shots)} 个镜头（目标 {shot_count}）"}
+
+
+async def _act_storyboard_import_ai(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """AI 智能引入（V2.9n）：把剧情剧本 + 物理解析结果交给 LLM，**只识别修正实体**、不做美化。
+
+    解决的问题（物理引入的典型错误）：
+      - 角色把 [环境音]/[旁白] 标签当角色
+      - 道具把画面细节（口红印吸管、捏瘪的奶茶杯）当道具，漏掉关键道具（一杯奶茶）
+      - 场景把「场景名」（霓虹追踪/闪电得手）当场景，漏掉实际地点（繁华的步行街/小巷子）
+
+    输出对齐分镜表 13 列，写回 storyboard 节点 data.shots。
+    模型可指定（params.model_profile），用于不同模型引入效果对比。
+    """
+    # 1) 取剧本 + 写回目标
+    script = ""
+    write_oid = None
+    story_oid = None
+    for oid in (obj_ids or []):
+        obj = await service.get_object(oid)
+        if not obj:
+            continue
+        ot = obj["object_type"]
+        if ot == "story" and not script:
+            story_oid = oid
+            script = (str(obj["data"].get("script") or "") or str(obj["data"].get("story") or "")
+                      or str(obj["data"].get("summary") or "") or str(obj["data"].get("text") or "")).strip()
+        elif ot == "storyboard":
+            write_oid = oid
+    if not script:
+        for o in await service.list_objects(scene_id):
+            if o["object_type"] == "story":
+                story_oid = o["id"]
+                script = (str(o["data"].get("script") or "") or str(o["data"].get("story") or "")
+                          or str(o["data"].get("summary") or "") or str(o["data"].get("text") or "")).strip()
+                break
+    if not script:
+        return {"ok": False, "error": "没有可用的剧情剧本——请先在剧情节点生成故事"}
+    if not write_oid:
+        for o in await service.list_objects(scene_id):
+            if o["object_type"] == "storyboard":
+                write_oid = o["id"]
+                break
+        if not write_oid and story_oid:
+            write_oid = story_oid
+
+    # 2) 物理解析结果（前端可传 initial_shots，后端兜底自解析）
+    initial = params.get("initial_shots") or []
+    if not initial:
+        parsed = _parse_script(script)
+        initial = [{"shot_no": i + 1, "duration": sh.get("duration"), "description": "",
+                    "character": "", "scene": sh.get("location"), "location": sh.get("location"),
+                    "props": [], "lighting": "", "sound_effect": "、".join(sh.get("sfx") or []),
+                    "dialogue": "", "voice_over": "", "prompt": "", "camera_control_description": "",
+                    "_raw": {"goal": sh.get("goal"), "mood": sh.get("mood"), "bgm": sh.get("bgm"),
+                             "body": "", "key_frames": [x.get("desc") for x in (sh.get("shots") or [])]}}
+                   for i, sh in enumerate(parsed["shots"])]
+
+    # 3) 模型选择
+    sel_profile = None
+    mid = str(params.get("model_profile") or "").strip()
+    if mid:
+        from app.ai import config as ai_config
+        sel_profile = ai_config.get_profile(mid)
+
+    # 剧本实体清单（帮助 LLM 识别真实角色/道具/地点）
+    parsed_ctx = _parse_script(script)
+    entity_hint = (
+        f"【剧本人物名单】{'、'.join(parsed_ctx['characters']) or '（无）'}\n"
+        f"【剧本关键道具】{'、'.join(parsed_ctx['props']) or '（无）'}\n"
+        f"【剧本实际地点】{'、'.join(dict.fromkeys(sh['location'] for sh in parsed_ctx['shots'] if sh['location'])) or '（无）'}"
+    )
+
+    sys = (
+        "你是影视分镜实体识别修正器。任务：根据【原始剧本】修正给定的【初始分镜表】中的实体识别错误。\n"
+        "**只做识别修正，不做任何美化/扩写/润色**：不要改写画面描述、不要加镜头语言、不要改 prompt 原文（除非为空可留空）。\n"
+        "修正规则：\n"
+        "1. 角色(character)：必须是真实剧中人物；**强制排除 [环境音]/[旁白]/[画外音]/[音效]/[对白] 等标签**（这些是音效标注不是角色）；"
+        "优先从【剧本人物名单】与对白说话人选取；该镜无人物可留空。\n"
+        "2. 道具(props)：只保留**关键道具**（剧情核心物件，如'一杯奶茶'）；"
+        "排除画面修饰细节（口红印吸管、捏瘪的杯子、衣服下摆等）；优先从【剧本关键道具】选取，去掉描述性短语。\n"
+        "3. 场景(scene/location)：填**实际拍摄地点**（从【剧本实际地点】与场景正文提取，如'繁华的步行街''幽暗的小巷子'），"
+        "**不要用场景名/分镜名**（如'霓虹追踪''闪电得手'）。\n"
+        "4. 时长/描述/对白/旁白/音效：沿用初始值即可，明显为空可补，但不要改写。\n"
+        "严格只输出 JSON：{\"shots\":[{\"shot_no\":1,\"duration\":5,\"description\":\"\",\"shot_size\":\"\","
+        "\"character\":\"\",\"scene\":\"\",\"location\":\"\",\"props\":[\"\"],\"lighting\":\"\","
+        "\"sound_effect\":\"\",\"dialogue\":\"\",\"voice_over\":\"\",\"prompt\":\"\","
+        "\"camera_control_description\":\"\"}]}，镜头数与初始表一致。"
+    )
+    user = f"【原始剧本】\n{script[:6000]}\n\n{entity_hint}\n\n【初始分镜表】\n" + "\n".join(
+        f"镜头{i + 1}: {json.dumps(s, ensure_ascii=False)[:400]}" for i, s in enumerate(initial[:40])
+    )
+    r = await _chat_full(sys, user, json_mode=True, temperature=0.2, max_tokens=6000,
+                         model_profile=sel_profile)
+    await _record_usage("", r)
+    shots: list[dict] = []
+    if r.ok and r.content:
+        m = re.search(r"\{.*\}", r.content, re.S)
+        if m:
+            try:
+                shots = (json.loads(m.group(0)) or {}).get("shots") or []
+            except Exception:  # noqa: BLE001
+                shots = []
+    if not shots:
+        return {"ok": False, "error": "AI 识别修正失败（请检查 AI 配置）"}
+
+    # 4) 数量对齐 + 保留初始中没有被 LLM 覆盖的字段
+    if len(shots) > len(initial):
+        shots = shots[:len(initial)]
+    # 角色后置清洗（防御性）：强制剔除音效/旁白标签
+    _BAD_TAGS = ("[环境音]", "[旁白]", "[画外音]", "[音效]", "[对白]", "环境音", "旁白", "画外音", "音效", "对白")
+    out: list[dict] = []
+    for i, s in enumerate(shots):
+        if not isinstance(s, dict):
+            continue
+        base = dict(initial[i]) if i < len(initial) and isinstance(initial[i], dict) else {}
+        # props 数组化
+        ps = s.get("props") or base.get("props") or []
+        if isinstance(ps, str):
+            ps = [x.strip() for x in ps.replace("，", "、").split("、") if x.strip()]
+        # character 清洗
+        character = str(s.get("character") or base.get("character") or "")
+        for t in _BAD_TAGS:
+            character = character.replace(t, "")
+        character = character.strip("[] 【】、，,。")
+        # 兜底：清洗后为空 → 从画面描述匹配剧本人物（LLM 输出 + 初始描述合并，长词优先）
+        if not character:
+            desc_txt = f"{str(s.get('description') or '')} {str(base.get('description') or '')}"
+            for c in sorted(parsed_ctx["characters"], key=len, reverse=True):
+                if len(c) >= 2 and c in desc_txt:
+                    character = c
+                    break
+        # 场景/地点兜底：LLM 若给了场景名/空 → 回退初始值（物理引入的地点）
+        scene_names = {sh["location"] for sh in parsed_ctx["shots"] if sh["location"]}
+        scene_val = str(s.get("scene") or base.get("scene") or "")
+        loc_val = str(s.get("location") or base.get("location") or "")
+        if not scene_val or scene_val in scene_names:
+            scene_val = loc_val or str(base.get("scene") or base.get("location") or "")
+        if not loc_val:
+            loc_val = scene_val
+        out.append({
+            "shot_no": int(s.get("shot_no") or base.get("shot_no") or i + 1),
+            "duration": s.get("duration") or base.get("duration") or 0,
+            "description": str(s.get("description") or base.get("description") or ""),
+            "shot_size": str(s.get("shot_size") or base.get("shot_size") or ""),
+            "character": character,
+            "scene": scene_val,
+            "location": loc_val,
+            "props": ps,
+            "lighting": str(s.get("lighting") or base.get("lighting") or ""),
+            "sound_effect": str(s.get("sound_effect") or base.get("sound_effect") or ""),
+            "dialogue": str(s.get("dialogue") or base.get("dialogue") or ""),
+            "voice_over": str(s.get("voice_over") or base.get("voice_over") or ""),
+            "prompt": str(s.get("prompt") or base.get("prompt") or ""),
+            "camera_control_description": str(s.get("camera_control_description") or base.get("camera_control_description") or ""),
+        })
+    if write_oid:
+        obj = await service.get_object(write_oid)
+        if obj:
+            if obj["object_type"] == "storyboard":
+                await service.update_object(write_oid, data={**obj["data"], "shots": out})
+            else:
+                await service.update_object(write_oid, data={**obj["data"], "storyboard": out})
+    return {"ok": True, "created": [write_oid] if write_oid else [],
+            "storyboard": out, "message": f"AI 智能引入完成 · 修正 {len(out)} 个镜头（实体识别已校正）"}
 
 
 async def _act_director_start(scene_id: str, obj_ids: list[str], params: dict) -> dict:
@@ -1860,6 +2028,8 @@ async def _run_action(scene_id: str, action: str, object_ids: list[str] | None =
             return await _act_generate_story_from_text(scene_id, obj_ids, params)
         if action == "generate_storyboard":
             return await _act_generate_storyboard(scene_id, obj_ids, params)
+        if action == "storyboard_import_ai":
+            return await _act_storyboard_import_ai(scene_id, obj_ids, params)
         if action == "director_start":
             return await _act_director_start(scene_id, obj_ids, params)
         if action in ("generate_characters", "generate_scenes"):
