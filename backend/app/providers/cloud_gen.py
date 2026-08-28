@@ -18,6 +18,14 @@ from typing import Any
 import httpx
 
 from app import db
+from app.token_usage.db import fire_and_forget
+
+# V2.9f 渲染计费估算（¥，仅统计展示；官方价调整后改这里）
+RENDER_COST = {
+    "h3_2k_per_sec": 1.25,      # MiniMax H3 2K 视频 ¥/秒（实测 4 秒约 5 元）
+    "h3_768p_per_sec": 0.6,     # MiniMax H3 768P 视频 ¥/秒（估算）
+    "image_per_pic": 0.2,       # 云端出图 ¥/张（估算）
+}
 
 _SIZE_MAP = {"16:9": "1280x720", "9:16": "720x1280", "1:1": "960x960",
              "4:3": "1024x768", "3:4": "768x1024"}
@@ -161,6 +169,12 @@ async def cloud_image_generate(
         logs.append({"step": "error", "message": f"云端未返回图片链接：{str(data)[:200]}"})
         return {"ok": False, "error": f"云端未返回图片链接: {str(data)[:200]}", "logs": logs}
     logs.append({"step": "done", "message": f"生成 {len(urls)} 张图，耗时 {latency}ms", "duration_ms": latency})
+    # V2.9f 渲染计费：出图按张估算记入统计（currency=CNY）
+    fire_and_forget(
+        model_name, prov_name or provider_id, "image_render", 0, 0, True,
+        latency_ms=latency,
+        cost=round(len(urls) * RENDER_COST["image_per_pic"], 2), currency="CNY",
+    )
     return {"ok": True, "images": [{"url": u, "filename": u.rsplit('/', 1)[-1]} for u in urls], "logs": logs}
 
 
@@ -244,6 +258,13 @@ async def _minimax_h3_generate(
     if not video_url:
         return {"ok": False, "error": "等待 MiniMax H3 结果超时（>900s）", "logs": logs}
     logs.append({"step": "done", "message": f"视频生成完成，耗时 {_ts() - t0}ms", "duration_ms": _ts() - t0})
+    # V2.9f 渲染计费：H3 无 token，按 时长×单价 估算记入统计（currency=CNY）
+    price = RENDER_COST["h3_768p_per_sec"] if "768P" in (payload.get("resolution") or "") else RENDER_COST["h3_2k_per_sec"]
+    fire_and_forget(
+        model, "minimax", "video_render", 0, 0, True,
+        latency_ms=_ts() - t0, task_id=task_id,
+        cost=round(int(payload.get("duration") or 4) * price, 2), currency="CNY",
+    )
     return {"ok": True, "videos": [{"url": video_url, "filename": video_url.rsplit("/", 1)[-1]}], "logs": logs}
 
 

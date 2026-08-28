@@ -167,7 +167,8 @@ async def summary(days: int = 30) -> list[dict[str, Any]]:
             SUM(l.completion_tokens) AS completion_tokens,
             COUNT(*) AS calls,
             ROUND(SUM(l.prompt_tokens)/1000000.0 * COALESCE(p.input_per_million,0) +
-                  SUM(l.completion_tokens)/1000000.0 * COALESCE(p.output_per_million,0), 4) AS cost_yuan
+                  SUM(l.completion_tokens)/1000000.0 * COALESCE(p.output_per_million,0), 4) +
+                  COALESCE(SUM(l.cost), 0) AS cost_yuan
         FROM token_usage_log l
         LEFT JOIN LATERAL (
             SELECT input_per_million, output_per_million FROM model_pricing mp
@@ -211,7 +212,7 @@ async def today_overview() -> dict[str, Any]:
             SUM(CASE WHEN success THEN 0 ELSE 1 END) AS fails,
             SUM(l.prompt_tokens) AS prompt_tokens,
             SUM(l.completion_tokens) AS completion_tokens,
-            COALESCE(SUM(c.cost_yuan), 0) AS cost_yuan
+            COALESCE(SUM(c.cost_yuan), 0) + COALESCE(SUM(l.cost), 0) AS cost_yuan
         FROM token_usage_log l
         LEFT JOIN LATERAL (
             SELECT ROUND(l.prompt_tokens/1000000.0 * COALESCE(p.input_per_million,0) +
