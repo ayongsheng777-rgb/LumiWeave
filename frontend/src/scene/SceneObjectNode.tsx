@@ -14,6 +14,7 @@ import { sceneRunAction } from '../api'
 import { isStoryNode } from './sceneScript'
 import { classifyFlow, FLOW_TITLE_COLORS } from './sceneColors'
 import SceneHoverToolbar from './SceneHoverToolbar'
+import { StoryboardTable, STORYBOARD_TABLE_W } from './StoryboardView'
 
 type Payload = Record<string, unknown>
 
@@ -107,6 +108,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
   const deleteObjects = useSceneStore((s) => s.deleteObjects)
   const duplicateObjects = useSceneStore((s) => s.duplicateObjects)
   const openNodeModal = useSceneStore((s) => s.openNodeModal)
+  const patchObject = useSceneStore((s) => s.patchObject)
   const status = useSceneStore((s) => s.objectStatus[id])
   const objects = useSceneStore((s) => s.objects)
   const edges = useSceneStore((s) => s.edges)
@@ -201,7 +203,11 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
         className={`canvas-node jelly group flex h-full flex-col overflow-hidden rounded-2xl text-[11px] transition ${
           selected ? 'ring-2 ring-[var(--lw-edge-active)]' : ''
         }`}
-        style={{ height: '100%', '--lw-node-tint': titleColor } as React.CSSProperties}
+        style={{
+          height: '100%',
+          ...(objectType === 'storyboard' ? { minWidth: STORYBOARD_TABLE_W } : {}),
+          '--lw-node-tint': titleColor,
+        } as React.CSSProperties}
         onContextMenu={onContextMenu}
         onDoubleClick={() => openNodeModal(id)}
         title="双击打开编辑面板"
@@ -287,6 +293,12 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
                 {directorStory.script || '（剧情节点尚未生成剧本）'}
               </div>
             </div>
+          ) : objectType === 'storyboard' ? (
+            <StoryboardTable
+              shots={Array.isArray(payload.shots) ? payload.shots : []}
+              locked={locked}
+              onPatch={(next) => patchObject(id, { shots: next })}
+            />
           ) : objectType === 'story' ? (
             <div className="whitespace-pre-wrap break-words rounded-lg bg-soft px-2 py-1.5 text-[11px] leading-relaxed text-ink-2">
               {summary || '（尚未生成剧本，双击打开编辑面板用 AI 生成）'}
