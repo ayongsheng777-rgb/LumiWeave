@@ -193,11 +193,13 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 恢复已保存的面板状态（刷新/重开节点后）
+  // 恢复已保存的面板状态（刷新/重开节点后）；兼容导演台骨架节点（purpose→category、prompt→desc 兜底）
   useEffect(() => {
     if (payload.category) setCategory(String(payload.category) as Category)
+    else if (payload.purpose) setCategory(String(payload.purpose) as Category)
     if (payload.selected) setSelected(String(payload.selected))
     if (payload.desc) setDesc(String(payload.desc))
+    else if (payload.prompt) setDesc(String(payload.prompt))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -245,6 +247,9 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   // ── 生成：云端 / ComfyUI ────────────────────────────────────
   const genPrompt = useMemo(() => {
     const parts: string[] = []
+    // 节点已有提示词（含导演台骨架节点）：优先作为基础，避免重新生成时丢失原提示词
+    const existing = String(payload.prompt ?? '').trim()
+    if (existing && existing !== desc.trim()) parts.push(`【现有提示词】\n${existing}`)
     if (selected) parts.push(`【生成目标】${category} · ${selected}`)
     if (desc.trim()) parts.push(`【对象描述】\n${desc.trim()}`)
     if (skillId) {
@@ -258,7 +263,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
       if (content) parts.push(`【知识库参考】\n${content}`)
     }
     return parts.join('\n\n')
-  }, [selected, category, desc, skillId, kbId, skills, kbs])
+  }, [selected, category, desc, skillId, kbId, skills, kbs, payload])
 
   const generate = async () => {
     if (!genPrompt.trim() || generating) return
@@ -435,6 +440,18 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
                 disabled={locked}
                 onChange={(e) => setDesc(e.target.value)}
               />
+              {/* 提示词：直接校对/修改（导演台骨架节点 prompt 在此显示） */}
+              <label className="block">
+                <span className="mb-0.5 block text-[10px] text-ink-3">提示词（AI 出图用，可校对修改）</span>
+                <textarea
+                  className="nodrag nowheel w-full resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-[11px] leading-relaxed text-ink outline-none focus:border-brand-500"
+                  rows={Math.min(5, Math.max(2, String(payload.prompt ?? '').split('\n').length))}
+                  value={String(payload.prompt ?? '')}
+                  disabled={locked}
+                  placeholder="在此校对/修改出图提示词…"
+                  onChange={(e) => patchObject(id, { prompt: e.target.value })}
+                />
+              </label>
               {/* AI 重写：模型选择 + 可输入要求 */}
               <div className="space-y-1.5">
                 <select
