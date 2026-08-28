@@ -397,11 +397,70 @@ async def film_export(
     }
 
 
+async def film_build_story(
+    scene_id: str = "",
+    text: str = "",
+    title: str = "",
+    duration: int = 20,
+    shot_count: int = 4,
+    genre: str = "电影感",
+    style: str = "电影感",
+    ratio: str = "16:9",
+) -> dict[str, Any]:
+    """从最源头一句话搭建完整影视生产骨架（MCP 起点工具）：
+    1) 建 story 节点（写 text + duration/shotCount 约束）
+    2) AI 生成严格 N 镜 13 列全字段分镜表（镜号/时长/画面描述/景别/角色/场景/道具/光影/音效/对白/旁白/提示词/镜头控制）
+    3) 骨架搭建：分镜脚本节点 + 人物/道具/场景图片生成节点（purpose 标注）+ 每镜一个视频生成节点 + 全链连线
+    所有节点均为「待生成」状态（url 为空、带提示词），用户逐个审核后调用
+    film.image_generate / film.video_generate（或画布节点上的「生成」按钮）出成品。
+    scene_id 为空时自动创建影视复刻拉片场景。"""
+    from app.scene import service as ss
+    from app.director.orchestrator import build_film_skeleton
+    from app.scene.actions import _act_generate_storyboard
+
+    text = (text or "").strip()
+    if not text:
+        return {"ok": False, "error": "缺少故事文本（text），请提供一句话或一段故事"}
+    if not scene_id:
+        scene_id = await ss.create_scene("default", "film-analysis",
+                                         title or "影视拉片", {"origin": "mcp:film.build_story"})
+    story_id = await ss.create_object(scene_id, "story", x=80, y=80, width=420, height=300,
+                                      data={"title": title or "未命名", "text": text[:800],
+                                            "summary": text[:200], "script": text, "story": text,
+                                            "duration": int(duration or 20),
+                                            "shotCount": int(shot_count or 4)})
+    r = await _act_generate_storyboard(scene_id, [story_id],
+                                       {"duration": int(duration or 20),
+                                        "shot_count": int(shot_count or 4)})
+    if not r.get("ok"):
+        return {"ok": False, "error": r.get("error", "分镜生成失败")}
+    shots = r.get("storyboard") or []
+    skel = await build_film_skeleton(scene_id, story_id, shots, {"ratio": ratio, "style": style})
+    return {
+        "ok": True,
+        "data": {
+            "scene_id": scene_id,
+            "story_id": story_id,
+            "storyboard_id": skel["storyboard_id"],
+            "image_ids": skel["image_ids"],
+            "video_ids": skel["video_ids"],
+            "assets": skel["assets"],
+            "shots": shots,
+            "message": f"骨架已搭建：{len(shots)} 分镜 / 图片生成节点 {len(skel['image_ids'])} 个 / 视频生成节点 {len(skel['video_ids'])} 个，请逐个审核后点「生成」",
+        },
+    }
+
+
 # =====================================================================
 # MCP 注册：把模块级函数挂到 MCPServer
 # =====================================================================
 
 _FILM_TOOLS = [
+    (
+        "film.build_story",
+        "从一句话搭建完整影视生产骨架（源头起点）：建 story 节点 → 严格 N 镜 13 列分镜表 → 分镜脚本节点 + 人物/道具/场景图片生成节点 + 每镜一个视频生成节点 + 全链连线。所有节点待生成，用户逐个审核后点生成。",
+        film_build_story,
+    ),
     (
         "film.story_parse",
         "AI 解析故事文本，提取角色、场景、道具、分镜结构。输入故事/小说/广告需求，输出角色列表、场景列表、道具列表、分镜列表。",
@@ -455,6 +514,7 @@ def register(server: Any) -> None:
 # =====================================================================
 
 _FILM_CALL_MAP: dict[str, Any] = {
+    "film.build_story": film_build_story,
     "film.story_parse": film_story_parse,
     "film.storyboard_generate": film_storyboard_generate,
     "film.character_generate": film_character_generate,

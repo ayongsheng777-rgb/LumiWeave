@@ -257,7 +257,7 @@ export default function SceneFieldPopover({
               {/* 输入 */}
               <div className="flex items-end gap-2 border-t border-edge px-3 py-2">
                 <textarea
-                  className="nodrag nowheel flex-1 resize-none rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
+                  className="nodrag nowheel flex-1 resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
                   rows={2}
                   placeholder="输入要求，回车发送（Shift+Enter 换行）"
                   value={input}

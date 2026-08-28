@@ -13,7 +13,7 @@ import SceneTextWriter from './SceneTextWriter'
 import SceneImageEditor from './SceneImageEditor'
 import SceneVideoEditor from './SceneVideoEditor'
 import SceneAudioEditor from './SceneAudioEditor'
-import { type ParsedScript, EMPTY_PARSED, isStoryNode, parseShotsFromScript } from './sceneScript'
+import { type ParsedScript, EMPTY_PARSED, isStoryNode, parseShotsFromScript, parseCharacters, parsePropsList } from './sceneScript'
 
 /** 长文本字段 → 用 AI 对话弹窗编辑 */
 const LONG_TEXT_KEYS = new Set([
@@ -290,7 +290,7 @@ function SceneStoryEditor({ id, payload, locked }: { id: string; payload: Payloa
       ) : (
         <>
           <textarea
-            className="nodrag nowheel w-full flex-1 resize-none rounded-md border border-edge bg-input p-2 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
+            className="nodrag nowheel w-full flex-1 resize-y rounded-md border border-edge bg-input p-2 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
             style={{ minHeight: 120 }}
             disabled={locked}
             value={value}
@@ -481,7 +481,7 @@ function SceneShotDialogEditor({ id, payload, locked }: { id: string; payload: P
   return (
     <div className="flex h-full min-h-[160px] flex-col gap-2">
       <textarea
-        className="nodrag nowheel w-full flex-1 resize-none rounded-md border border-edge bg-input p-2 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
+        className="nodrag nowheel w-full flex-1 resize-y rounded-md border border-edge bg-input p-2 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
         style={{ minHeight: 80 }}
         disabled={locked}
         value={String(payload.prompt ?? '')}
@@ -507,12 +507,14 @@ function SceneShotDialogEditor({ id, payload, locked }: { id: string; payload: P
   )
 }
 
-// ── 分镜脚本编辑器：全字段分镜表（影视复刻拉片）──
+// ── 分镜脚本编辑器：全字段分镜表（影视复刻拉片，对齐 D:/分镜.pdf 13 列 + 生成字段）──
 const SB_FIELDS: [string, string][] = [
   ['duration', '时长(秒)'], ['shot_size', '景别'], ['lens', '焦距'], ['camera_angle', '机位'],
-  ['camera_motion', '运镜'], ['composition', '构图'], ['lighting', '光线'], ['color', '色调'],
-  ['character', '人物'], ['character_action', '动作'], ['emotion', '情绪'],
-  ['dialogue', '对白'], ['description', '画面描述'], ['prompt', '提示词'],
+  ['camera_motion', '运镜'], ['composition', '构图'], ['lighting', '光影'], ['color', '色调'],
+  ['character', '人物'], ['character_action', '动作'], ['props', '道具(、分隔)'], ['emotion', '情绪'],
+  ['dialogue', '对白'], ['voice_over', '旁白'], ['sound_effect', '音效'],
+  ['camera_control_description', '镜头控制描述'],
+  ['description', '画面描述'], ['prompt', '分镜提示词'],
 ]
 
 function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: Payload; locked: boolean }) {
@@ -521,7 +523,13 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
   const busy = useSceneStore((s) => s.busy)
   const shots = Array.isArray(payload.shots) ? (payload.shots as Payload[]) : []
   const setShot = (i: number, k: string, v: string) => {
-    const next = shots.map((s, j) => (j === i ? { ...s, [k]: v } : s))
+    const next = shots.map((s, j) => {
+      if (j !== i) return s
+      if (k === 'props') {
+        return { ...s, props: v.split(/[、,，]/).map((x) => x.trim()).filter(Boolean) }
+      }
+      return { ...s, [k]: v }
+    })
     patchObject(id, { shots: next })
   }
   return (
@@ -551,12 +559,12 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
                 <div className="mb-1.5 text-[10px] font-semibold text-brand-300">镜头 {String(sb.shot_no ?? i + 1)}</div>
                 <div className="grid grid-cols-2 gap-1.5">
                   {SB_FIELDS.map(([k, label]) => (
-                    <label key={k} className="block">
+                    <label key={k} className={k === 'camera_control_description' || k === 'description' ? 'col-span-2 block' : 'block'}>
                       <span className="mb-0.5 block text-[9px] text-ink-3">{label}</span>
                       <input
                         className="nodrag nowheel w-full rounded-md border border-edge bg-input px-1.5 py-1 text-[11px] text-ink outline-none focus:border-brand-500"
                         disabled={locked}
-                        value={String(sb[k] ?? '')}
+                        value={k === 'props' ? (Array.isArray(sb[k]) ? (sb[k] as unknown[]).join('、') : String(sb[k] ?? '')) : String(sb[k] ?? '')}
                         onChange={(e) => setShot(i, k, e.target.value)}
                       />
                     </label>
@@ -594,7 +602,16 @@ export default function SceneNodeEditPanel({ id }: { id: string }) {
     if (!sid) return null
     const so = objects.find((o) => o.id === sid)
     const script = String((((so?.data as Payload)?.payload as Payload)?.script) ?? '')
-    return script ? parseShotsFromScript(script) : ((((so?.data as Payload)?.payload as Payload)?.parsed as ParsedScript) || EMPTY_PARSED)
+    if (script) {
+      // 🔴 parseShotsFromScript 返回的是分镜数组，必须包成 ParsedScript 结构，
+      // 否则调用方 s.characters.forEach / s.props.forEach 拿到 undefined 直接白屏
+      return {
+        characters: Object.keys(parseCharacters(script)),
+        props: parsePropsList(script),
+        shots: parseShotsFromScript(script),
+      } as ParsedScript
+    }
+    return ((((so?.data as Payload)?.payload as Payload)?.parsed as ParsedScript) || EMPTY_PARSED)
   }, [edges, objects, id])
   const purposeOpts = useMemo(() => {
     const base = [...PURPOSE_OPTS]

@@ -53,14 +53,29 @@ async def director_tasks(scene_id: str = ""):
 
 @router.post("/task/{task_id}/video")
 async def director_generate_video(task_id: str):
-    """导演任务进入视频生成步骤（用户审核分镜后点「生成视频」）。"""
+    """导演任务批量生成视频：对骨架里的每个 video 分镜节点逐个出视频（节点级生成回填）。"""
     task = await ds.get_task(task_id)
     if not task:
         return JSONResponse(status_code=404, content={"error": "导演任务不存在"})
     scene_id = str(task.get("scene_id") or "")
-    shot_ids = ((task.get("result") or {}).get("shot_ids")) or []
-    if not scene_id or not shot_ids:
-        return JSONResponse(status_code=400, content={"error": "任务没有可生成视频的分镜"})
-    from app.director.orchestrator import _step_video
-    asyncio.create_task(_step_video(task_id, scene_id, shot_ids))
-    return {"ok": True, "message": "视频生成已启动"}
+    video_ids = ((task.get("result") or {}).get("video_ids")) or []
+    if not scene_id or not video_ids:
+        return JSONResponse(status_code=400, content={"error": "任务没有可生成视频的分镜节点"})
+    from app.scene.actions import _act_generate_node_video
+
+    async def _run() -> None:
+        done = 0
+        for vid in video_ids:
+            try:
+                r = await _act_generate_node_video(scene_id, [vid], {})
+                if r.get("ok"):
+                    done += 1
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            await ds.update_task(task_id, append_log={"step": "video", "message": f"批量视频完成：{done}/{len(video_ids)} 个分镜"})
+        except Exception:  # noqa: BLE001
+            pass
+
+    asyncio.create_task(_run())
+    return {"ok": True, "message": f"视频生成已启动（{len(video_ids)} 个分镜节点）"}

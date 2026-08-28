@@ -51,8 +51,7 @@ export default function SceneToolbar() {
   if (!currentSceneId || !typeDef) return null
 
   const addWithUrl = async (type: string, url: string) => {
-    const pos = { x: 120 + Math.random() * 240, y: 120 + Math.random() * 200 }
-    await addObject(type, pos)
+    await addObject(type, useSceneStore.getState().nextObjectPos())
     const nid = useSceneStore.getState().selectedIds[0]
     if (nid) patchObject(nid, { url })
   }
@@ -104,7 +103,7 @@ export default function SceneToolbar() {
               e.dataTransfer.setData('application/lumiweave-scene-object', t)
               e.dataTransfer.effectAllowed = 'move'
             }}
-            onClick={() => void addObject(t, { x: 120 + Math.random() * 200, y: 120 + Math.random() * 160 })}
+            onClick={() => void addObject(t, useSceneStore.getState().nextObjectPos())}
             className="flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-hover active:scale-95"
             style={{ color: meta.color }}
           >

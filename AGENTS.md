@@ -466,6 +466,38 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 **⑤ 关键文件**：场景 `scene/`（SceneObjectNode/SceneNodeModal/SceneNodeEditPanel/SceneHoverToolbar/MarketingBoard/SceneTemplateMarket/sceneColors/sceneScript）；样式 `styles/index.css`（z-index 规范 + hover 工具栏显隐 + 蚂蚁线）；后端 `scene/actions.py`（+2 动作）/`scene/templates.py`/`mcp/tools/marketing_tools.py`
 
+## 一·二十五、导演台改「骨架搭建模式」：story→分镜脚本→资产图节点→分镜视频节点（2026-08-28）
+
+阿勇拍板：导演台不是"拉一堆文本信息框"，而是从故事一次搭好完整生产骨架（分镜脚本节点 + 人物/道具/场景**图片生成节点** + 每个分镜一个**视频生成节点**），节点全部"待生成"（url 空、带 prompt），用户逐个审核后点节点上的「生成」出成品。同时修"设 20 秒 4 镜跑出 19 镜"（根因：分镜生成不读 story 节点 duration/shotCount）。
+
+**① 节点链（画布形态）**
+```
+📖 story ──► 🎞 storyboard（13 列全字段分镜表）
+                ├─► 🖼 image ×N（purpose=人物/道具/场景，去重全局资产，待生成）
+                └─► ▶ video ×N（每镜一个：shot_no/desc/prompt/dialogue_script/sfx_desc，待生成）
+                       └─► image（该镜头用到的资产图连线 → SceneVideoEditor 素材库自动显示）
+```
+- 淘汰 character/scene/prop 文本对象（不再创建）；shot 对象仅视频拉片等场景保留
+- image 节点 data：`title/selected/name/purpose/prompt/url/model/size`；video 节点 data：`prompt/url/duration/shot_no/desc/aspect_ratio/camera_motion/resolution/style/dialogue_script/sfx_desc/subtitle_enabled`
+
+**② 时长/分镜数约束（关键修复）**
+- `_act_generate_storyboard` 读 story 节点 `data.duration` / `data.shotCount`（优先），其次 params（导演台 opts 已透传）
+- 提示词硬约束：分镜个数严格 = shotCount、每镜 ≈ duration/shotCount、时长和 = duration
+- 生成后兜底：数量 >N 截取、<N 复制末镜补足；时长按比例归一化（最后一镜补舍入差）
+- 分镜 13 列对齐 D:/分镜.pdf：镜号/时长/画面描述/景别/角色/场景/道具(props 数组)/光影/音效(sound_effect)/对白/旁白(voice_over)/分镜提示词/镜头控制描述(camera_control_description) + lens/camera_angle/composition/color/character_action/emotion
+
+**③ 节点级生成（骨架模式核心交互）**
+- `_act_generate_node_image`（action=`generate_node_image`）：按节点出图，**回填该节点 url**；同 purpose+title 已出图自动做参考图（角色一致性）
+- `_act_generate_node_video`（action=`generate_node_video`）：按节点出视频回填；参考图自动收集连到该节点的 image（素材库同源 = MCP multi_ref）；风格/运镜/清晰度/对白/音效拼进提示词；走 `render_media`（支持 multi_ref）
+- 前端 `SceneObjectNode`：image/video 无 url 时显示「生成图片/生成视频」按钮 + 待生成标签，点击调 action 并 `openScene` 刷新
+- 导演台批量入口：`/api/director/task/{id}/video`（读 result.video_ids 逐个调 generate_node_video）
+
+**④ MCP 源头工具**
+- `film.build_story`：一句话（text + 可选 duration/shot_count/ratio/style）→ 建 story 节点 → `_act_generate_storyboard`（严格 N 镜）→ `build_film_skeleton` 搭骨架 → 返回 scene/story/storyboard/image_ids/video_ids，供用户审核后逐个生成
+
+**⑤ 关键文件**：后端 `director/orchestrator.py`（整体重写，`build_film_skeleton` 供 MCP 复用）/`director/routes.py`/`scene/actions.py`/`scene/registry.py`/`mcp/tools/film_tools.py`；前端 `scene/SceneObjectNode.tsx`/`director/DirectorPanel.tsx`/`scene/SceneNodeEditPanel.tsx`
+**⑥ 验收**：`tmp/verify_director_skeleton.py`（容器内，24/24 绿：20s/4镜→4 镜时长和 20、13 列全字段、image 资产 7 + video 4、无文本节点、连线 22 条、节点生成 action 注册）；`tmp/verify_director_front.js`（puppeteer 端到端：画布 15 节点完整渲染无报错，截图 D:/tmp/skel_canvas.png）
+
 ## 三、启动 / 重启 SOP
 
 ```bash

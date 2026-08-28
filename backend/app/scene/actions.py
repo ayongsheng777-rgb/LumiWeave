@@ -801,7 +801,124 @@ async def _act_generate_images(scene_id: str, obj_ids: list[str], params: dict) 
     return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 张图"}
 
 
-async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+async def _act_generate_node_image(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """节点级出图（导演台骨架模式）：对指定 image 节点生成图片，结果回填该节点 url。
+
+    读取节点 data.prompt / purpose / title，调用云端出图并写回；参考图（角色一致性）优先取
+    params.reference_images，其次取场景内已出图的同 purpose 资产（V2.8 locked_ref 思路的简化版）。
+    """
+    prov = await _image_provider()
+    if not prov:
+        return {"ok": False, "error": "未配置可用图像 Provider"}
+    created: list[str] = []
+    for oid in (obj_ids or []):
+        obj = await service.get_object(oid)
+        if not obj or obj["object_type"] != "image":
+            continue
+        d = obj["data"]
+        p = str(params.get("prompt") or d.get("prompt") or d.get("description") or "").strip()
+        if not p:
+            continue
+        refs = [str(x) for x in (params.get("reference_images") or []) if x]
+        if not refs:
+            purpose = str(d.get("purpose") or "")
+            title = str(d.get("title") or d.get("name") or d.get("selected") or "")
+            for o in await service.list_objects(scene_id):
+                if o["id"] == oid or o["object_type"] != "image":
+                    continue
+                pd = o["data"]
+                if pd.get("url") and str(pd.get("purpose") or "") == purpose and title and str(pd.get("title") or pd.get("name") or pd.get("selected") or "") == title:
+                    refs.append(str(pd["url"]))
+        from app.providers.cloud_gen import cloud_image_generate
+        res = await cloud_image_generate(prov["id"], p,
+                                         size=str(params.get("size") or d.get("size") or "1024x1024"),
+                                         reference_images=refs or None)
+        if not res.get("ok"):
+            return {"ok": False, "error": res.get("error", "出图失败"), "logs": res.get("logs")}
+        urls = [i.get("url") for i in res.get("images", []) if i.get("url")]
+        if not urls:
+            continue
+        await service.update_object(oid, data={**d, "url": urls[0], "model": prov.get("name"), "prompt": p})
+        await _register_asset(scene_id, "image", urls[0],
+                              name=f"{d.get('purpose') or '图片'}·{d.get('title') or d.get('name') or ''}",
+                              meta={"source_object_id": oid})
+        created.append(oid)
+    return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 张图"}
+
+
+async def _act_generate_node_video(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """节点级出视频（导演台骨架模式）：对指定 video 节点生成视频，结果回填该节点 url。
+
+    读取节点 data.prompt / duration / aspect_ratio / camera_motion / resolution / style /
+    dialogue_script / sfx_desc / shot_no；参考图自动收集连到本节点的 image 资产图
+    （供素材库→参考图一致性，等价 MCP multi_ref）。
+    """
+    prov = await _video_provider()
+    if not prov:
+        return {"ok": False, "error": "未配置可用视频 Provider"}
+    created: list[str] = []
+    for oid in (obj_ids or []):
+        obj = await service.get_object(oid)
+        if not obj or obj["object_type"] != "video":
+            continue
+        d = obj["data"]
+        p = str(params.get("prompt") or d.get("prompt") or d.get("desc") or "").strip()
+        if not p:
+            continue
+        # 参考图：参数优先，其次连到本节点的 image 资产（素材库同一来源）
+        refs = [str(x) for x in (params.get("reference_images") or []) if x]
+        if not refs:
+            for e in await service.list_edges(scene_id):
+                if e.get("target_id") != oid:
+                    continue
+                src = await service.get_object(e.get("source_id") or "")
+                if src and src["object_type"] == "image" and src["data"].get("url"):
+                    refs.append(str(src["data"]["url"]))
+        # 风格/运镜/清晰度/音效拼进提示词
+        style = str(params.get("style") or d.get("style") or "").strip()
+        motion = str(params.get("camera_motion") or d.get("camera_motion") or "固定镜头").strip()
+        reso = str(params.get("resolution") or d.get("resolution") or "").strip()
+        extra = []
+        if style:
+            extra.append(f"【画面风格】{style}")
+        if motion and motion != "固定镜头":
+            extra.append(f"【运镜】{motion}")
+        if reso:
+            extra.append(f"【清晰度】{reso}")
+        if d.get("dialogue_script"):
+            extra.append(f"【对白】{'；'.join(str(x) for x in d['dialogue_script'] if x)}")
+        if d.get("sfx_desc"):
+            extra.append(f"【音效】{'、'.join(str(x) for x in d['sfx_desc'] if x)}")
+        if extra:
+            p = f"{p}\n" + "\n".join(extra)
+        from app.renderers.generate import render_media
+        res = await render_media(
+            "video",
+            {
+                "prompt": p,
+                "duration": int(params.get("duration") or d.get("duration") or 5),
+                "ratio": str(params.get("ratio") or d.get("aspect_ratio") or "16:9"),
+                **({"reference_images": refs} if refs else {}),
+                **({"native": {"camera_movement": motion}} if motion and motion != "固定镜头" else {}),
+            },
+            render_mode="cloud",
+            provider_id=prov["id"],
+            model=str(params.get("model") or d.get("model") or ""),
+        )
+        if not res.get("ok"):
+            return {"ok": False, "error": res.get("error", "生视频失败"), "logs": res.get("logs")}
+        vids = res.get("videos") or []
+        urls = [v.get("url") for v in vids if isinstance(v, dict) and v.get("url")]
+        if not urls:
+            continue
+        await service.update_object(oid, data={**d, "url": urls[0], "model": prov.get("name"),
+                                               "prompt": p, "style": style,
+                                               "camera_motion": motion, "resolution": reso})
+        await _register_asset(scene_id, "video", urls[0],
+                              name=f"分镜{d.get('shot_no', '')}视频",
+                              meta={"source_object_id": oid})
+        created.append(oid)
+    return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 个视频"}
     """影视拉片（文案驱动）：从「文本」节点取原始故事/文案 → AI 生成三幕式故事结构。
 
     故事输入优先级：选中文本节点 > 场景内文本节点 > story 节点已有 text > 底部 AI 框 prompt。
@@ -909,12 +1026,17 @@ async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], param
 async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: dict) -> dict:
     """影视拉片（文案驱动）：从 story 节点取三幕式故事 → AI 生成全字段分镜表。
 
-    每镜输出：景别/焦距/机位/运镜/构图/光影/色调/人物/动作/情绪/对白/画面描述/AI 提示词。
+    每镜输出（对齐 D:/分镜.pdf 模板 13 列 + 生成字段）：
+      镜号/时长/画面描述/景别/角色/场景/道具/光影/音效/对白/旁白/分镜提示词/镜头控制描述
+      + 焦距/机位/构图/色调/动作/情绪（供视频生成）
+    严格遵循 story 节点 data.duration（总时长）与 data.shotCount（分镜个数）约束。
     写回 story 节点 data.storyboard。
     """
-    # 1) 取故事上下文
+    # 1) 取故事上下文 + 时长/分镜数约束
     story_ctx = ""
     write_oid = None
+    duration = 0
+    shot_count = 0
     for oid in (obj_ids or []):
         obj = await service.get_object(oid)
         if obj and obj["object_type"] == "story":
@@ -922,6 +1044,14 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
             d = obj["data"]
             story_ctx = (str(d.get("script") or "") or str(d.get("story") or "")
                          or str(d.get("summary") or "") or str(d.get("text") or "")).strip()
+            try:
+                duration = int(float(d.get("duration") or 0))
+            except Exception:  # noqa: BLE001
+                duration = 0
+            try:
+                shot_count = int(float(d.get("shotCount") or 0))
+            except Exception:  # noqa: BLE001
+                shot_count = 0
             break
     if not story_ctx:
         for o in await service.list_objects(scene_id):
@@ -930,12 +1060,31 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
                 d = o["data"]
                 story_ctx = (str(d.get("script") or "") or str(d.get("story") or "")
                              or str(d.get("summary") or "") or str(d.get("text") or "")).strip()
+                try:
+                    duration = int(float(d.get("duration") or 0))
+                except Exception:  # noqa: BLE001
+                    duration = 0
+                try:
+                    shot_count = int(float(d.get("shotCount") or 0))
+                except Exception:  # noqa: BLE001
+                    shot_count = 0
                 break
     if not story_ctx:
         return {"ok": False, "error": "没有可用的故事——请先「从文本生成故事」或填写剧情节点"}
     extra = str(params.get("prompt") or "").strip()
     if extra:
         story_ctx += f"\n\n【创作要求】{extra}"
+
+    # 约束：duration/shot_count 优先用 story 节点设置，其次 params，都没有则默认
+    if not shot_count:
+        shot_count = int(params.get("shot_count") or 0)
+    if not duration:
+        duration = int(params.get("duration") or 0)
+    if shot_count <= 0:
+        shot_count = 6
+    if duration <= 0:
+        duration = shot_count * 5
+    per_sec = round(duration / shot_count, 1)
 
     sys = (
         "你是影视分镜导演。基于给定故事方案生成完整分镜表，严格只输出 JSON：\n"
@@ -947,12 +1096,18 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
         '      "camera_angle": "机位角度(平视/俯拍/仰拍/过肩)", "camera_motion": "运镜(固定/推/拉/摇/移/跟/环绕)",\n'
         '      "composition": "构图(居中/三分法/对称/引导线)", "lighting": "光线(自然光/硬光/逆光/夜景)",\n'
         '      "color": "色调(冷调/暖调/高对比)", "character": "画面人物", "character_action": "人物动作",\n'
+        '      "props": ["该镜头出现的道具名(无则空数组)"],\n'
         '      "emotion": "情绪(紧张/温馨/孤独)", "dialogue": "对白(无则空)",\n'
+        '      "voice_over": "旁白(无则空)", "sound_effect": "音效描述(如:玻璃碎裂声+低沉混响;无则空)",\n'
+        '      "camera_control_description": "镜头控制描述(把机位/运镜/构图/光影合成一句可执行的拍摄指令)",\n'
         '      "description": "画面描述(40字内)", "prompt": "给视频生成模型的高质量中文提示词(含景别/运镜/光线/构图)"\n'
         '    }\n'
         "  ]\n"
         "}\n"
-        "要求：镜头衔接有叙事逻辑、覆盖完整故事线；单个镜头时长 3~8 秒；总时长与目标时长尽量匹配；全部中文。"
+        "要求：\n"
+        f"1. 分镜个数必须严格等于 {shot_count} 个，一个不多一个不少；\n"
+        f"2. 每个分镜时长约 {per_sec} 秒，所有分镜 duration 之和必须等于 {duration} 秒；\n"
+        "3. 镜头衔接有叙事逻辑、覆盖完整故事线；props 用数组、无道具给空数组；全部中文。"
     )
     # 全字段分镜输出很长（每镜 13 字段 × 多镜头），默认 2000 tokens 会被截断导致解析失败 → 用 6000
     r2 = await _chat_full(sys, story_ctx, json_mode=True, temperature=0.5, max_tokens=6000)
@@ -984,12 +1139,36 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
     shots = r.get("shots") or []
     if not isinstance(shots, list) or not shots:
         return {"ok": False, "error": "分镜生成结果为空"}
-    # 2) 写回 story 节点
+    # 3) 数量裁剪/补足到 shot_count，并按时长归一化（保证骨架节点数 = 用户设定）
+    if len(shots) > shot_count:
+        shots = shots[:shot_count]
+    elif len(shots) < shot_count and shot_count <= 30:
+        # 数量不足：复制最后一个并改名补足（提示词已硬约束，此处兜底）
+        last = dict(shots[-1]) if shots else {"shot_no": 1, "description": "", "duration": per_sec, "prompt": ""}
+        while len(shots) < shot_count:
+            fill = dict(last)
+            fill["shot_no"] = len(shots) + 1
+            shots.append(fill)
+    # 时长归一化：所有分镜时长之和 → duration
+    try:
+        total = sum(float(s.get("duration") or 0) for s in shots if isinstance(s, dict))
+        if total > 0 and duration > 0 and abs(total - duration) > 0.5:
+            scale = duration / total
+            for s in shots:
+                if isinstance(s, dict):
+                    s["duration"] = max(1, round(float(s.get("duration") or 0) * scale))
+            # 修正取整误差：最后一镜补齐
+            diff = duration - sum(float(s.get("duration") or 0) for s in shots)
+            if shots and diff:
+                shots[-1]["duration"] = max(1, int(float(shots[-1]["duration"])) + int(diff))
+    except Exception:  # noqa: BLE001
+        pass
+    # 4) 写回 story 节点
     if write_oid:
         obj = await service.get_object(write_oid)
         await service.update_object(write_oid, data={**obj["data"], "storyboard": shots})
     return {"ok": True, "created": [write_oid] if write_oid else [],
-            "storyboard": shots, "message": f"分镜生成完成 · {len(shots)} 个镜头"}
+            "storyboard": shots, "message": f"分镜生成完成 · {len(shots)} 个镜头（目标 {shot_count}）"}
 
 
 async def _act_director_start(scene_id: str, obj_ids: list[str], params: dict) -> dict:
@@ -1013,11 +1192,27 @@ async def _act_director_start(scene_id: str, obj_ids: list[str], params: dict) -
                 story_id = o["id"]
                 break
     task_id = await ds.create_task(scene_id, story_id)
+    # 时长/分镜数：优先 story 节点设置，其次请求参数
+    sdur = 0
+    scnt = 0
+    if story_id:
+        sobj = await service.get_object(story_id)
+        if sobj:
+            try:
+                sdur = int(float(sobj["data"].get("duration") or 0))
+            except Exception:  # noqa: BLE001
+                sdur = 0
+            try:
+                scnt = int(float(sobj["data"].get("shotCount") or 0))
+            except Exception:  # noqa: BLE001
+                scnt = 0
     opts = {"generate_video": bool(params.get("generate_video", False)),
-            "style": str(params.get("style") or "")}
+            "style": str(params.get("style") or ""),
+            "duration": int(params.get("duration") or sdur or 0),
+            "shot_count": int(params.get("shot_count") or scnt or 0)}
     asyncio.create_task(run_director(task_id, scene_id, story_id, opts))
     return {"ok": True, "task_id": task_id, "director": True,
-            "message": "导演台已启动：故事→资产→分镜→（视频）→审核，可打开导演台面板查看进度"}
+            "message": "导演台已启动：故事→分镜→骨架→审核，可打开导演台面板查看进度"}
 
 
 async def _act_film_analysis(scene_id: str, obj_ids: list[str], params: dict) -> dict:
@@ -1410,6 +1605,10 @@ async def _run_action(scene_id: str, action: str, object_ids: list[str] | None =
             return await _act_generate_shots(scene_id, obj_ids, params)
         if action == "generate_images":
             return await _act_generate_images(scene_id, obj_ids, params)
+        if action == "generate_node_image":
+            return await _act_generate_node_image(scene_id, obj_ids, params)
+        if action == "generate_node_video":
+            return await _act_generate_node_video(scene_id, obj_ids, params)
         if action in ("analyze_video", "detect_shots", "extract_frames"):
             return await _act_film_analysis(scene_id, obj_ids, params)
         if action.startswith("skill:"):

@@ -7,9 +7,10 @@
  */
 import { memo, useState } from 'react'
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react'
-import { Lock, LockOpen, Trash2, Copy, ChevronDown, ChevronUp, Play } from 'lucide-react'
+import { Lock, LockOpen, Trash2, Copy, ChevronDown, ChevronUp, Play, Loader2, Wand2 } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
 import { useUiStore } from '../store/uiStore'
+import { sceneRunAction } from '../api'
 import { isStoryNode } from './sceneScript'
 import { classifyFlow, FLOW_TITLE_COLORS } from './sceneColors'
 import SceneHoverToolbar from './SceneHoverToolbar'
@@ -116,6 +117,31 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
   const audioUrl = String(payload.url ?? '')
   const summary = summaryOf(objectType, payload)
   const [expanded, setExpanded] = useState(false)
+  const [genBusy, setGenBusy] = useState(false)
+  const [genErr, setGenErr] = useState('')
+
+  // 导演台骨架节点：待生成（无 url 但有 prompt）→ 节点上直接出图/出视频并回填
+  const sceneId = useSceneStore((s) => s.currentSceneId)
+  const genNode = async (kind: 'image' | 'video') => {
+    if (!sceneId || genBusy) return
+    setGenBusy(true)
+    setGenErr('')
+    try {
+      const res = await sceneRunAction(sceneId, {
+        action: kind === 'image' ? 'generate_node_image' : 'generate_node_video',
+        object_ids: [id],
+      })
+      if (res.ok) {
+        await useSceneStore.getState().openScene(sceneId)
+      } else {
+        setGenErr(String(res.data?.error || '生成失败'))
+      }
+    } catch (e) {
+      setGenErr(String(e))
+    } finally {
+      setGenBusy(false)
+    }
+  }
 
   // 导演台：从连线的剧情节点读剧本（精简展示）
   const directorStory = objectType === 'director'
@@ -259,9 +285,51 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
             </div>
           ) : audioUrl ? (
             <audio src={audioUrl} controls className="w-full" />
+          ) : objectType === 'image' || objectType === 'video' ? (
+            <div className="flex min-h-[46px] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-edge px-2 py-2 text-[11px] text-ink-3">
+              {objectType === 'image' && !imageUrl ? (
+                <>
+                  <span>🖼 待生成{payload.purpose ? `（${String(payload.purpose)}）` : ''}{payload.title ? `·${String(payload.title)}` : ''}</span>
+                  {genBusy ? (
+                    <span className="flex items-center gap-1 text-brand-400"><Loader2 size={11} className="animate-spin" />出图中…</span>
+                  ) : (
+                    <button
+                      className="nodrag flex items-center gap-1 rounded-md bg-brand-600 px-2.5 py-1 text-[11px] text-white transition hover:bg-brand-500 disabled:opacity-50"
+                      disabled={!String(payload.prompt ?? '').trim()}
+                      onClick={(e) => { e.stopPropagation(); void genNode('image') }}
+                      title="按提示词生成图片并回填本节点"
+                    >
+                      <Wand2 size={11} /> 生成图片
+                    </button>
+                  )}
+                </>
+              ) : objectType === 'video' && !videoUrl ? (
+                <>
+                  <span>▶ 待生成{payload.shot_no ? `（分镜 ${String(payload.shot_no)}）` : ''}</span>
+                  {genBusy ? (
+                    <span className="flex items-center gap-1 text-brand-400"><Loader2 size={11} className="animate-spin" />出视频中…</span>
+                  ) : (
+                    <button
+                      className="nodrag flex items-center gap-1 rounded-md bg-brand-600 px-2.5 py-1 text-[11px] text-white transition hover:bg-brand-500 disabled:opacity-50"
+                      disabled={!String(payload.prompt ?? '').trim()}
+                      onClick={(e) => { e.stopPropagation(); void genNode('video') }}
+                      title="按提示词生成视频并回填本节点（素材库参考图自动带入）"
+                    >
+                      <Wand2 size={11} /> 生成视频
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span>{objectType === 'image' ? '🖼 未生成图片' : '▶ 未生成视频'}</span>
+                  <span className="text-[10px] text-ink-3">双击打开编辑面板配置</span>
+                </>
+              )}
+              {genErr && <span className="max-w-full truncate text-[10px] text-red-400">{genErr}</span>}
+            </div>
           ) : (
             <div className="flex min-h-[46px] items-center justify-center rounded-lg border border-dashed border-edge px-2 py-2 text-[11px] text-ink-3">
-              {objectType === 'image' ? '🖼 未生成图片' : objectType === 'video' ? '▶ 未生成视频' : objectType === 'audio' ? '♪ 未生成音频' : '双击打开编辑面板'}
+              双击打开编辑面板
             </div>
           )}
 

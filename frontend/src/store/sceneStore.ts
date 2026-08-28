@@ -208,6 +208,8 @@ interface SceneState {
   currentScene: () => SceneInstance | undefined
   currentTypeDef: () => SceneTypeDef | undefined
   metaOf: (objectType: string) => SceneObjectMeta
+  /** 新节点默认位置：从左上往右横向排列（每行 6 个自动换行） */
+  nextObjectPos: () => { x: number; y: number }
 
   addObject: (objectType: string, position: { x: number; y: number }) => Promise<void>
   patchObject: (id: string, patch: Record<string, unknown>) => void
@@ -412,6 +414,13 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   metaOf: (objectType) => get().objectLibrary[objectType] || fallbackMeta(objectType),
 
   // ── 对象 ─────────────────────────────────────────────────────────────
+  // 默认摆放：从左上角向右排，每行 6 个（节点宽 300 + 间距 40），换行后 y 递增
+  nextObjectPos: () => {
+    const n = get().objects.length
+    const perRow = 6
+    return { x: 100 + (n % perRow) * 340, y: 120 + Math.floor(n / perRow) * 240 }
+  },
+
   addObject: async (objectType, position) => {
     const sceneId = get().currentSceneId
     if (!sceneId) return

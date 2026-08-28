@@ -83,9 +83,13 @@ OBJECT_LIBRARY: Dict[str, Dict[str, Any]] = {
              "fields": {"name": "名称", "description": "描述", "prompt": "提示词"}},
     "shot": {"label": "镜头", "color": "#f97316", "icon": "🎬",
              "default_data": {"shot_no": "", "shot_size": "", "camera_motion": "", "lighting": "",
-                              "duration": 5, "dialogue": "", "description": "", "prompt": ""},
+                              "duration": 5, "dialogue": "", "voice_over": "", "sound_effect": "",
+                              "props": [], "camera_control_description": "",
+                              "description": "", "prompt": ""},
              "fields": {"shot_no": "镜头号", "shot_size": "景别", "camera_motion": "运镜", "lighting": "光线",
-                        "duration": "时长", "dialogue": "对白", "description": "画面描述", "prompt": "提示词"}},
+                        "duration": "时长", "dialogue": "对白", "voice_over": "旁白", "sound_effect": "音效",
+                        "props": "道具", "camera_control_description": "镜头控制描述",
+                        "description": "画面描述", "prompt": "提示词"}},
 
     # ── 分镜脚本（影视复刻拉片：全字段分镜表）────────────────────────
     "storyboard": {"label": "分镜脚本", "color": "#f97316", "icon": "🎞",

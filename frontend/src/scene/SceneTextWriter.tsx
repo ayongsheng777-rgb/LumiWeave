@@ -82,7 +82,7 @@ export default function SceneTextWriter({
         </button>
       ) : (
         <textarea
-          className="nodrag nowheel w-full flex-1 resize-none rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500"
+          className="nodrag nowheel w-full flex-1 resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500"
           placeholder="在此输入内容，或直接点下方「AI 编写」让 AI 撰写…"
           value={value}
           disabled={locked}

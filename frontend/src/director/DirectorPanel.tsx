@@ -122,7 +122,7 @@ export default function DirectorPanel({ sceneId }: { sceneId: string }) {
       const res = await directorCreate({ scene_id: sceneId, story_id: storyId || '' })
       if (res.ok && res.data?.task_id) {
         lastStatusRef.current = ''
-        pushRunLog(true, '导演排片已启动（故事→资产→分镜→审核）')
+        pushRunLog(true, '导演排片已启动（故事→分镜→骨架搭建→审核）')
         setTaskId(res.data.task_id)
         await loadTask(res.data.task_id)
         startPoll(res.data.task_id)
@@ -207,7 +207,7 @@ export default function DirectorPanel({ sceneId }: { sceneId: string }) {
 
       {!task ? (
         <div className="py-6 text-center text-[11px] text-ink-3">
-          还没有导演任务。点「一键排片」：AI 自动从故事生成资产、分镜、（可选）视频，最后人工审核。
+          还没有导演任务。点「一键排片」：AI 从故事搭建完整生产骨架——分镜脚本节点 + 人物/道具/场景图片生成节点 + 每个分镜一个视频生成节点，逐个审核后点「生成」出成品。
           {!storyId && '（场景里还没有剧情节点，请先放一个剧情节点并生成故事）'}
         </div>
       ) : (
@@ -288,13 +288,25 @@ export default function DirectorPanel({ sceneId }: { sceneId: string }) {
                         {Boolean(sb.duration) && <span className="rounded bg-soft px-1 py-0.5">{String(sb.duration)}s</span>}
                         {Boolean(sb.shot_size) && <span className="rounded bg-soft px-1 py-0.5">景别 {String(sb.shot_size)}</span>}
                         {Boolean(sb.camera_motion) && <span className="rounded bg-soft px-1 py-0.5">运镜 {String(sb.camera_motion)}</span>}
-                        {Boolean(sb.lighting) && <span className="rounded bg-soft px-1 py-0.5">光 {String(sb.lighting)}</span>}
+                        {Boolean(sb.character) && <span className="rounded bg-soft px-1 py-0.5">角色 {String(sb.character)}</span>}
+                        {Boolean(sb.scene) && <span className="rounded bg-soft px-1 py-0.5">场景 {String(sb.scene)}</span>}
+                        {Array.isArray(sb.props) && sb.props.length > 0 && (
+                          <span className="rounded bg-soft px-1 py-0.5">道具 {String((sb.props as unknown[]).join('、'))}</span>
+                        )}
+                        {Boolean(sb.lighting) && <span className="rounded bg-soft px-1 py-0.5">光影 {String(sb.lighting)}</span>}
+                        {Boolean(sb.sound_effect) && <span className="rounded bg-soft px-1 py-0.5">音效 {String(sb.sound_effect)}</span>}
                       </div>
                       {Boolean(sb.description) && (
                         <div className="mt-1 break-words text-[10px] leading-relaxed text-ink-2">{String(sb.description)}</div>
                       )}
                       {Boolean(sb.dialogue) && (
                         <div className="mt-0.5 rounded bg-soft px-1 py-0.5 text-[9px] text-ink-3">对白：{String(sb.dialogue)}</div>
+                      )}
+                      {Boolean(sb.voice_over) && (
+                        <div className="mt-0.5 rounded bg-soft px-1 py-0.5 text-[9px] text-ink-3">旁白：{String(sb.voice_over)}</div>
+                      )}
+                      {Boolean(sb.camera_control_description) && (
+                        <div className="mt-0.5 rounded bg-soft px-1 py-0.5 text-[9px] text-ink-3">镜头控制：{String(sb.camera_control_description)}</div>
                       )}
                       {Boolean(sb.prompt) && (
                         <div className="mt-0.5 line-clamp-2 break-words text-[9px] text-ink-3">提示词：{String(sb.prompt)}</div>
