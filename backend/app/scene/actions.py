@@ -933,6 +933,9 @@ async def _act_generate_node_video(scene_id: str, obj_ids: list[str], params: di
                               meta={"source_object_id": oid})
         created.append(oid)
     return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 个视频"}
+
+
+async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], params: dict) -> dict:
     """影视拉片（文案驱动）：从「文本」节点取原始故事/文案 → AI 生成三幕式故事结构。
 
     故事输入优先级：选中文本节点 > 场景内文本节点 > story 节点已有 text > 底部 AI 框 prompt。
