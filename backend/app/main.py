@@ -173,6 +173,8 @@ app.include_router(mcp_call_router, prefix="/api/mcp/call")
 app.include_router(render_kernel_router, prefix="/api/render")
 app.include_router(render_kernel_ws_router, prefix="/api/render")
 app.include_router(scene_router, prefix="/api/scenes")
+from app.director.routes import router as director_router
+app.include_router(director_router, prefix="/api/director")
 
 # 本地上传图片静态服务（V2.3 图片一等公民）
 # V2.8：/uploads/ 改为动态路由，跟随可配置的素材保存目录（assets_dir），未命中回退默认目录

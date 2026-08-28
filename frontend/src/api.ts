@@ -906,3 +906,17 @@ export async function sceneApplyTemplate(sceneId: string, templateId: string) {
 export async function sceneTaskProgress(sceneId: string, taskId: string) {
   return request('GET', `/scenes/${encodeURIComponent(sceneId)}/tasks/${encodeURIComponent(taskId)}`)
 }
+
+// ── AI 导演台（Director Orchestrator）─────────────────────────────────────
+export async function directorCreate(payload: { scene_id: string; story_id?: string; project_id?: string; generate_video?: boolean; style?: string }) {
+  return request('POST', '/director/create', payload)
+}
+export async function directorTaskGet(taskId: string) {
+  return request('GET', `/director/task/${encodeURIComponent(taskId)}`)
+}
+export async function directorTasks(sceneId: string) {
+  return request('GET', `/director/tasks?scene_id=${encodeURIComponent(sceneId)}`)
+}
+export async function directorTaskVideo(taskId: string) {
+  return request('POST', `/director/task/${encodeURIComponent(taskId)}/video`, {})
+}

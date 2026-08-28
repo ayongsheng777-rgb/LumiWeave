@@ -238,6 +238,11 @@ function SceneStoryEditor({ id, payload, locked }: { id: string; payload: Payloa
   const typeDef = useSceneStore((s) => s.currentTypeDef())
   // 仅当场景动作含 generate_visual_board（电商物料）时显示制作板入口，另两个场景保持纯剧本编辑
   const canBoard = Array.isArray(typeDef?.actions) && typeDef!.actions.includes('generate_visual_board')
+  // 影视拉片场景：文案驱动（文本节点 → 三幕式故事 → 全字段分镜）
+  const isFilm = Array.isArray(typeDef?.actions) && typeDef!.actions.includes('generate_story_from_text')
+  const structure = payload.structure as Payload | undefined
+  const emotionCurve = (payload.emotion_curve as Payload[]) || []
+  const storyboard = (payload.storyboard as Payload[]) || []
   const combined = [String(payload.summary ?? '').trim(), String(payload.text ?? '').trim()]
     .filter(Boolean)
     .join('\n\n')
@@ -301,7 +306,133 @@ function SceneStoryEditor({ id, payload, locked }: { id: string; payload: Payloa
             disabled={locked}
             actionRoute="generate_story"
           />
+          {/* ── 影视拉片（文案驱动）：从文本生成三幕式故事 + 全字段分镜 ── */}
+          {isFilm && (
+            <div className="flex items-center gap-1.5">
+              <button
+                className="nodrag flex h-7 flex-1 items-center justify-center gap-1 rounded-md bg-brand-600 text-[11px] text-white transition hover:bg-brand-500 disabled:opacity-50"
+                disabled={locked || !!busy}
+                onClick={() => void runAction('generate_story_from_text', [id])}
+                title="从画布中的「文本」节点取原始故事，AI 生成三幕式结构 + 情绪曲线 + 人物/场景/道具"
+              >
+                {busy === 'generate_story_from_text' ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                {busy === 'generate_story_from_text' ? '生成中…' : '从文本生成故事'}
+              </button>
+              <button
+                className="nodrag flex h-7 flex-1 items-center justify-center gap-1 rounded-md border border-brand-500/40 bg-brand-500/10 text-[11px] text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-50"
+                disabled={locked || !!busy}
+                onClick={() => void runAction('generate_storyboard', [id])}
+                title="基于当前故事生成完整分镜表（景别/运镜/光影/对白/动作/提示词）"
+              >
+                {busy === 'generate_storyboard' ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                {busy === 'generate_storyboard' ? '生成中…' : '生成分镜'}
+              </button>
+            </div>
+          )}
+          {isFilm && <FilmAnalysisPanels structure={structure} emotionCurve={emotionCurve} storyboard={storyboard} />}
         </>
+      )}
+    </div>
+  )
+}
+
+// ── 影视拉片展示：三幕式结构 + 情绪曲线 + 全字段分镜表 ──
+const EMOTION_COLORS: Record<string, string> = {
+  '苍凉': '#64748b', '悲凉': '#475569', '孤独': '#7c8ba1', '压抑': '#57534e',
+  '震撼': '#8b5cf6', '激动': '#ec4899', '紧张': '#ef4444', '危机': '#f97316',
+  '坚定': '#10b981', '希望': '#22c55e', '温馨': '#f59e0b', '喜悦': '#eab308',
+  '平静': '#3b82f6', '宁静': '#0ea5e9', '悬疑': '#14b8a6',
+}
+const emoColor = (e: string) => EMOTION_COLORS[String(e || '').trim()] || '#8b5cf6'
+
+function FilmAnalysisPanels({ structure, emotionCurve, storyboard }: {
+  structure?: Payload
+  emotionCurve: Payload[]
+  storyboard: Payload[]
+}) {
+  if (!structure && emotionCurve.length === 0 && storyboard.length === 0) return null
+  return (
+    <div className="space-y-2">
+      {/* 三幕式结构 */}
+      {structure && (Object.keys(structure).length > 0) && (
+        <div className="rounded-lg border border-edge bg-canvas p-2">
+          <div className="mb-1.5 text-[10px] font-semibold text-ink-2">三幕式结构</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {['act1', 'act2', 'act3'].map((k, i) => {
+              const label = i === 0 ? '第一幕·铺垫' : i === 1 ? '第二幕·冲突' : '第三幕·高潮'
+              const text = String((structure as Record<string, unknown>)[k] ?? '')
+              if (!text) return null
+              return (
+                <div key={k} className="rounded-md bg-soft p-1.5">
+                  <div className="mb-0.5 text-[9px] font-medium text-brand-300">{label}</div>
+                  <div className="line-clamp-4 whitespace-pre-wrap break-words text-[10px] leading-relaxed text-ink-2">{text}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 情绪曲线：横向色带 */}
+      {emotionCurve.length > 0 && (
+        <div className="rounded-lg border border-edge bg-canvas p-2">
+          <div className="mb-1.5 text-[10px] font-semibold text-ink-2">情绪曲线</div>
+          <div className="flex h-8 w-full overflow-hidden rounded-md">
+            {emotionCurve.map((p, i) => (
+              <div
+                key={i}
+                className="flex flex-1 items-center justify-center text-[9px] font-medium text-white"
+                style={{ background: emoColor(String(p.emotion ?? '')) }}
+                title={`${String(p.phase ?? '')}：${String(p.emotion ?? '')}${p.note ? `（${String(p.note)}）` : ''}`}
+              >
+                {String(p.emotion ?? '')}
+              </div>
+            ))}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {emotionCurve.map((p, i) => (
+              <span key={i} className="rounded bg-soft px-1 py-0.5 text-[9px] text-ink-3">
+                {String(p.phase ?? '')} · {String(p.emotion ?? '')}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 全字段分镜表 */}
+      {storyboard.length > 0 && (
+        <div className="rounded-lg border border-edge bg-canvas p-2">
+          <div className="mb-1.5 text-[10px] font-semibold text-ink-2">分镜表（{storyboard.length}）</div>
+          <div className="max-h-64 space-y-1.5 overflow-y-auto pr-0.5">
+            {storyboard.map((s, i) => {
+              const sb = (s || {}) as Record<string, unknown>
+              return (
+                <div key={i} className="rounded-md border border-edge bg-soft/50 p-1.5">
+                  <div className="flex flex-wrap items-center gap-1 text-[9px] text-ink-2">
+                    <span className="rounded bg-brand-500/15 px-1 py-0.5 font-semibold text-brand-300">镜头 {String(sb.shot_no ?? i + 1)}</span>
+                    {sb.duration != null && <span className="rounded bg-soft px-1 py-0.5">{String(sb.duration)}s</span>}
+                    {Boolean(sb.shot_size) && <span className="rounded bg-soft px-1 py-0.5">景别 {String(sb.shot_size)}</span>}
+                    {Boolean(sb.camera_motion) && <span className="rounded bg-soft px-1 py-0.5">运镜 {String(sb.camera_motion)}</span>}
+                    {Boolean(sb.lighting) && <span className="rounded bg-soft px-1 py-0.5">光 {String(sb.lighting)}</span>}
+                    {Boolean(sb.color) && <span className="rounded bg-soft px-1 py-0.5">调 {String(sb.color)}</span>}
+                  </div>
+                  {Boolean(sb.description) && (
+                    <div className="mt-1 whitespace-pre-wrap break-words text-[10px] leading-relaxed text-ink-2">{String(sb.description)}</div>
+                  )}
+                  {Boolean(sb.character) && (
+                    <div className="mt-0.5 text-[9px] text-ink-3">人物：{String(sb.character)}{Boolean(sb.character_action) ? ` · ${String(sb.character_action)}` : ''}</div>
+                  )}
+                  {Boolean(sb.dialogue) && (
+                    <div className="mt-0.5 rounded bg-soft px-1 py-0.5 text-[9px] text-ink-3">对白：{String(sb.dialogue)}</div>
+                  )}
+                  {Boolean(sb.prompt) && (
+                    <div className="mt-0.5 line-clamp-2 break-words text-[9px] leading-relaxed text-ink-3">提示词：{String(sb.prompt)}</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
       )}
     </div>
   )

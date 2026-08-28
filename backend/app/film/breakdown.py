@@ -100,8 +100,9 @@ def _detect_shots(path: str, duration: float) -> list[tuple[float, float]]:
 
 
 def _extract_frame(path: str, t: float, out_path: str) -> bool:
+    # 缩到 320 宽：图像 token 大幅下降（省 token 关键一步），同时不影响镜头语言判断
     r = _run([FFMPEG, "-y", "-ss", str(t), "-i", path, "-frames:v", "1",
-              "-q:v", "2", out_path])
+              "-vf", "scale=320:-1", "-q:v", "3", out_path])
     return bool(r and r.returncode == 0 and Path(out_path).exists())
 
 
@@ -149,17 +150,31 @@ async def run_film_analysis(scene_id: str, video_url: str) -> dict:
 
     shots_created: list[str] = []
     frames_created: list[str] = []
+    # 先全部抽帧（缩图），再按批批量视觉分析（每批 10 张 = 1 次多模态请求，省 token）
+    extracted: list[tuple[int, str]] = []   # (镜头序号, frame_url)
     for i, (s, e) in enumerate(boundaries):
         mid = (s + e) / 2.0
         fname = f"film_{uuid.uuid4().hex[:12]}.jpg"
         fpath = UPLOAD_DIR / fname
-        frame_url = ""
         if _extract_frame(path, mid, str(fpath)):
-            frame_url = f"/uploads/{fname}"
-        analysis = {}
-        if frame_url:
-            from app.film.vision import vision_analyze
-            analysis = await vision_analyze(frame_url, f"镜头{i + 1}")
+            extracted.append((i, f"/uploads/{fname}"))
+    from app.film.vision import vision_analyze_batch
+    analyses: dict[int, dict] = {}
+    for batch_start in range(0, len(extracted), 10):
+        batch = extracted[batch_start:batch_start + 10]
+        urls = [u for _, u in batch]
+        results = await vision_analyze_batch(urls, f"批量{batch_start // 10 + 1}")
+        for j, (idx, _) in enumerate(batch):
+            if j < len(results):
+                analyses[idx] = results[j]
+
+    for i, (s, e) in enumerate(boundaries):
+        frame_url = ""
+        for idx, u in extracted:
+            if idx == i:
+                frame_url = u
+                break
+        analysis = analyses.get(i) or {}
         shot_data = {
             "shot_no": i + 1,
             "start": round(s, 2), "end": round(e, 2), "duration": round(e - s, 2),

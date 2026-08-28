@@ -356,3 +356,20 @@ CREATE INDEX IF NOT EXISTS idx_assets_scene ON assets (scene_id);
 -- 任务进度列（规格书 §54 / P2-06：异步批量进度）
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS done INT NOT NULL DEFAULT 0;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS total INT NOT NULL DEFAULT 0;
+
+-- ============ V2.8 AI 导演台：导演任务（状态机编排）============
+-- 状态机：INIT → ANALYZING → ASSET_GENERATING → SHOT_GENERATING → VIDEO_GENERATING → REVIEWING → APPROVED / FAILED
+CREATE TABLE IF NOT EXISTS director_task (
+    id           TEXT PRIMARY KEY,
+    scene_id     TEXT NOT NULL DEFAULT '',
+    project_id   TEXT NOT NULL DEFAULT '',
+    story_id     TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL DEFAULT 'INIT',
+    progress     INTEGER NOT NULL DEFAULT 0,
+    current_step TEXT NOT NULL DEFAULT '',
+    log          JSONB NOT NULL DEFAULT '[]',
+    result       JSONB NOT NULL DEFAULT '{}',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_director_task_scene ON director_task (scene_id);

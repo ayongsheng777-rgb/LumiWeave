@@ -62,6 +62,8 @@ export const ACTION_LABELS: Record<string, string> = {
   generate_detail_page: '生成详情页',
   batch_generate: '批量生成',
   generate_story: '生成剧情',
+  generate_story_from_text: '从文本生成故事',
+  director_start: '导演一键排片',
   generate_characters: '生成人物',
   generate_scenes: '生成场景',
   generate_storyboard: '生成分镜',

@@ -93,12 +93,12 @@ FIELD_OPTIONS: Dict[str, Dict[str, list[str]]] = {
 # 三大场景（节点统一为 7 类）
 # ─────────────────────────────────────────────────────────────────────────────
 
-COMMON_OBJECT_TYPES = ["text", "image", "video", "audio", "story", "director", "product"]
-COMMON_TOOLBAR = ["select", "text", "product", "story", "image", "video", "audio", "director", "ai", "timeline", "zoom"]
+COMMON_OBJECT_TYPES = ["text", "image", "video", "audio", "story", "product"]
+COMMON_TOOLBAR = ["select", "text", "product", "story", "image", "video", "audio", "ai", "timeline", "zoom"]
 
 registry.register(SceneDefinition(
     id="ecommerce-material",
-    name="电商商品营销物料",
+    name="电商商品营销",
     category="ecommerce",
     description="商品→剧情→图片/视频/音频→导演台统筹→成片。",
     object_types=COMMON_OBJECT_TYPES,
@@ -129,13 +129,13 @@ registry.register(SceneDefinition(
 
 registry.register(SceneDefinition(
     id="film-analysis",
-    name="影视拉片",
+    name="影视复刻拉片",
     category="film",
-    description="视频→剧情→图片/视频/音频→导演台统筹→成片。",
+    description="文本故事→三幕式剧情→分镜→素材→成片；可叠加视频拉片参考镜头语言（省 token 批量分析）。",
     object_types=COMMON_OBJECT_TYPES,
     actions=[
+        "director_start", "generate_story_from_text", "generate_storyboard", "generate_images", "generate_video",
         "analyze_video", "detect_shots", "extract_frames",
-        "analyze_shot", "generate_prompt", "generate_reference", "generate_video",
     ],
     toolbar=COMMON_TOOLBAR,
     inspector=COMMON_OBJECT_TYPES,

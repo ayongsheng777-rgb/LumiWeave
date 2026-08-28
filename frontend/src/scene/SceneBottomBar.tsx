@@ -6,14 +6,15 @@
  */
 import { useState } from 'react'
 import {
-  Boxes, Sparkles, Workflow, Clock, Image as ImageIcon, History,
+  Boxes, Sparkles, Workflow, Clock, Image as ImageIcon, History, Clapperboard,
   ChevronDown, ChevronUp, Loader2, Play, Lock, Eye, Plus,
 } from 'lucide-react'
 import { useSceneStore, ACTION_LABELS } from '../store/sceneStore'
 import { useUiStore } from '../store/uiStore'
 import SceneTimeline from './SceneTimeline'
+import DirectorPanel from '../director/DirectorPanel'
 
-type Tab = 'object' | 'ai' | 'workflow' | 'timeline' | 'assets' | 'history'
+type Tab = 'object' | 'ai' | 'workflow' | 'timeline' | 'assets' | 'history' | 'director'
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'object', label: '对象', icon: <Boxes size={13} /> },
@@ -22,6 +23,7 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'timeline', label: '时间线', icon: <Clock size={13} /> },
   { key: 'assets', label: '素材', icon: <ImageIcon size={13} /> },
   { key: 'history', label: '历史', icon: <History size={13} /> },
+  { key: 'director', label: '导演台', icon: <Clapperboard size={13} /> },
 ]
 
 export default function SceneBottomBar() {
@@ -282,6 +284,10 @@ export default function SceneBottomBar() {
                   <div className="py-4 text-center text-[10px] text-ink-3">本次会话还没有执行记录</div>
                 )}
               </div>
+            )}
+            {/* ── 导演台页签 ── */}
+            {tab === 'director' && (
+              <DirectorPanel sceneId={currentSceneId} />
             )}
           </div>
         </div>

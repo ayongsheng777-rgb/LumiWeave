@@ -801,6 +801,201 @@ async def _act_generate_images(scene_id: str, obj_ids: list[str], params: dict) 
     return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 张图"}
 
 
+async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """影视拉片（文案驱动）：从「文本」节点取原始故事/文案 → AI 生成三幕式故事结构。
+
+    故事输入优先级：选中文本节点 > 场景内文本节点 > story 节点已有 text > 底部 AI 框 prompt。
+    输出三幕结构 + 情绪曲线 + 人物/场景/道具资产，写回 story 节点 data。
+    """
+    # 1) 收集原始故事文本
+    raw_parts: list[str] = []
+    for oid in (obj_ids or []):
+        obj = await service.get_object(oid)
+        if not obj:
+            continue
+        if obj["object_type"] == "text":
+            t = str(obj["data"].get("text") or "").strip()
+            if t:
+                raw_parts.append(f"【原始文本】\n{t}")
+        elif obj["object_type"] == "story":
+            t = str(obj["data"].get("text") or "").strip() or str(obj["data"].get("summary") or "").strip()
+            if t:
+                raw_parts.append(f"【故事草稿】\n{t}")
+    if not raw_parts:
+        for o in await service.list_objects(scene_id):
+            if o["object_type"] == "text":
+                t = str(o["data"].get("text") or "").strip()
+                if t:
+                    raw_parts.append(f"【原始文本】\n{t}")
+                    break
+    extra = str(params.get("prompt") or "").strip()
+    if extra:
+        raw_parts.append(f"【创作要求】\n{extra}")
+    if not raw_parts:
+        return {"ok": False, "error": "没有找到可用的原始故事文本——请先放一个「文本」节点并写入故事/文案，或选中文本节点后重试"}
+    raw = "\n\n".join(raw_parts)
+
+    sys = (
+        "你是资深影视编剧。根据给定的原始故事/文案，创作一部影视短片的故事方案。"
+        "严格只输出 JSON，结构如下：\n"
+        '{\n'
+        '  "title": "片名",\n'
+        '  "genre": "类型(如科幻/悬疑/情感)",\n'
+        '  "theme": "核心主题",\n'
+        '  "target_duration": "目标时长(秒)",\n'
+        '  "story_summary": "故事梗概(150字内)",\n'
+        '  "three_act_structure": {"act1": "第一幕·铺垫(场景+事件)", "act2": "第二幕·冲突(转折+危机)", "act3": "第三幕·高潮与结局"}, \n'
+        '  "emotion_curve": [{"phase": "阶段名", "emotion": "情绪(如苍凉/震撼/坚定)", "note": "一句说明"}],\n'
+        '  "characters": [{"name": "人物名", "appearance": "外貌", "personality": "性格", "description": "角色定位"}],\n'
+        '  "scenes": [{"name": "场景名", "location": "地点", "time": "时间", "weather": "天气", "mood": "氛围"}],\n'
+        '  "props": [{"name": "道具名", "description": "作用描述"}]\n'
+        "}\n"
+        "要求：三幕式结构清晰、情绪曲线有起伏、人物/场景/道具贴合原始故事；全部用中文。"
+    )
+    r = await _llm_json(sys, raw)
+    if not r:
+        return {"ok": False, "error": "故事生成失败（请检查 AI 配置）"}
+    title = str(r.get("title") or "")
+    summary = str(r.get("story_summary") or "")
+    structure = r.get("three_act_structure") or {}
+    emotion_curve = r.get("emotion_curve") or []
+    characters = r.get("characters") or []
+    scenes = r.get("scenes") or []
+    props = r.get("props") or []
+    # 故事正文：把结构转成可读 markdown（供剧本编辑/后续分镜引用）
+    story = f"# {title or '未命名'}\n\n"
+    if summary:
+        story += f"> {summary}\n\n"
+    if isinstance(structure, dict):
+        for act, text in (structure.items()):
+            if text:
+                story += f"## {act}\n{text}\n\n"
+    # 2) 写回 story 节点（优先当前触发的 story；没有则找场景内第一个；再没有则新建）
+    write_oid = None
+    for oid in (obj_ids or []):
+        o0 = await service.get_object(oid)
+        if o0 and o0["object_type"] == "story":
+            write_oid = oid
+            break
+    if not write_oid:
+        targets = [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] == "story"]
+        write_oid = targets[0] if targets else None
+    created: list[str] = []
+    if write_oid:
+        obj = await service.get_object(write_oid)
+        await service.update_object(write_oid, data={
+            **obj["data"],
+            "title": title, "summary": summary, "text": str(r.get("story_summary") or summary or raw)[:800],
+            "script": story, "story": story,
+            "structure": structure, "emotion_curve": emotion_curve,
+            "characters": characters, "scenes": scenes, "props": props,
+        })
+        created = [write_oid]
+    else:
+        existing = await service.list_objects(scene_id)
+        base_y = max([float(o.get("y") or 0) + float(o.get("height") or 0) for o in existing] or [0]) + 80
+        nid = await service.create_object(scene_id, "story", x=360, y=base_y, width=420, height=560,
+                                          data={"title": title, "summary": summary,
+                                                "text": summary or raw[:500], "script": story, "story": story,
+                                                "structure": structure, "emotion_curve": emotion_curve,
+                                                "characters": characters, "scenes": scenes, "props": props})
+        created = [nid]
+    return {"ok": True, "created": created, "title": title, "summary": summary,
+            "structure": structure, "emotion_curve": emotion_curve,
+            "characters": characters, "scenes": scenes, "props": props,
+            "message": f"三幕式故事生成完成 · 人物 {len(characters)} / 场景 {len(scenes)} / 道具 {len(props)}"}
+
+
+async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """影视拉片（文案驱动）：从 story 节点取三幕式故事 → AI 生成全字段分镜表。
+
+    每镜输出：景别/焦距/机位/运镜/构图/光影/色调/人物/动作/情绪/对白/画面描述/AI 提示词。
+    写回 story 节点 data.storyboard。
+    """
+    # 1) 取故事上下文
+    story_ctx = ""
+    write_oid = None
+    for oid in (obj_ids or []):
+        obj = await service.get_object(oid)
+        if obj and obj["object_type"] == "story":
+            write_oid = oid
+            d = obj["data"]
+            story_ctx = (str(d.get("script") or "") or str(d.get("story") or "")
+                         or str(d.get("summary") or "") or str(d.get("text") or "")).strip()
+            break
+    if not story_ctx:
+        for o in await service.list_objects(scene_id):
+            if o["object_type"] == "story":
+                write_oid = o["id"]
+                d = o["data"]
+                story_ctx = (str(d.get("script") or "") or str(d.get("story") or "")
+                             or str(d.get("summary") or "") or str(d.get("text") or "")).strip()
+                break
+    if not story_ctx:
+        return {"ok": False, "error": "没有可用的故事——请先「从文本生成故事」或填写剧情节点"}
+    extra = str(params.get("prompt") or "").strip()
+    if extra:
+        story_ctx += f"\n\n【创作要求】{extra}"
+
+    sys = (
+        "你是影视分镜导演。基于给定故事方案生成完整分镜表，严格只输出 JSON：\n"
+        '{\n'
+        '  "shots": [\n'
+        '    {\n'
+        '      "shot_no": 1, "scene": "所属场景名", "location": "地点", "duration": 5,\n'
+        '      "shot_size": "景别(远景/全景/中景/近景/特写)", "lens": "焦距(如 24mm/50mm/85mm)",\n'
+        '      "camera_angle": "机位角度(平视/俯拍/仰拍/过肩)", "camera_motion": "运镜(固定/推/拉/摇/移/跟/环绕)",\n'
+        '      "composition": "构图(居中/三分法/对称/引导线)", "lighting": "光线(自然光/硬光/逆光/夜景)",\n'
+        '      "color": "色调(冷调/暖调/高对比)", "character": "画面人物", "character_action": "人物动作",\n'
+        '      "emotion": "情绪(紧张/温馨/孤独)", "dialogue": "对白(无则空)",\n'
+        '      "description": "画面描述(40字内)", "prompt": "给视频生成模型的高质量中文提示词(含景别/运镜/光线/构图)"\n'
+        '    }\n'
+        "  ]\n"
+        "}\n"
+        "要求：镜头衔接有叙事逻辑、覆盖完整故事线；单个镜头时长 3~8 秒；总时长与目标时长尽量匹配；全部中文。"
+    )
+    r = await _llm_json(sys, story_ctx)
+    if not r:
+        return {"ok": False, "error": "分镜生成失败（请检查 AI 配置）"}
+    shots = r.get("shots") or []
+    if not isinstance(shots, list) or not shots:
+        return {"ok": False, "error": "分镜生成结果为空"}
+    # 2) 写回 story 节点
+    if write_oid:
+        obj = await service.get_object(write_oid)
+        await service.update_object(write_oid, data={**obj["data"], "storyboard": shots})
+    return {"ok": True, "created": [write_oid] if write_oid else [],
+            "storyboard": shots, "message": f"分镜生成完成 · {len(shots)} 个镜头"}
+
+
+async def _act_director_start(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """AI 导演台：一键排片（故事 → 资产 → 分镜 → 视频 → 人工审核）。
+
+    创建导演任务并后台异步编排，返回 task_id 供前端轮询进度。
+    """
+    import asyncio
+    from app.director import service as ds
+    from app.director.orchestrator import run_director
+    # 找到故事节点（选中优先，否则场景内第一个）
+    story_id = ""
+    for oid in (obj_ids or []):
+        obj = await service.get_object(oid)
+        if obj and obj["object_type"] == "story":
+            story_id = oid
+            break
+    if not story_id:
+        for o in await service.list_objects(scene_id):
+            if o["object_type"] == "story":
+                story_id = o["id"]
+                break
+    task_id = await ds.create_task(scene_id, story_id)
+    opts = {"generate_video": bool(params.get("generate_video", False)),
+            "style": str(params.get("style") or "")}
+    asyncio.create_task(run_director(task_id, scene_id, story_id, opts))
+    return {"ok": True, "task_id": task_id, "director": True,
+            "message": "导演台已启动：故事→资产→分镜→（视频）→审核，可打开导演台面板查看进度"}
+
+
 async def _act_film_analysis(scene_id: str, obj_ids: list[str], params: dict) -> dict:
     """影视拉片：上传视频 → 解析 → 镜头检测 → 抽帧 → 视觉分析 → 建镜头/帧对象（§14/§15/§68）。"""
     video_url = params.get("video_url") or ""
@@ -1167,7 +1362,13 @@ async def _run_action(scene_id: str, action: str, object_ids: list[str] | None =
             return await _act_generate_video(scene_id, obj_ids, params)
         if action == "generate_story":
             return await _act_generate_story(scene_id, obj_ids, params)
-        if action in ("generate_characters", "generate_scenes", "generate_storyboard"):
+        if action == "generate_story_from_text":
+            return await _act_generate_story_from_text(scene_id, obj_ids, params)
+        if action == "generate_storyboard":
+            return await _act_generate_storyboard(scene_id, obj_ids, params)
+        if action == "director_start":
+            return await _act_director_start(scene_id, obj_ids, params)
+        if action in ("generate_characters", "generate_scenes"):
             return await _act_llm_scene(scene_id, obj_ids, params, action)
         if action == "batch_generate":
             # 真异步批量（§54 / P2-06）：后台执行 + tasks 表进度，立即返回 task_id

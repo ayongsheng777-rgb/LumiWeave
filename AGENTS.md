@@ -585,3 +585,18 @@ docker compose exec -T postgres psql -U lumiweave -d lumiweave \
 - 语义向量：配 `EMBEDDING_BASE_URL` + `EMBEDDING_API_KEY`（现在本地哈希降级）。
 - 前端 3010 尚未接 Agent/Skill/Renderer 新面板（后端接口已就绪）。
 - 算力路由真实出图：需配 `CLOUD_COMFY_URL`（云端实例）+ 本地 ComfyUI 实例（`LOCAL_COMFY_URL` 默认 127.0.0.1:8188），或注册 id 含 "local"/"cloud" 的渲染器。
+
+## 一·十五、AI 导演台（2026-08-28 完成）
+
+按《AI影视导演台系统技术规格书》在 scene 模块上搭建「一键排片」链路：**故事 → 资产(角色/场景/道具) → 分镜 → (可选视频) → 人工审核**。
+
+**后端**
+- `init_db.sql` 加 `director_task` 表（id/scene_id/project_id/story_id/status/progress/current_step/log/result，幂等）
+- `app/director/` 新模块：`service.py`（任务 CRUD + append_log）、`orchestrator.py`（状态机 INIT→ANALYZING→ASSET_GENERATING→SHOT_GENERATING→VIDEO_GENERATING→REVIEWING→APPROVED/FAILED；资产用 LLM JSON 生成创建 character/scene/prop 对象；分镜复用 `_act_generate_storyboard` 并创建 shot 对象；视频复用 `_act_generate_video` 可选）、`routes.py`（POST /api/director/create、GET /task/{id}、GET /tasks、POST /task/{id}/video）
+- `main.py` 注册 `/api/director`；`scene/actions.py` 加 `director_start` action（建任务+异步跑）；`registry.py` film-analysis 场景 actions 加 director_start
+
+**前端**
+- `director/DirectorPanel.tsx`：状态机步骤条 + 进度条 + 步骤日志 + 审核区（资产计数/全字段分镜表/视频计数）+「一键排片」「生成视频」「刷新」；2.5s 轮询任务
+- `scene/SceneBottomBar.tsx` 加「导演台」页签；`sceneStore.ts` ACTION_LABELS 加 director_start；`api.ts` 加 directorCreate/directorTaskGet/directorTasks/directorTaskVideo
+
+**验收**：backend import/健康全过；容器内跑通 create→run_director→状态机→失败兜底（无 LLM key 时正确 FAILED + 日志）；director_start 分发返回 task_id；前端 tsc+vite 通过。真实 LLM 输出需配 AI key。

@@ -47,7 +47,8 @@ export default function FloatingToolbar() {
   }
 
   return (
-    <div className="pointer-events-none absolute left-3 top-3 z-20">
+    // 顶部工具栏高 56px（top-14），图标落在其边线下方 10px
+    <div className="pointer-events-none absolute left-3 top-[66px] z-20">
       {/* 收起态：单圆钮 */}
       <button
         className={`pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-edge bg-panel/90 text-ink-2 shadow-node-dark backdrop-blur-md transition hover:text-ink ${open ? 'bg-brand-500 !text-white' : ''}`}
