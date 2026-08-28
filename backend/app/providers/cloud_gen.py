@@ -50,7 +50,7 @@ def _headers(key: str) -> dict[str, str]:
 
 # V2.8.2：模型能力兜底校验——明显是纯文本 LLM 的模型不允许走生图/生视频，避免调用失败
 _IMG_MODEL_RE = re.compile(r"image|flux|sdxl|sd3|dall|qwen-image|kolors|wanx|midjourney|stable|wuniu|photo", re.I)
-_VID_MODEL_RE = re.compile(r"video|wan[\d.]*|kling|runway|pika|hunyuan|sora|可灵|即梦", re.I)
+_VID_MODEL_RE = re.compile(r"video|wan[\d.]*|kling|runway|pika|hunyuan|sora|minimax|h3|hailuo|可灵|即梦", re.I)
 
 
 def _check_model_capability(model: str, kind: str) -> str:
@@ -164,6 +164,89 @@ async def cloud_image_generate(
     return {"ok": True, "images": [{"url": u, "filename": u.rsplit('/', 1)[-1]} for u in urls], "logs": logs}
 
 
+async def _minimax_h3_generate(
+    endpoint: str,
+    key: str,
+    prov_name: str,
+    prompt: str,
+    image_url: str,
+    duration: int,
+    ratio: str,
+    model: str,
+    logs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """MiniMax H3 视频生成（V2.9d）：/v2/video_generation 异步任务 → 轮询 → 成片 URL。
+
+    H3 是多模态视频模型（文生/图生/首尾帧/参考），content[] 结构：
+      [{"type":"text","text":...}, {"type":"image_url","image_url":{"url":...},"role":"first_frame"}]
+    接口：POST {base}/v2/video_generation → task_id；GET {base}/v2/query/video_generation/{task_id} 轮询。
+    """
+    base = (endpoint or "").rstrip("/")
+    if base.endswith("/v1"):
+        base = base[: -len("/v1")]
+    headers = _headers(key)
+    content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+    if image_url:
+        content.append({"type": "image_url", "image_url": {"url": image_url}, "role": "first_frame"})
+    payload: dict[str, Any] = {
+        "model": model,
+        "content": content,
+        "duration": max(4, min(15, int(duration or 5))),
+        "resolution": "2K",
+    }
+    # 文生视频 ratio 必填且不能为 adaptive；图生视频由输入图决定（恒 adaptive）
+    if not image_url:
+        payload["ratio"] = ratio or "16:9"
+    logs.append({"step": "provider", "message": f"MiniMax H3 视频 · {prov_name}（{model}）", "provider_id": "minimax", "endpoint": base})
+    logs.append({"step": "submit", "message": f"提交到 {base}/v2/video_generation", "prompt": prompt[:200]})
+    t0 = _ts()
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=15.0)) as client:
+            resp = await client.post(f"{base}/v2/video_generation", headers=headers, json=payload)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"MiniMax H3 提交异常：{exc}", "logs": logs + [{"step": "error", "message": str(exc)}]}
+    if resp.status_code not in (200, 201):
+        body = (resp.text or "")[:300]
+        logs.append({"step": "error", "message": f"HTTP {resp.status_code} · {body}"})
+        return {"ok": False, "error": f"HTTP {resp.status_code}: {body}", "logs": logs}
+    data = resp.json()
+    task_id = str(data.get("task_id") or "")
+    if not task_id:
+        logs.append({"step": "error", "message": f"提交未返回 task_id: {str(data)[:200]}"})
+        return {"ok": False, "error": f"提交未返回 task_id: {data}", "logs": logs}
+    logs.append({"step": "submit", "message": f"任务已提交，task_id={task_id}", "task_id": task_id})
+
+    # 轮询（H3 推荐 10s 间隔；总超时 900s）
+    deadline = time.monotonic() + 900.0
+    poll_count = 0
+    video_url = ""
+    while time.monotonic() < deadline:
+        poll_count += 1
+        await asyncio.sleep(10.0)
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+                st = await client.get(f"{base}/v2/query/video_generation/{task_id}", headers=headers)
+        except Exception as exc:  # noqa: BLE001
+            logs.append({"step": "poll", "message": f"第 {poll_count} 次查询异常：{exc}"})
+            continue
+        if st.status_code != 200:
+            logs.append({"step": "poll", "message": f"第 {poll_count} 次查询 HTTP {st.status_code}"})
+            continue
+        task = st.json().get("task", {})
+        status = str(task.get("status") or "")
+        logs.append({"step": "poll", "message": f"第 {poll_count} 次查询：{status}"})
+        if status == "succeeded":
+            content = task.get("content")
+            video_url = str(content.get("url") or "") if isinstance(content, dict) else ""
+            break
+        if status in ("failed", "cancelled", "expired"):
+            return {"ok": False, "error": f"MiniMax H3 生成{status}: {task.get('error') or ''}", "logs": logs}
+    if not video_url:
+        return {"ok": False, "error": "等待 MiniMax H3 结果超时（>900s）", "logs": logs}
+    logs.append({"step": "done", "message": f"视频生成完成，耗时 {_ts() - t0}ms", "duration_ms": _ts() - t0})
+    return {"ok": True, "videos": [{"url": video_url, "filename": video_url.rsplit("/", 1)[-1]}], "logs": logs}
+
+
 async def cloud_video_generate(
     provider_id: str,
     prompt: str,
@@ -202,6 +285,12 @@ async def cloud_video_generate(
         cap_err = _check_model_capability(model, "video")
         if cap_err:
             return {"ok": False, "error": cap_err, "logs": logs + [{"step": "model", "message": cap_err}]}
+    # V2.9d：MiniMax H3 专用流程（/v2/video_generation 异步 + content[] 多模态结构）
+    if "minimax" in (str(provider_id) + " " + endpoint).lower():
+        return await _minimax_h3_generate(
+            endpoint, key, prov_name, prompt, image_url, duration, ratio,
+            model or "MiniMax-H3", logs,
+        )
     # 图生视频（有首帧图）走 I2V 模型，否则走 T2V
     if image_url:
         model_name = model or "Wan-AI/Wan2.2-I2V-A14B"
