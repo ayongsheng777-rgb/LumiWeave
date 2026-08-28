@@ -445,43 +445,70 @@ async def _act_llm_scene(scene_id: str, obj_ids: list[str], params: dict, action
 # 剧本生成（剧本 Agent：格式约束 + 分镜/人物/道具/BGM/对白关键词，供节点索引）
 # ─────────────────────────────────────────────────────────────────────────────
 
-SCRIPT_FORMAT = """# 项目设定
+SCRIPT_FORMAT = """# 视频剧本：{片名}
+
+# 项目设定
 - 视频类型：（产品广告 / 剧情短剧 / 种草视频）
 - 总时长：（秒）
 - 目标受众：（人群画像）
-- 情感基调：
-- 叙事结构：
+- 情感基调：（贯穿全片的情绪，如 苍凉、震撼、充满希望的史诗感）
+- 叙事结构：（如 三幕式 / 线性 / 反转）
+- 假设/补全：（补齐角色设定、核心转折点、视觉风格等创作假设，如"设定主角为…；核心转折点设定为…；视觉风格设定为…"）
 
 # 出场元素
-- 人物：（姓名 / 性别 / 年龄 / 性格 / 造型）
-- 道具：（关键器物）
-- 分镜：（地点 / 时间）
+- 人物：（姓名，一句话角色定位）
+- 道具：（关键器物，逗号分隔）
+- 场景：（场景名列表，用 / 分隔，如 死寂荒原 / 战舰废墟 / 曙光地平线）
 
 # 故事大纲
 （1-2 句话概括全片）
 
 # 情绪曲线
-（如 平静 → 紧张 → 反转 → 温暖，标注时间点）
+（如 苍凉 → 震撼 → 坚定，用箭头串起各阶段情绪）
 
-# 分镜剧本
-按总时长拆成 3-5 个分镜，每个分镜必须包含，可拆多个镜头：
-## 分镜X：（地点，时间）
-- 分镜目标：
-- 情绪基调：
-- 背景音乐：（每个分镜必须单独编排专属 BGM，按该分镜的场景与情绪基调描述音乐类型/节奏/风格，如"轻松俏皮的潜行BGM"；禁止省略、禁止写"无"、禁止照抄上一分镜）
-- 关键画面（每行一个镜头，镜头编号 X-1、X-2...）：
-  - 镜头X-1：（镜头级视觉描述，含景别/动作特写）
-  - 镜头X-2：（镜头级视觉描述，含景别/动作特写）
+# 场景剧本
+按总时长拆成 3-5 个场景，每个场景必须包含，关键画面可拆多条：
+# 场景一：{场景名}（约 X 秒）
+- 场景目标：（本场景要达成的叙事目标）
+- 情绪基调：（本场景情绪）
+- 背景音乐：（每个场景必须单独编排专属 BGM，按该场景的场景与情绪基调描述音乐类型/节奏/风格，如"低沉弦乐+风声采样"；禁止省略、禁止写"无"、禁止照抄上一场景）
+- 画面正文：（2-4 句场景描述正文，交代环境与人物动作，供生成场景图/镜头参考）
+- 关键画面（每行一条，直接列画面内容，无需编号）：
+  - （画面描述，如 漫天黄沙中半埋在沙丘里的巨型战舰残骸全景）
+  - （画面描述）
 - 对白 / 旁白：
-  - 人物A（情绪）："台词"
-  - （环境音 / 音效）
-- 时长：约 X 秒（所有分镜时长之和 ≈ 总时长）
+  - [旁白] "台词"（或 [角色名] "台词"，无则省略）
 
 # 整体节奏与风格说明
 （节奏/转场/BGM/色调/镜头语言）
 
 # 核心信息点对应
-（把商品卖点/品牌主张逐一对应到具体分镜）"""
+（把核心卖点/信息点逐一对应到具体场景，如 "末日荒原的史诗感：在场景一通过巨型战舰残骸与漫天风沙的宏大画面传达"）"""
+
+
+def _cn_num(n: int) -> str:
+    """阿拉伯数字 → 中文数字（1→一 … 10→十），超 10 用阿拉伯。"""
+    cn = "一二三四五六七八九十"
+    if 1 <= n <= 10:
+        return cn[n - 1]
+    return str(n)
+
+
+def _parse_cn_num(s: str) -> int:
+    """中文数字 → 阿拉伯（一→1 … 十→10；支持 十一/二十 等简单组合；失败返回 0）。"""
+    t = (s or "").strip()
+    if t.isdigit():
+        return int(t)
+    cn = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+    if t in cn:
+        return cn[t]
+    # 简单组合：十一~十九、二十~九十九（够用）
+    if len(t) == 2 and t[0] in cn and t[1] in cn:
+        a, b = cn[t[0]], cn[t[1]]
+        if a == 10:
+            return 10 + b
+        return a * 10 + b
+    return 0
 
 
 def _parse_script(script: str) -> dict:
@@ -536,23 +563,28 @@ def _parse_script(script: str) -> dict:
             raw = mp.group(1)
             names = [x.strip() for x in re.split(r"[、,，]", raw) if x.strip()]
             parsed["props"] = names
-    # 分镜块：## 分镜N：（地点，时间）
-    for m in re.finditer(r"##\s*分镜(\d+)[：:]?\s*（?([^）\n]*)）?", script):
-        no = int(m.group(1))
+    # 场景/分镜块：兼容新模板「# 场景一：名称（约 X 秒）」与旧模板「## 分镜N：（地点，时间）」
+    for m in re.finditer(r"^#{1,2}\s*(?:场景|分镜)\s*([一二三四五六七八九十\d]+)[：:]?\s*(.*)$", script, re.M):
+        no = _parse_cn_num(m.group(1))
         head = m.group(2).strip()
-        loc, tm = "", ""
+        loc, tm, dur_title = "", "", ""
+        mt = re.search(r"（约\s*([\d.]+)\s*秒）", head)
+        if mt:
+            dur_title = mt.group(1)
+            head = head[:mt.start()].strip().rstrip("（（")
         mm = re.search(r"(.+?)[,，]\s*(.+)", head)
         if mm:
             loc, tm = mm.group(1).strip(), mm.group(2).strip()
         elif head:
             loc = head
         start = m.end()
-        nxt = re.search(r"\n##\s*分镜", script[start:])
+        nxt = re.search(r"^#{1,2}\s*(?:场景|分镜)", script[start:], re.M)
         end = start + nxt.start() if nxt else len(script)
         block = script[start:end]
         shot: dict = {"no": no, "location": loc, "time": tm, "goal": "", "mood": "", "bgm": "",
                       "duration": "", "shots": [], "dialogue": []}
-        g = re.search(r"-?\s*分镜目标[：:]\s*(.+)", block)
+        # 场景目标 / 分镜目标（新旧字段名都认）
+        g = re.search(r"-?\s*场景目标[：:]\s*(.+)", block) or re.search(r"-?\s*分镜目标[：:]\s*(.+)", block)
         if g:
             shot["goal"] = g.group(1).strip()
         g = re.search(r"-?\s*情绪基调[：:]\s*(.+)", block)
@@ -561,47 +593,49 @@ def _parse_script(script: str) -> dict:
         g = re.search(r"-?\s*背景音乐[：:]\s*(.+)", block)
         if g:
             shot["bgm"] = g.group(1).strip()
+        # 时长：标题（约X秒）优先，其次「- 时长：约X秒」行
         g = re.search(r"-?\s*时长[：:]\s*约?\s*([\d.]+)\s*秒", block)
-        if g:
-            shot["duration"] = g.group(1).strip()
-        # 关键画面 → 镜头
-        gm = re.search(r"-?\s*关键画面.*?\n((?:.*\n)*?)(?=\n?\s*-?\s*对白|$)", block, re.S)
+        shot["duration"] = (g.group(1) if g else dur_title).strip()
+        # 关键画面 → 画面列表（兼容无编号「- xxx」与「- 镜头X-1：xxx」；
+        # 只取连续「-」行，遇字段行/空行即止，不会串到下一场景）
+        gm = re.search(r"-?\s*关键画面[：:]?\s*\n((?:[ \t]*-[ \t]*[^\n]*\n?)*)", block)
         if gm:
             for line in gm.group(1).splitlines():
-                line = line.strip()
-                mm2 = re.match(r"[-*]\s*镜头([\d\-]+)[：:]\s*(.+)", line)
-                if mm2:
-                    shot["shots"].append({"no": mm2.group(1).strip(), "desc": mm2.group(2).strip()})
-                elif line.startswith("-") or line.startswith("*"):
-                    d = line.lstrip("-* ").strip()
-                    if d and not d.startswith("镜头"):
-                        mm3 = re.match(r"镜头([\d\-]+)[：:]\s*(.+)", d)
-                        if mm3:
-                            shot["shots"].append({"no": mm3.group(1).strip(), "desc": mm3.group(2).strip()})
-        # 对白 / 旁白
-        gd = re.search(r"-?\s*对白\s*/\s*旁白[：:]\s*\n((?:.*\n)*?)(?=\n?-?\s*时长|$)", block, re.S)
+                d = line.strip().lstrip("-* ").strip()
+                if not d:
+                    continue
+                # 对白区起点：关键画面区到此为止（不吞对白/下一字段）
+                if d.startswith("对白"):
+                    break
+                if re.match(r"^(时长|背景音乐|场景目标|分镜目标|情绪基调|画面正文)[：:]", d):
+                    continue
+                mm2 = re.match(r"镜头([\d\-]+)[：:]\s*(.+)", d)
+                shot["shots"].append({"no": mm2.group(1).strip() if mm2 else "", "desc": mm2.group(2).strip() if mm2 else d})
+        # 对白 / 旁白：[旁白] "台词"、角色名（情绪）："台词"、角色名："台词"
+        gd = re.search(r"-?\s*对白\s*/\s*旁白[：:]?\s*\n((?:[ \t]*-[ \t]*[^\n]*\n?)*)", block)
         if gd:
             for line in gd.group(1).splitlines():
                 line = line.strip()
                 if not line or line.startswith("（") or line.startswith("("):
                     continue
                 line = line.lstrip("-* ").strip()
-                # 排除字段行误入对白（时长/背景音乐等）
-                if re.match(r"^(时长|背景音乐|分镜目标|情绪基调|关键画面)[：:]", line):
-                    continue
                 mm4 = re.match(r"(.+?)[（(]([^）)]*)[）)]\s*[：:]\s*[\"“]?(.+?)[\"”]?\s*$", line)
                 if mm4:
-                    speaker = mm4.group(1).strip()
-                    if speaker not in parsed["characters"]:
-                        parsed["characters"].append(speaker)
-                    shot["dialogue"].append({"speaker": speaker, "emotion": mm4.group(2).strip(), "line": mm4.group(3).strip()})
-                else:
-                    mm5 = re.match(r"(.+?)[：:]\s*[\"“]?(.+?)[\"”]?\s*$", line)
-                    if mm5:
-                        speaker = mm5.group(1).strip()
-                        if speaker not in parsed["characters"]:
-                            parsed["characters"].append(speaker)
-                        shot["dialogue"].append({"speaker": speaker, "emotion": "", "line": mm5.group(2).strip()})
+                    shot["dialogue"].append({"speaker": mm4.group(1).strip(), "emotion": mm4.group(2).strip(), "line": mm4.group(3).strip()})
+                    continue
+                # [旁白] "台词"（方括号标记 + 引号台词，无冒号）
+                mm6 = re.match(r"^\[([^\[\]]+)\]\s*[\"“]?(.+?)[\"”]?\s*$", line)
+                if mm6:
+                    shot["dialogue"].append({"speaker": f"[{mm6.group(1).strip()}]", "emotion": "", "line": mm6.group(2).strip()})
+                    continue
+                mm5 = re.match(r"(.+?)[：:]\s*[\"“]?(.+?)[\"”]?\s*$", line)
+                if mm5:
+                    shot["dialogue"].append({"speaker": mm5.group(1).strip(), "emotion": "", "line": mm5.group(2).strip()})
+        # 说话人归入人物（[旁白]/[对白] 等标记不算人物）
+        for d in shot["dialogue"]:
+            sp = d.get("speaker", "").strip().strip("[]【】")
+            if sp and sp not in ("旁白", "画外音", "对白", "音效", "环境音") and sp not in parsed["characters"]:
+                parsed["characters"].append(sp)
         parsed["shots"].append(shot)
     return parsed
 
@@ -1000,33 +1034,95 @@ async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], param
         '  "genre": "类型(如科幻/悬疑/情感)",\n'
         '  "theme": "核心主题",\n'
         '  "target_duration": "目标时长(秒)",\n'
+        '  "audience": "目标受众(人群画像)",\n'
+        '  "emotion_tone": "情感基调(如苍凉、震撼、充满希望的史诗感)",\n'
+        '  "structure": "叙事结构(如三幕式)",\n'
+        '  "assumptions": "假设/补全(角色设定、核心转折点、视觉风格等创作假设)",\n'
         '  "story_summary": "故事梗概(150字内)",\n'
-        '  "three_act_structure": {"act1": "第一幕·铺垫(场景+事件)", "act2": "第二幕·冲突(转折+危机)", "act3": "第三幕·高潮与结局"}, \n'
-        '  "emotion_curve": [{"phase": "阶段名", "emotion": "情绪(如苍凉/震撼/坚定)", "note": "一句说明"}],\n'
+        '  "emotion_curve": [{"phase": "阶段名", "emotion": "情绪(如苍凉/震撼/坚定)"}],\n'
         '  "characters": [{"name": "人物名", "appearance": "外貌", "personality": "性格", "description": "角色定位"}],\n'
-        '  "scenes": [{"name": "场景名", "location": "地点", "time": "时间", "weather": "天气", "mood": "氛围"}],\n'
-        '  "props": [{"name": "道具名", "description": "作用描述"}]\n'
+        '  "scenes": [{"name": "场景名", "location": "地点", "duration": 15, "goal": "场景目标", "mood": "情绪基调", '
+        '"bgm": "背景音乐(按场景与情绪描述音乐类型/节奏/风格)", "body": "画面正文(2-4句场景描述)", '
+        '"key_frames": ["关键画面1", "关键画面2"], "dialogue": ["[旁白] \\"台词\\" 或 [角色名] \\"台词\\""]}],\n'
+        '  "props": [{"name": "道具名", "description": "作用描述"}],\n'
+        '  "rhythm": "整体节奏与风格说明(节奏/转场/BGM/色调/镜头语言)",\n'
+        '  "info_points": [{"point": "核心信息点", "scene": "对应场景名"}]\n'
         "}\n"
-        "要求：三幕式结构清晰、情绪曲线有起伏、人物/场景/道具贴合原始故事；全部用中文。"
+        "要求：3-5 个场景、各场景时长之和≈总时长、场景目标/情绪基调/背景音乐/画面正文/关键画面/对白旁白完整；"
+        "情绪曲线有起伏；人物/场景/道具贴合原始故事；全部用中文。"
     )
     r = await _llm_json(sys, raw)
     if not r:
         return {"ok": False, "error": "故事生成失败（请检查 AI 配置）"}
     title = str(r.get("title") or "")
     summary = str(r.get("story_summary") or "")
-    structure = r.get("three_act_structure") or {}
     emotion_curve = r.get("emotion_curve") or []
     characters = r.get("characters") or []
     scenes = r.get("scenes") or []
     props = r.get("props") or []
-    # 故事正文：把结构转成可读 markdown（供剧本编辑/后续分镜引用）
-    story = f"# {title or '未命名'}\n\n"
-    if summary:
-        story += f"> {summary}\n\n"
-    if isinstance(structure, dict):
-        for act, text in (structure.items()):
-            if text:
-                story += f"## {act}\n{text}\n\n"
+
+    # 故事正文：按《荒原星火》模板渲染 markdown（供剧本编辑/场景索引/分镜链接）
+    def _fmt_scenes() -> str:
+        lines: list[str] = []
+        for i, s in enumerate(scenes or []):
+            if not isinstance(s, dict):
+                continue
+            dur = str(s.get("duration") or "")
+            lines.append(f"# 场景{_cn_num(i + 1)}：{str(s.get('name') or s.get('location') or f'场景{i + 1}')}"
+                         + (f"（约 {dur} 秒）" if dur else ""))
+            lines.append(f"- 场景目标：{str(s.get('goal') or '')}")
+            lines.append(f"- 情绪基调：{str(s.get('mood') or '')}")
+            lines.append(f"- 背景音乐：{str(s.get('bgm') or '')}")
+            body = str(s.get("body") or "")
+            if body:
+                lines.append(f"- 画面正文：{body}")
+            frames = s.get("key_frames") or []
+            lines.append("- 关键画面：")
+            for f in frames:
+                if str(f).strip():
+                    lines.append(f"  - {f}")
+            dlg = s.get("dialogue") or []
+            lines.append("- 对白 / 旁白：")
+            for d in dlg:
+                if str(d).strip():
+                    lines.append(f"  - {d}")
+        return "\n".join(lines)
+
+    def _fmt_list(items: list, template: str) -> str:
+        out: list[str] = []
+        for it in items or []:
+            if not isinstance(it, dict):
+                continue
+            out.append(template.format_map({k: str(v or "") for k, v in it.items()}))
+        return "、".join(out)
+
+    chars_line = _fmt_list(characters, "{name}（{description}）") or ""
+    props_line = _fmt_list(props, "{name}") or ""
+    scenes_line = " / ".join(str(s.get("name") or s.get("location") or "") for s in (scenes or []) if isinstance(s, dict) and (s.get("name") or s.get("location")))
+    curve_line = " → ".join(f"{c.get('phase') or ''}{c.get('emotion') or ''}" for c in (emotion_curve or []) if isinstance(c, dict) and (c.get("phase") or c.get("emotion")))
+    if not curve_line:
+        curve_line = " → ".join(f"{c.get('emotion') or ''}" for c in (emotion_curve or []) if isinstance(c, dict) and c.get("emotion"))
+    info_lines = []
+    for ip in (r.get("info_points") or []):
+        if isinstance(ip, dict) and (ip.get("point") or ip.get("scene")):
+            info_lines.append(f"- {str(ip.get('point') or '')}：在{str(ip.get('scene') or '')}通过场景画面传达")
+    story = f"# 视频剧本：{title or '未命名'}\n\n"
+    story += "# 项目设定\n"
+    story += f"- 视频类型：{str(r.get('genre') or '')}\n"
+    story += f"- 总时长：{str(r.get('target_duration') or '')} 秒\n"
+    story += f"- 目标受众：{str(r.get('audience') or '')}\n"
+    story += f"- 情感基调：{str(r.get('emotion_tone') or '')}\n"
+    story += f"- 叙事结构：{str(r.get('structure') or '')}\n"
+    story += f"- 假设/补全：{str(r.get('assumptions') or '')}\n\n"
+    story += "# 出场元素\n"
+    story += f"- 人物：{chars_line}\n"
+    story += f"- 道具：{props_line}\n"
+    story += f"- 场景：{scenes_line}\n\n"
+    story += f"# 故事大纲\n{summary}\n\n"
+    story += f"# 情绪曲线\n{curve_line}\n\n"
+    story += "# 场景剧本\n" + _fmt_scenes() + "\n\n"
+    story += f"# 整体节奏与风格说明\n{str(r.get('rhythm') or '')}\n\n"
+    story += "# 核心信息点对应\n" + ("\n".join(info_lines) if info_lines else "- 无") + "\n"
     # 2) 写回 story 节点（优先当前触发的 story；没有则找场景内第一个；再没有则新建）
     write_oid = None
     for oid in (obj_ids or []):

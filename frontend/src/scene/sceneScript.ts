@@ -124,14 +124,15 @@ export function parsePropsList(script: string): string[] {
   return out
 }
 
-/** 从分镜块解析对白 + 画内画外音（环境音/音效标注） */
+/** 从分镜块解析对白 + 画内画外音（环境音/音效标注）。
+ * 只取「对白 / 旁白」后连续「-」行，遇空行/字段行即止（不会串到下一场景）。 */
 export function parseDialogueBlock(block: string): {
   dialogue: { speaker: string; emotion: string; line: string }[]
   sfx: string[]
 } {
   const dialogue: { speaker: string; emotion: string; line: string }[] = []
   const sfx: string[] = []
-  const dm = block.match(/-?\s*对白\s*\/\s*旁白[\s\S]*?\n((?:.*\n)*?)(?=\n?\s*-?\s*时长|$)/)
+  const dm = block.match(/-?\s*对白\s*\/\s*旁白[：:]?\s*\n((?:[ \t]*-[ \t]*[^\n]*\n?)*)/)
   const zone = dm ? dm[1] : ''
   for (const raw of zone.split('\n')) {
     const l = raw.trim().replace(/^[-*]\s*/, '')
@@ -142,50 +143,88 @@ export function parseDialogueBlock(block: string): {
       if (t && !sfx.includes(t)) sfx.push(t)
       continue
     }
-    // 对白：名字（情绪）："台词" 或 名字：台词
+    // 对白：名字（情绪）："台词" / 名字：台词 / [旁白] "台词"
     const mm = l.match(/^([^（(：:]+?)(?:（([^）)]*)）)?[：:]\s*["“]?(.+?)["”]?\s*$/)
     if (mm && mm[1] && mm[3]) {
       dialogue.push({ speaker: mm[1].trim(), emotion: (mm[2] || '').trim(), line: mm[3].trim() })
+      continue
+    }
+    // [旁白] "台词"（方括号标记 + 引号台词，无冒号）
+    const mmb = l.match(/^\[([^\[\]]+)\]\s*["“]?(.+?)["”]?\s*$/)
+    if (mmb && mmb[2]) {
+      dialogue.push({ speaker: `[${mmb[1].trim()}]`, emotion: '', line: mmb[2].trim() })
     }
   }
   return { dialogue, sfx }
 }
 
-/** 从剧本 script 实时解析「分镜」完整信息 */
+/** 中文数字 → 阿拉伯（一→1 … 十→10；支持 十一/二十 等；失败返回 0） */
+export function parseCnNum(s: string): number {
+  const t = String(s ?? '').trim()
+  if (/^\d+$/.test(t)) return parseInt(t, 10) || 0
+  const cn: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
+  if (cn[t]) return cn[t]
+  if (t.length === 2 && cn[t[0]] && cn[t[1]]) {
+    const a = cn[t[0]]
+    const b = cn[t[1]]
+    return a === 10 ? 10 + b : a * 10 + b
+  }
+  return 0
+}
+
+/** 从剧本 script 实时解析「场景/分镜」完整信息。
+ * 兼容新模板（# 场景一：名称（约 15 秒））与旧模板（## 分镜N：（地点，时间））。 */
 export function parseShotsFromScript(script: string): ParsedShot[] {
   const shots: ParsedShot[] = []
   if (!script) return shots
-  const re = /##\s*分镜(\d+)[：:]?\s*(.*)/g
+  const re = /^#{1,2}\s*(?:场景|分镜)\s*([一二三四五六七八九十\d]+)[：:]?\s*(.*)$/gm
   let m: RegExpExecArray | null
   while ((m = re.exec(script))) {
-    const no = parseInt(m[1], 10)
-    const parts = splitTopLevel((m[2] || '').trim())
+    const no = parseCnNum(m[1]) || shots.length + 1
+    let head = (m[2] || '').trim()
+    let durTitle = ''
+    // 新模板标题：名称（约 X 秒）
+    const mt = head.match(/（约\s*([\d.]+)\s*秒）/)
+    if (mt) {
+      durTitle = mt[1]
+      head = head.slice(0, mt.index).trim()
+    }
+    const parts = splitTopLevel(head)
     const loc = (parts[0] || '').trim()
     const tm = parts.slice(1).join('，').trim()
     const start = m.index + m[0].length
-    const nxt = script.slice(start).match(/\n##\s*分镜/)
+    const nxt = script.slice(start).match(/^#{1,2}\s*(?:场景|分镜)/m)
     const block = nxt ? script.slice(start, start + (nxt.index ?? script.length)) : script.slice(start)
     const get = (label: string) => {
       const g = block.match(new RegExp(`-?\\s*${label}[：:]\\s*([^\\n]+)`))
       return g ? g[1].trim() : ''
     }
     const shotArr: { no: string; desc: string }[] = []
-    const gm = block.match(/-?\s*关键画面[\s\S]*?\n((?:.*\n)*?)(?=\n?\s*-?\s*对白|$)/)
+    // 关键画面：兼容无编号「- xxx」与「- 镜头X-1：xxx」；只取连续「-」行，遇字段/空行即止
+    const gm = block.match(/-?\s*关键画面[：:]?\s*\n((?:[ \t]*-[ \t]*[^\n]*\n?)*)/)
     if (gm) {
       for (const line of gm[1].split('\n')) {
-        const mm = line.match(/[-*]\s*镜头([\d\-]+)[：:]\s*(.+)/)
+        const d = line.trim().replace(/^[-*]\s*/, '').trim()
+        if (!d) continue
+        // 对白区起点：关键画面区到此为止（不吞对白/下一字段）
+        if (d.startsWith('对白')) break
+        if (/^(时长|背景音乐|场景目标|分镜目标|情绪基调|画面正文)[：:]/.test(d)) continue
+        const mm = d.match(/^镜头([\d\-]+)[：:]\s*(.+)/)
         if (mm) shotArr.push({ no: mm[1].trim(), desc: mm[2].trim() })
+        else shotArr.push({ no: '', desc: d })
       }
     }
     const { dialogue, sfx } = parseDialogueBlock(block)
+    // 时长：标题（约X秒）优先，其次「- 时长：约X秒」行
+    const durLine = get('时长')
     shots.push({
       no,
       location: loc,
       time: tm,
-      goal: get('分镜目标'),
+      goal: get('场景目标') || get('分镜目标'),
       mood: get('情绪基调'),
       bgm: get('背景音乐'),
-      duration: get('时长'),
+      duration: durLine || durTitle,
       shots: shotArr,
       dialogue,
       sfx,
