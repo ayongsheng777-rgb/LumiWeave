@@ -1051,7 +1051,9 @@ async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], param
         "要求：3-5 个场景、各场景时长之和≈总时长、场景目标/情绪基调/背景音乐/画面正文/关键画面/对白旁白完整；"
         "情绪曲线有起伏；人物/场景/道具贴合原始故事；全部用中文。"
     )
-    r = await _llm_json(sys, raw)
+    # 新模板 schema 含场景级字段（目标/基调/BGM/正文/关键画面/对白/节奏/信息点），
+    # 输出体量大，2000 tokens 会被截断导致 JSON 解析失败 → 放 6000
+    r = await _llm_json(sys, raw, max_tokens=6000)
     if not r:
         return {"ok": False, "error": "故事生成失败（请检查 AI 配置）"}
     title = str(r.get("title") or "")
@@ -1134,13 +1136,15 @@ async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], param
         targets = [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] == "story"]
         write_oid = targets[0] if targets else None
     created: list[str] = []
+    # 新模板无 three_act_structure，改存 narrative（叙事结构说明）+ 其余结构化字段
+    narrative = str(r.get("structure") or r.get("theme") or "")
     if write_oid:
         obj = await service.get_object(write_oid)
         await service.update_object(write_oid, data={
             **obj["data"],
             "title": title, "summary": summary, "text": str(r.get("story_summary") or summary or raw)[:800],
             "script": story, "story": story,
-            "structure": structure, "emotion_curve": emotion_curve,
+            "narrative": narrative, "emotion_curve": emotion_curve,
             "characters": characters, "scenes": scenes, "props": props,
         })
         created = [write_oid]
@@ -1150,13 +1154,13 @@ async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], param
         nid = await service.create_object(scene_id, "story", x=360, y=base_y, width=420, height=560,
                                           data={"title": title, "summary": summary,
                                                 "text": summary or raw[:500], "script": story, "story": story,
-                                                "structure": structure, "emotion_curve": emotion_curve,
+                                                "narrative": narrative, "emotion_curve": emotion_curve,
                                                 "characters": characters, "scenes": scenes, "props": props})
         created = [nid]
     return {"ok": True, "created": created, "title": title, "summary": summary,
-            "structure": structure, "emotion_curve": emotion_curve,
+            "narrative": narrative, "emotion_curve": emotion_curve,
             "characters": characters, "scenes": scenes, "props": props,
-            "message": f"三幕式故事生成完成 · 人物 {len(characters)} / 场景 {len(scenes)} / 道具 {len(props)}"}
+            "message": f"故事剧本生成完成 · 人物 {len(characters)} / 场景 {len(scenes)} / 道具 {len(props)}"}
 
 
 async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: dict) -> dict:
