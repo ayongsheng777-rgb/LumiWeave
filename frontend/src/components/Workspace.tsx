@@ -17,7 +17,7 @@ export default function Workspace() {
   const managementOpen = useUiStore((s) => s.managementOpen)
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-canvas text-ink">
+    <div className="lw-canvas-bg relative h-screen w-screen overflow-hidden text-ink">
       {/* 顶部悬浮导航（毛玻璃，画布从其下方全屏铺开） */}
       <div className="absolute inset-x-0 top-0 z-40">
         <TopHeader />
@@ -39,7 +39,7 @@ export default function Workspace() {
             )}
           </div>
           {chatOpen && (
-            <aside className="w-[400px] shrink-0 border-l border-edge bg-panel">
+            <aside className="w-[400px] shrink-0 border-l border-white/30 bg-white/50 backdrop-blur-lg dark:border-white/10 dark:bg-slate-900/50">
               <ChatPanel />
             </aside>
           )}

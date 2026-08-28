@@ -104,6 +104,19 @@ body {
     'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* V2.9e 全局果冻底：微渐变（白→微灰 + 品牌紫辉光），登录页/加载页/所有白底页面共用 */
+  background:
+    radial-gradient(1100px 700px at 18% -5%, rgba(255, 255, 255, 0.9) 0%, transparent 60%),
+    radial-gradient(900px 600px at 100% 110%, rgba(124, 110, 240, 0.07) 0%, transparent 55%),
+    var(--lw-canvas);
+  background-attachment: fixed;
+}
+.dark body {
+  background:
+    radial-gradient(1100px 700px at 18% -5%, rgba(42, 42, 48, 0.9) 0%, transparent 60%),
+    radial-gradient(900px 600px at 100% 110%, rgba(139, 92, 246, 0.12) 0%, transparent 55%),
+    var(--lw-canvas);
+  background-attachment: fixed;
 }
 
 /* 暗色模式下的滚动条 */
