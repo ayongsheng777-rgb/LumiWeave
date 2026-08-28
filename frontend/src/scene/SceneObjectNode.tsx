@@ -65,7 +65,8 @@ function computeMatchLabel(
 ): string {
   const obj = objects.find((o) => o.id === oid)
   if (!obj) return ''
-  const t = obj.type
+  // 🔴 场景对象节点 type 恒为 sceneObject，真实类型在 data.objectType
+  const t = String(((obj.data as Payload)?.objectType) ?? '')
   if (t !== 'image' && t !== 'audio') return ''
   const p = ((obj.data as Payload)?.payload || {}) as Payload
   const kind = t === 'audio' ? String(p.audio_type ?? '') : String(p.purpose ?? '')
@@ -81,8 +82,8 @@ function computeMatchLabel(
     .filter((x) => {
       const o = objects.find((o) => o.id === x)
       if (!o) return false
-      if (t === 'audio') return o.type === 'audio' && String(((o.data as Payload)?.payload as Payload)?.audio_type ?? '') === kind
-      return o.type === 'image' && String(((o.data as Payload)?.payload as Payload)?.purpose ?? '') === kind
+      if (t === 'audio') return String(((o.data as Payload)?.objectType) ?? '') === 'audio' && String(((o.data as Payload)?.payload as Payload)?.audio_type ?? '') === kind
+      return String(((o.data as Payload)?.objectType) ?? '') === 'image' && String(((o.data as Payload)?.payload as Payload)?.purpose ?? '') === kind
     })
   const idx = order.indexOf(oid)
   if (idx < 0) return ''
@@ -163,7 +164,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
           .filter((e) => e.target === id)
           .map((e) => e.source)
           .filter((oid) => {
-            const t = objects.find((o) => o.id === oid)?.type
+            const t = String(((objects.find((o) => o.id === oid)?.data as Payload)?.objectType) ?? '')
             return t === 'image' || t === 'audio'
           })
       : []
@@ -254,7 +255,14 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
         {/* 主体：内容优先 —— 展示生成结果 */}
         <div className="nowheel min-h-0 flex-1 overflow-y-auto p-2">
           {videoUrl ? (
-            <video src={videoUrl} controls className="mb-1.5 w-full rounded-lg bg-black" style={{ maxHeight: 220 }} />
+            <div className="relative mb-1.5 w-full overflow-hidden rounded-lg bg-black">
+              {Boolean(payload.shot_no) && (
+                <span className="absolute left-1.5 top-1.5 z-10 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                  分镜 {String(payload.shot_no)}
+                </span>
+              )}
+              <video src={videoUrl} controls className="w-full" style={{ maxHeight: 220 }} />
+            </div>
           ) : imageUrl ? (
             <img
               src={imageUrl}
@@ -339,9 +347,10 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
               <div className="flex flex-wrap gap-1">
                 {videoRefs.map((oid) => {
                   const o = objects.find((x) => x.id === oid)
+                  const ot = String(((o?.data as Payload)?.objectType) ?? '')
                   return (
                     <span key={oid} className="rounded bg-soft px-1.5 py-0.5 text-[10px] text-ink-2">
-                      {o?.type === 'audio' ? '音频' : '图片'}
+                      {ot === 'audio' ? '音频' : '图片'}
                     </span>
                   )
                 })}

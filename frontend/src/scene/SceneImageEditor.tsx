@@ -18,17 +18,12 @@ import ErrorBanner from '../components/ErrorBanner'
 import {
   type AnyObj, type ParsedScript, EMPTY_PARSED, isStoryNode,
   parseCharacters, parsePropsList, parseShotsFromScript, shotDesc,
+  fitsCapability, fitsLlm,
 } from './sceneScript'
 
 type Category = '人物' | '道具' | '场景'
 
-
-/** 模型库「适用场景」匹配：未设场景=通用，或含 general/目标场景 */
-function fitsScene(p: { scenes?: string[] }, need: string): boolean {
-  const s = p.scenes
-  if (!s || !s.length) return true
-  return s.includes('general') || s.includes(need)
-}
+/** 模型能力匹配（V2.8.2）：只列具备生图能力的模型，纯文本 LLM 不出现 */
 
 // ── 分辨率 / 宽高比（V2.8）────────────────────────────────────────
 const RES_SHORT: Record<string, number> = { '480P': 480, '720P': 720, '1K': 1024, '2K': 1440 }
@@ -199,8 +194,17 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     if (payload.category) setCategory(String(payload.category) as Category)
     else if (payload.purpose) setCategory(String(payload.purpose) as Category)
     if (payload.selected) setSelected(String(payload.selected))
+    else {
+      // 识别节点可能只存了 title（如「道具·项链」）：提取名字回填，避免名称为空
+      const t = String(payload.title || payload.name || '').trim()
+      if (t.includes('·')) {
+        const name = t.split('·')[1]?.trim()
+        if (name) setSelected(name)
+      }
+    }
     if (payload.desc) setDesc(String(payload.desc))
     else if (payload.prompt) setDesc(String(payload.prompt))
+    else if (String(payload.title ?? '').trim() && !String(payload.desc ?? '').trim()) setDesc(String(payload.title))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -355,7 +359,11 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     >
       {c}
       <span className="text-[10px] opacity-70">
-        {c === '人物' ? parsed.characters.length : c === '道具' ? parsed.props.length : parsed.shots.length}
+        {c === '人物'
+          ? script ? Object.keys(charDescs).length : parsed.characters.length
+          : c === '道具'
+            ? script ? propList.length : parsed.props.length
+            : mergedShots.length}
       </span>
     </button>
   )
@@ -506,7 +514,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
                   title="AI 重写使用的模型"
                 >
                   <option value="">默认模型</option>
-                  {profiles.filter((p) => fitsScene(p, 'prompt')).map((p) =>
+                  {profiles.filter((p) => fitsLlm(p)).map((p) =>
                     p && p.id ? (
                       <option key={p.id} value={p.id}>
                         {String(p.name ?? p.id)}
@@ -633,7 +641,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
                 title="选择模型库中的模型（直连，不使用商业接口预设）"
               >
                 <option value="">默认模型（系统自动选）</option>
-                {profiles.filter((p) => fitsScene(p, 'image')).map((p) =>
+                {profiles.filter((p) => fitsCapability(p, 'image')).map((p) =>
                   p && p.id ? (
                     <option key={p.id} value={p.id}>
                       {String(p.name ?? p.id)}

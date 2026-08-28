@@ -13,6 +13,7 @@ import { aiChat, getProfiles, getSkills, promptLearningList, renderMedia } from 
 import {
   type AnyObj, type ParsedShot,
   isStoryNode, parseShotsFromScript, shotDesc,
+  fitsCapability,
 } from './sceneScript'
 import ErrorBanner from '../components/ErrorBanner'
 import AiOptimizeBar from './AiOptimizeBar'
@@ -34,12 +35,7 @@ const STYLE_OPTS = [
   '蒸汽朋克', '史诗奇幻',
 ]
 
-/** 模型库「适用场景」匹配 */
-function fitsScene(p: { scenes?: string[] }, need: string): boolean {
-  const s = p.scenes
-  if (!s || !s.length) return true
-  return s.includes('general') || s.includes(need)
-}
+/** 模型库「适用场景」匹配（V2.8.2：只列具备生视频能力的模型） */
 
 type MaterialNode = {
   id: string
@@ -86,7 +82,8 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
     for (const oid of linkedIds) {
       const o = objects.find((x) => x.id === oid)
       if (!o) continue
-      const t = String(o.type ?? '')
+      // 🔴 场景对象节点 type 恒为 sceneObject，真实类型在 data.objectType
+      const t = String(((o.data as AnyObj)?.objectType) ?? '')
       const p = ((o.data as AnyObj)?.payload as AnyObj) || {}
       if (t === 'image') {
         const purpose = String(p.purpose ?? '')
@@ -462,7 +459,7 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
             title="选择模型库中的视频模型"
           >
             <option value="">默认模型（系统自动选）</option>
-            {profiles.filter((p) => fitsScene(p, 'video')).map((p) =>
+            {profiles.filter((p) => fitsCapability(p, 'video')).map((p) =>
               p && p.id ? (
                 <option key={p.id} value={p.id}>
                   {String(p.name ?? p.id)}

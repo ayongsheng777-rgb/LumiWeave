@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from typing import Any
 
@@ -47,6 +48,24 @@ def _headers(key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
 
+# V2.8.2：模型能力兜底校验——明显是纯文本 LLM 的模型不允许走生图/生视频，避免调用失败
+_IMG_MODEL_RE = re.compile(r"image|flux|sdxl|sd3|dall|qwen-image|kolors|wanx|midjourney|stable|wuniu|photo", re.I)
+_VID_MODEL_RE = re.compile(r"video|wan[\d.]*|kling|runway|pika|hunyuan|sora|可灵|即梦", re.I)
+
+
+def _check_model_capability(model: str, kind: str) -> str:
+    """返回 '' 表示通过；否则返回错误提示。kind: 'image' | 'video'"""
+    if not model:
+        return ""
+    if kind == "image" and not _IMG_MODEL_RE.search(model):
+        return (f"所选模型「{model}」不是图像生成模型（疑似文本 LLM），无法出图。"
+                "请在「设置-模型」中为该平台配置图像模型（如 qwen-image），或选择默认模型（系统自动优选）")
+    if kind == "video" and not _VID_MODEL_RE.search(model):
+        return (f"所选模型「{model}」不是视频生成模型（疑似文本 LLM），无法生成视频。"
+                "请在「设置-模型」中为该平台配置视频模型，或选择默认模型（系统自动优选）")
+    return ""
+
+
 async def cloud_image_generate(
     provider_id: str,
     prompt: str,
@@ -80,6 +99,11 @@ async def cloud_image_generate(
         prov_name = p.get("name") or provider_id
     if not endpoint or not key:
         return {"ok": False, "error": "云端 Provider 未配置 endpoint/api_key", "logs": logs}
+    # V2.8.2 模型能力兜底：显式选了疑似文本 LLM 的模型 → 明确报错（前端已按能力过滤，此处双保险）
+    if model:
+        cap_err = _check_model_capability(model, "image")
+        if cap_err:
+            return {"ok": False, "error": cap_err, "logs": logs + [{"step": "model", "message": cap_err}]}
     refs = [r for r in (reference_images or []) if r and str(r).strip()]
 
     # 图生图（多图参考合成）：走 Qwen-Image-Edit-2509，image 为数组
@@ -173,6 +197,11 @@ async def cloud_video_generate(
         prov_name = p.get("name") or provider_id
     if not endpoint or not key:
         return {"ok": False, "error": "云端 Provider 未配置 endpoint/api_key", "logs": logs}
+    # V2.8.2 模型能力兜底：显式选了疑似文本 LLM 的模型 → 明确报错
+    if model:
+        cap_err = _check_model_capability(model, "video")
+        if cap_err:
+            return {"ok": False, "error": cap_err, "logs": logs + [{"step": "model", "message": cap_err}]}
     # 图生视频（有首帧图）走 I2V 模型，否则走 T2V
     if image_url:
         model_name = model or "Wan-AI/Wan2.2-I2V-A14B"

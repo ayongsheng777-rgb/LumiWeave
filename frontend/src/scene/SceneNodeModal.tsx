@@ -32,8 +32,13 @@ function useDrag(ref: React.RefObject<HTMLDivElement | null>, enabled: boolean) 
     }
     const onMove = (e: MouseEvent) => {
       if (!dragging) return
-      box.style.left = `${baseLeft + (e.clientX - startX)}px`
-      box.style.top = `${baseTop + (e.clientY - startY)}px`
+      // V2.8.2：拖拽限制在视口内，防止弹窗被拖出屏幕导致内容不可达
+      const dx = e.clientX - startX
+      const dy = e.clientY - startY
+      const maxLeft = Math.max(8, window.innerWidth - box.offsetWidth - 8)
+      const maxTop = Math.max(8, window.innerHeight - box.offsetHeight - 8)
+      box.style.left = `${Math.min(Math.max(8, baseLeft + dx), maxLeft)}px`
+      box.style.top = `${Math.min(Math.max(8, baseTop + dy), maxTop)}px`
     }
     const onUp = () => {
       dragging = false
@@ -75,12 +80,12 @@ export default function SceneNodeModal() {
     return () => window.removeEventListener('keydown', onKey)
   }, [modalNodeId, closeNodeModal])
 
-  // 打开时定位（居中，可被拖拽）
+  // 打开时定位（顶部留出余量，配合 max-h 保证底部内容不被遮挡；可被拖拽）
   useEffect(() => {
     if (modalNodeId) {
       setPos({
-        left: Math.max(16, window.innerWidth / 2 - 300),
-        top: Math.max(16, window.innerHeight / 2 - 240),
+        left: Math.max(16, Math.round(window.innerWidth / 2 - 300)),
+        top: Math.max(16, Math.round(window.innerHeight * 0.06)),
       })
     }
   }, [modalNodeId])
@@ -107,8 +112,8 @@ export default function SceneNodeModal() {
     >
       <div
         ref={boxRef}
-        className="flex max-h-[84vh] w-[640px] max-w-[94vw] flex-col overflow-hidden rounded-2xl border border-edge bg-panel-2 text-[11px] shadow-2xl"
-        style={{ left: pos?.left, top: pos?.top, position: 'fixed' }}
+        className="flex w-[640px] max-w-[94vw] flex-col overflow-hidden rounded-2xl border border-edge bg-panel-2 text-[11px] shadow-2xl"
+        style={{ left: pos?.left, top: pos?.top, position: 'fixed', maxHeight: 'calc(100vh - 96px)' }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* 头部（拖拽柄） */}
