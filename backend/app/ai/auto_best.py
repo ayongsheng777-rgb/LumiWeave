@@ -166,24 +166,30 @@ async def auto_best_scene(profile_id: str, scene: str) -> dict[str, Any]:
     available_models = await _list_models(profile)
     if not available_models:
         return {"ok": False, "reason": "无法获取模型列表（检查 Base URL / API Key 与平台兼容性）", "tested": []}
+    # 候选 = 已设过的模型(优先验证) + 场景关键词匹配（无匹配兜底平台前 8），去重保序
     sm = profile.get("scene_models") or {}
-    if isinstance(sm, dict) and sm.get(scene):
-        candidates = [str(sm[scene])]  # 已设过的模型也验证一次，保证可用
-    else:
-        kws = _SCENE_KEYWORDS.get(scene, [])
-        matched = [m for m in available_models if kws and any(kw in m.lower() for kw in kws)]
-        candidates = matched[:8] if matched else available_models[:8]
+    preset = str(sm.get(scene) or "") if isinstance(sm, dict) else ""
+    kws = _SCENE_KEYWORDS.get(scene, [])
+    matched = [m for m in available_models if kws and any(kw in m.lower() for kw in kws)]
+    candidates = [m for m in dict.fromkeys([preset] + (matched[:8] if matched else available_models[:8])) if m]
 
     tested: list[dict[str, Any]] = []
-    best_model, best_lat = "", float("inf")
     for m in candidates:
         r = await _test_scene_model(profile, m, scene)
-        tested.append({"model": m, **r})
-        if r["success"] and r["latency_ms"] < best_lat:
-            best_model, best_lat = m, r["latency_ms"]
-    if not best_model:
+        tested.append({"model": m, "tier": _tier_of(m), **r})
+    # 实测通过 → 按等级降序（1 级最高在前）+ 同级延迟升序；不锁定单一模型，返回全列表供下拉选择
+    ok_list = [t for t in tested if t["success"]]
+    ok_list.sort(key=lambda x: (x["tier"], x["latency_ms"]))
+    if not ok_list:
         return {"ok": False, "reason": f"「{scene}」场景候选模型全部实测失败，请检查 API Key / 额度 / 模型权限", "tested": tested}
-    return {"ok": True, "model": best_model, "latency_ms": best_lat, "scene": scene, "tested": tested}
+    return {
+        "ok": True,
+        "scene": scene,
+        "models": [{"model": t["model"], "tier": t["tier"], "latency_ms": t["latency_ms"]} for t in ok_list],
+        "model": ok_list[0]["model"],  # 兼容旧字段：默认推荐等级最高的
+        "latency_ms": ok_list[0]["latency_ms"],
+        "tested": tested,
+    }
 
 
 async def _test_scene_model(profile: dict[str, Any], model: str, scene: str) -> dict[str, Any]:

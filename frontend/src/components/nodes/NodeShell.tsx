@@ -90,6 +90,7 @@ export function NodeShell({
         type="target"
         position={Position.Left}
         className="!h-3 !w-3 !border-2 !border-canvas !bg-brand-500"
+        isConnectableStart={false}
       />
 
       {/* 标题栏：点击在 展开/收起 间切换 */}
@@ -179,6 +180,7 @@ export function NodeShell({
         type="source"
         position={Position.Right}
         className="!h-3 !w-3 !border-2 !border-canvas !bg-brand-500"
+        isConnectableEnd={false}
       />
     </div>
   )

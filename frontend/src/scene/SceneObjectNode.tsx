@@ -193,8 +193,8 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
         lineClassName="!border-brand-500"
         handleClassName="!h-2 !w-2 !rounded-sm !border-brand-500 !bg-white"
       />
-      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-none !bg-brand-500" />
-      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-none !bg-brand-500" />
+      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-none !bg-brand-500" isConnectableStart={false} />
+      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-none !bg-brand-500" isConnectableEnd={false} />
 
       <div
         className={`canvas-node group flex h-full flex-col overflow-hidden rounded-xl text-[11px] transition ${

@@ -291,11 +291,12 @@ async def build_film_skeleton(scene_id: str, story_id: str, shots: list[dict],
         except Exception:  # noqa: BLE001
             pass
         # video → 该镜头用到的资产图（素材库同源：SceneVideoEditor 读 e.target===id 的 image）
+        # 方向语义：左进右出 —— image 资产作为 source（输出）流入 video 节点（target 接收做参考）
         for name in _shot_asset_names(s):
             for purpose, by_name in image_map.items():
                 if name in by_name:
                     try:
-                        await ss.create_edge(scene_id, vid, by_name[name], "default",
+                        await ss.create_edge(scene_id, by_name[name], vid, "default",
                                              {"kind": "asset_ref", "purpose": purpose})
                     except Exception:  # noqa: BLE001
                         pass

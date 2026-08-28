@@ -127,9 +127,12 @@ export default function ModelPanel() {
     }
   }
 
-  // 单模型配置内按场景一键优选：拉平台列表 → 按场景匹配+实测连通 → 写回 scene_models[scene]
-  // busyScene 只禁用被点的那个场景按钮（其它场景不连动变灰）
+  // 单模型配置内按场景一键优选：拉平台列表 → 按场景匹配+实测连通 → 返回可用模型列表（等级降序），
+  // 用户在下拉中选择（不锁定单一）；busyScene 只禁用被点的那个场景按钮
   const [busyScene, setBusyScene] = useState<string | null>(null)
+  const [manualScene, setManualScene] = useState<string | null>(null)
+  // 每个场景的优选候选（{model, tier, latency_ms}[]，等级降序）
+  const [sceneCands, setSceneCands] = useState<Record<string, { model: string; tier: number; latency_ms: number }[]>>({})
   const handleSceneBest = async (scene: string) => {
     if (!form.id.trim()) {
       setMessage('请先填写模型 ID 并保存后再优选')
@@ -141,8 +144,10 @@ export default function ModelPanel() {
     const res = await autoBestScene(form.id, scene)
     setBusyScene(null)
     if (res.ok) {
-      const m = String(res.data?.model ?? '')
-      setMessage(`「${SCENES.find((s) => s.key === scene)?.label || scene}」优选完成：${m}（实测连通）`)
+      const list = (res.data?.models || []) as { model: string; tier: number; latency_ms: number }[]
+      setSceneCands((c) => ({ ...c, [scene]: list }))
+      const m = String(res.data?.model ?? (list[0]?.model || ''))
+      setMessage(`「${SCENES.find((s) => s.key === scene)?.label || scene}」优选完成：${list.length} 个可用（Lv 等级降序），默认推荐 ${m}`)
       setForm((f) => ({ ...f, scene_models: { ...f.scene_models, [scene]: m } }))
     } else {
       setMessage(`「${SCENES.find((s) => s.key === scene)?.label || scene}」优选失败：${res.data?.reason || res.data?.error || '未知'}`)
@@ -280,35 +285,72 @@ export default function ModelPanel() {
               </div>
             </label>
 
-            {/* 场景模型名：每个场景单独设模型名，节点按节点类型自动匹配；一键优选=实测连通后填入 */}
+            {/* 场景模型名：下拉选择（优选候选，等级降序）+ 手动输入；节点按类型自动匹配 */}
             <div className="col-span-2 block">
               <span className="mb-1 block text-[11px] text-ink-2">
-                场景模型名（节点按类型自动匹配；一键优选会拉取平台列表并实测连通后填入）
+                场景模型名（节点按类型自动匹配；点「优选」拉取平台模型并按场景匹配+实测连通，可用列表按 Lv 等级降序进下拉，不锁定单一）
               </span>
               <div className="space-y-1.5">
-                {SCENES.filter((s) => s.key !== 'general').map((s) => (
-                  <div key={s.key} className="flex items-center gap-1.5">
-                    <span className="w-16 shrink-0 text-[11px] text-ink-3">{s.label}</span>
-                    <input
-                      className={`${inputCls} min-w-0 flex-1`}
-                      placeholder={form.model || '留空用上方默认模型名'}
-                      value={form.scene_models[s.key] ?? ''}
-                      onChange={(e) => setForm({ ...form, scene_models: { ...form.scene_models, [s.key]: e.target.value } })}
-                    />
-                    <button
-                      type="button"
-                      disabled={busyScene === s.key}
-                      onClick={() => void handleSceneBest(s.key)}
-                      className="flex shrink-0 items-center gap-1 rounded-lg border border-brand-500/40 bg-brand-500/10 px-2 py-1.5 text-[11px] text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-40"
-                      title={`拉取该平台模型列表并按「${s.label}」匹配+实测连通，把可用模型名填入`}
-                    >
-                      <Zap size={11} className={busyScene === s.key ? 'animate-pulse' : ''} /> 优选
-                    </button>
-                  </div>
-                ))}
+                {SCENES.filter((s) => s.key !== 'general').map((s) => {
+                  const cands = sceneCands[s.key] || []
+                  const cur = form.scene_models[s.key] ?? ''
+                  const isManual = manualScene === s.key
+                  return (
+                    <div key={s.key} className="flex items-center gap-1.5">
+                      <span className="w-16 shrink-0 text-[11px] text-ink-3">{s.label}</span>
+                      {isManual ? (
+                        <input
+                          autoFocus
+                          className={`${inputCls} min-w-0 flex-1`}
+                          placeholder={form.model || '手动输入模型名，回车确认'}
+                          value={cur}
+                          onChange={(e) => setForm({ ...form, scene_models: { ...form.scene_models, [s.key]: e.target.value } })}
+                          onBlur={() => setManualScene(null)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault()
+                              setManualScene(null)
+                            }
+                          }}
+                        />
+                      ) : (
+                        <select
+                          className={`${inputCls} min-w-0 flex-1`}
+                          value={cands.some((c) => c.model === cur) ? cur : cur ? '' : ''}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            if (v === '__manual__') { setManualScene(s.key); return }
+                            setForm({ ...form, scene_models: { ...form.scene_models, [s.key]: v } })
+                          }}
+                          title="优选后按 Lv 等级降序列出可用模型，选一个写入；或选手动输入"
+                        >
+                          {!cur && <option value="">未设置（用上方默认模型名）</option>}
+                          {cur && !cands.some((c) => c.model === cur) && (
+                            <option value={cur}>{cur}（手动设置）</option>
+                          )}
+                          {cands.map((c) => (
+                            <option key={c.model} value={c.model}>
+                              {c.model} · Lv{c.tier} · {c.latency_ms}ms
+                            </option>
+                          ))}
+                          <option value="__manual__">✏ 手动输入…</option>
+                        </select>
+                      )}
+                      <button
+                        type="button"
+                        disabled={busyScene === s.key}
+                        onClick={() => void handleSceneBest(s.key)}
+                        className="flex shrink-0 items-center gap-1 rounded-lg border border-brand-500/40 bg-brand-500/10 px-2 py-1.5 text-[11px] text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-40"
+                        title={`拉取该平台模型列表并按「${s.label}」匹配+实测连通，按等级降序进下拉（不锁定单一）`}
+                      >
+                        <Zap size={11} className={busyScene === s.key ? 'animate-pulse' : ''} /> 优选
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
               <div className="mt-1 text-[10px] leading-snug text-ink-3">
-                实测方式：文本类用对话连通测试（免费）；图片用 128x128 极小图测试（微量额度）；视频提交测试。填好后保存生效。
+                实测方式：文本类用对话连通测试（免费）；图片用 128x128 极小图测试（微量额度）；视频提交测试。优选后下拉按 Lv 等级降序排列，选中保存生效。
               </div>
             </div>
           </div>

@@ -50,7 +50,7 @@ export default function NodeShell({
         color="var(--brand)"
         lineStyle={{ borderWidth: 1.5 }}
       />
-      {input && <Handle type="target" position={Position.Left} className="!h-3 !w-3 !border-2 !border-canvas !bg-brand-500" />}
+      {input && <Handle type="target" position={Position.Left} className="!h-3 !w-3 !border-2 !border-canvas !bg-brand-500" isConnectableStart={false} />}
 
       <div className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
@@ -72,7 +72,7 @@ export default function NodeShell({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">{children}</div>
 
-      {output && <Handle type="source" position={Position.Right} className="!h-3 !w-3 !border-2 !border-canvas !bg-brand-500" />}
+      {output && <Handle type="source" position={Position.Right} className="!h-3 !w-3 !border-2 !border-canvas !bg-brand-500" isConnectableEnd={false} />}
     </div>
   )
 }
