@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
 import { useUiStore } from '../store/uiStore'
-import { aiChat, getProfiles, renderMedia } from '../api'
+import { aiChat, getProfiles, getSkills, promptLearningList, renderMedia } from '../api'
 import {
   type AnyObj, type ParsedShot,
   isStoryNode, parseShotsFromScript, shotDesc,
@@ -24,7 +24,7 @@ const CAMERA_MOTION_OPTS = [
   '镜头前推', '镜头后移', '变焦推进', '变焦拉远', '柯克变焦', '环绕拍摄',
   '滚筒旋转', '第一视角', '无人机', '高空航拍', '手持拍',
 ]
-const RES_OPTS = ['720p', '1080p', '2K', '4K']
+const RES_OPTS = ['480P', '720p', '1080p', '2K', '4K']
 const STYLE_OPTS = [
   '吉卜力', '赛璐璐', '新海诚', '皮克斯', '赛博朋克', 'Q版2D', '美式漫画',
   '波普艺术', '像素风', '游戏CG', '国漫3D', '国漫2D', '中式水墨', '武侠写实',
@@ -123,6 +123,14 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
   const [cloudModelId, setCloudModelId] = useState(String(payload.gen_profile_id ?? payload.profile_id ?? ''))
   const [generating, setGenerating] = useState(false)
   const [rewriting, setRewriting] = useState(false)
+  // 技能库 / 知识库参考（V2.8：注入 AI 优化/配音稿/音效 三个操作）
+  const [skills, setSkills] = useState<AnyObj[]>([])
+  const [kbs, setKbs] = useState<AnyObj[]>([])
+  const [skillId, setSkillId] = useState(String(payload.skill_ref ?? ''))
+  const [kbId, setKbId] = useState(String(payload.kb_ref ?? ''))
+  // AI 配音稿 / AI 音效 自定义要求
+  const [dialogueReq, setDialogueReq] = useState(String(payload.dialogue_req ?? ''))
+  const [sfxReq, setSfxReq] = useState(String(payload.sfx_req ?? ''))
 
   useEffect(() => {
     getProfiles()
@@ -132,8 +140,37 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
         if (list.length && !cloudModelId) setCloudModelId(list[0].id)
       })
       .catch(() => {})
+    getSkills()
+      .then((r) => {
+        const d = r.data as AnyObj
+        const list = Array.isArray(d) ? d : Array.isArray((d as AnyObj)?.skills) ? (d as AnyObj).skills : []
+        setSkills((list as AnyObj[]) || [])
+      })
+      .catch(() => {})
+    promptLearningList()
+      .then((r) => {
+        const k = ((r.data as AnyObj)?.knowledge as AnyObj[]) || []
+        setKbs(k)
+      })
+      .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /** 技能库/知识库参考内容（注入 AI 优化/配音稿/音效） */
+  const buildRefContext = () => {
+    const parts: string[] = []
+    if (skillId) {
+      const s = skills.find((x) => String(x.id) === skillId)
+      const content = String(s?.content || s?.description || s?.prompt || '')
+      if (content) parts.push(`【技能参考】\n${content}`)
+    }
+    if (kbId) {
+      const k = kbs.find((x) => String(x.id) === kbId)
+      const content = String(k?.content || '')
+      if (content) parts.push(`【知识库参考】\n${content}`)
+    }
+    return parts.join('\n\n')
+  }
 
   // 选择分镜 → 自动带出对白 / 画内画外音 / 特效音效
   const applyShot = (no: number) => {
@@ -156,6 +193,7 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
         motion && motion !== '固定镜头' ? `【运镜】${motion}` : '',
         resolution ? `【清晰度】${resolution}` : '',
         aspectRatio ? `【画面比例】${aspectRatio}` : '',
+        buildRefContext(),
       ].filter(Boolean).join('\n')
       const res = await aiChat({
         system: '你是短视频分镜视频提示词专家。把提示词优化成可直接用于视频生成模型的高质量中文提示词：画面具体、有镜头感、含光线构图与运镜描述、符合所选风格/运镜/清晰度。只输出优化后的提示词，不要多余解释。',
@@ -170,7 +208,7 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
     }
   }
 
-  // ── 分镜音频：AI 生成配音稿（对白/画内画外音）──
+  // ── 分镜音频：AI 生成配音稿（对白/画内画外音，支持技能/知识库参考 + 自定义要求）──
   const genDialogue = async () => {
     if (!currentShot || rewriting) return
     setRewriting(true)
@@ -178,7 +216,12 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
       const lines = dialogue.length ? dialogue.join('\n') : ''
       const res = await aiChat({
         system: '你是短剧配音导演。把分镜对白/旁白整理成可直接配音的配音稿（含说话人、情绪、画内画外音标注），中文口语化，直接输出文本。',
-        user: `【分镜】分镜${currentShot.no}：${currentShot.location || ''} ${currentShot.goal || ''}\n【对白/旁白】\n${lines || '（无，请按分镜内容补合理对白）'}`,
+        user: [
+          `【分镜】分镜${currentShot.no}：${currentShot.location || ''} ${currentShot.goal || ''}`,
+          `【对白/旁白】\n${lines || '（无，请按分镜内容补合理对白）'}`,
+          dialogueReq.trim() ? `【自定义要求】${dialogueReq.trim()}` : '',
+          buildRefContext(),
+        ].filter(Boolean).join('\n'),
         profile_id: cloudModelId || undefined,
         scenario: 'general',
       })
@@ -192,7 +235,7 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
     }
   }
 
-  // ── 分镜音频：AI 生成特效音效描述 ──
+  // ── 分镜音频：AI 生成特效音效描述（支持技能/知识库参考 + 自定义要求）──
   const genSfx = async () => {
     if (!currentShot || rewriting) return
     setRewriting(true)
@@ -200,7 +243,13 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
       const lines = sfx.length ? sfx.join('、') : ''
       const res = await aiChat({
         system: '你是影视拟音师。根据分镜内容生成特效音效清单（环境音/动作音效/拟音），每行一条，中文描述具体（如"玻璃碎裂声+低沉混响"），直接输出清单。',
-        user: `【分镜】分镜${currentShot.no}：${currentShot.location || ''} ${currentShot.goal || ''}\n【画面】${shotDesc(currentShot)}\n【已有音效】${lines || '（无，请按画面生成 3-5 条）'}`,
+        user: [
+          `【分镜】分镜${currentShot.no}：${currentShot.location || ''} ${currentShot.goal || ''}`,
+          `【画面】${shotDesc(currentShot)}`,
+          `【已有音效】${lines || '（无，请按画面生成 3-5 条）'}`,
+          sfxReq.trim() ? `【自定义要求】${sfxReq.trim()}` : '',
+          buildRefContext(),
+        ].filter(Boolean).join('\n'),
         profile_id: cloudModelId || undefined,
         scenario: 'general',
       })
@@ -224,6 +273,17 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
     try {
       const native: AnyObj = {}
       if (motion && motion !== '固定镜头') native.camera_movement = motion
+      // 角色锁定参考源（V2.8）：收集场景内 locked_ref 图片作为参考图（I2V 首帧/参考），跨分镜保持一致
+      const refs = objects
+        .filter((o) => {
+          const p = (o?.data as AnyObj)?.payload as AnyObj | undefined
+          return !!p && p.locked_ref === true && String(p.url || p.main_image || '').trim()
+        })
+        .map((o) => {
+          const p = (o?.data as AnyObj)?.payload as AnyObj
+          return String(p.url || p.main_image || '')
+        })
+        .filter(Boolean)
       const res = await renderMedia({
         kind: 'video',
         render_mode: 'cloud',
@@ -233,6 +293,7 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
           ratio: aspectRatio,
           duration: Number(payload.duration) || 6,
           native,
+          ...(refs.length ? { reference_images: refs } : {}),
         },
       })
       const d = res.data as AnyObj
@@ -345,6 +406,34 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
         {dd('style', '风格', STYLE_OPTS, style, (v) => { setStyle(v); patchObject(id, { style: v }) })}
       </div>
 
+      {/* 技能库 / 知识库参考（注入 AI 优化/配音稿/音效） */}
+      <div className="grid grid-cols-2 gap-1.5">
+        <select
+          className="nodrag h-8 min-w-0 rounded-md border border-edge bg-input px-1 text-sm text-ink outline-none focus:border-brand-500"
+          value={skillId}
+          disabled={locked}
+          onChange={(e) => { setSkillId(e.target.value); patchObject(id, { skill_ref: e.target.value }) }}
+          title="技能库：选中后内容注入 AI 提示词优化/配音稿/音效"
+        >
+          <option value="">技能库</option>
+          {skills.map((s) => (
+            <option key={String(s.id)} value={String(s.id)}>{String(s.name || s.id)}</option>
+          ))}
+        </select>
+        <select
+          className="nodrag h-8 min-w-0 rounded-md border border-edge bg-input px-1 text-sm text-ink outline-none focus:border-brand-500"
+          value={kbId}
+          disabled={locked}
+          onChange={(e) => { setKbId(e.target.value); patchObject(id, { kb_ref: e.target.value }) }}
+          title="知识库：选中后内容注入 AI 提示词优化/配音稿/音效"
+        >
+          <option value="">知识库</option>
+          {kbs.map((k) => (
+            <option key={String(k.id)} value={String(k.id)}>{String(k.title || k.id)}</option>
+          ))}
+        </select>
+      </div>
+
       {/* 提示词 + AI 优化 */}
       <div className="space-y-1">
         <div className="flex items-center justify-between">
@@ -409,6 +498,13 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
           placeholder="选择分镜自动带入对白/旁白，可编辑，或用 AI 生成配音稿…"
           onChange={(e) => { setDialogue(e.target.value.split('\n')); patchObject(id, { dialogue_script: e.target.value.split('\n') }) }}
         />
+        <input
+          className="nodrag h-7 w-full rounded-md border border-edge bg-input px-2 text-[11px] text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
+          value={dialogueReq}
+          disabled={locked}
+          placeholder="AI 配音稿自定义要求（可选），如：加入产品卖点、语速偏快、结尾引导下单…"
+          onChange={(e) => { setDialogueReq(e.target.value); patchObject(id, { dialogue_req: e.target.value }) }}
+        />
         <div className="flex items-center justify-between">
           <span className="text-[11px] text-ink-3">💥 特效音效（画内画外音）</span>
           <button
@@ -427,6 +523,13 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
           disabled={locked}
           placeholder="选择分镜自动带入环境音/音效标注，可编辑，或用 AI 生成…"
           onChange={(e) => { setSfx(e.target.value.split('\n')); patchObject(id, { sfx_desc: e.target.value.split('\n') }) }}
+        />
+        <input
+          className="nodrag h-7 w-full rounded-md border border-edge bg-input px-2 text-[11px] text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
+          value={sfxReq}
+          disabled={locked}
+          placeholder="AI 音效自定义要求（可选），如：全部 5.1 声道、加入脚步声特写…"
+          onChange={(e) => { setSfxReq(e.target.value); patchObject(id, { sfx_req: e.target.value }) }}
         />
       </div>
 

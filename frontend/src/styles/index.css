@@ -574,3 +574,42 @@ body {
   width: 100%; height: 100px; display: flex; align-items: center; justify-content: center;
   color: var(--lw-ink-3); font-size: 12px; background: var(--lw-soft); border-radius: 6px;
 }
+
+/* ═══════════ V2.8 UI 重构 ═══════════ */
+
+/* z-index 全局规范 */
+:root {
+  --z-canvas-bg: 0;
+  --z-edge: 5;
+  --z-node-default: 10;
+  --z-node-active: 20;
+  --z-hover-toolbar: 30;
+  --z-modal-overlay: 100;
+  --z-modal-content: 101;
+}
+
+/* 悬浮工具栏显隐：节点悬停或选中时浮现（胶囊毛玻璃，从节点上方平滑浮出） */
+.canvas-node:hover .scene-hover-toolbar,
+.react-flow__node.selected .scene-hover-toolbar {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: translateX(-50%) translateY(0) !important;
+}
+
+/* 运行中连线：蚂蚁线流动动画 */
+.scene-edge-anim {
+  stroke-dasharray: 8 8 !important;
+  animation: scene-flow-anim 1s linear infinite;
+}
+@keyframes scene-flow-anim {
+  from { stroke-dashoffset: 16; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* 提示词摘要两行截断 */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

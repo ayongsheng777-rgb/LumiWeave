@@ -54,6 +54,8 @@ import {
 // ── 动作中文名（§19 动作面板展示用）──────────────────────────────────────
 export const ACTION_LABELS: Record<string, string> = {
   analyze_product: '识别商品 / 提炼卖点',
+  generate_strategy: '生成营销策略',
+  generate_visual_board: '生成视觉规划板',
   generate_main_image: '生成主图',
   generate_scene_image: '生成场景图',
   generate_poster: '生成海报',
@@ -178,6 +180,8 @@ interface SceneState {
   objectStatus: Record<string, string>
   // 批量结果（§54 / P1-06）
   batchResult: { total: number; ok: number; failed: number } | null
+  // 编辑弹窗（V2.8 UI 重构：节点内容优先，编辑收敛到弹窗）
+  modalNodeId: string | null
 
   // 撤销/重做（§32）
   past: Snapshot[]
@@ -216,6 +220,8 @@ interface SceneState {
 
   runAction: (action: string, objectIds?: string[], params?: Record<string, unknown>) => Promise<void>
   pushLog: (e: RunLogEntry) => void
+  openNodeModal: (id: string) => void
+  closeNodeModal: () => void
   clear: () => void
   setObjectStatus: (id: string, status: string) => void
   setBatchResult: (r: { total: number; ok: number; failed: number } | null) => void
@@ -318,6 +324,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   runLog: [],
   objectStatus: {},
   batchResult: null,
+  modalNodeId: null,
   past: [],
   future: [],
   canUndo: false,
@@ -621,6 +628,9 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   },
 
   pushLog: (e) => set((s) => ({ runLog: [e, ...s.runLog].slice(0, 50) })),
+
+  openNodeModal: (id) => set({ modalNodeId: id }),
+  closeNodeModal: () => set({ modalNodeId: null }),
 
   setObjectStatus: (id, status) =>
     set((s) => ({ objectStatus: { ...s.objectStatus, [id]: status } })),

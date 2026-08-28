@@ -29,6 +29,30 @@ function fitsScene(p: { scenes?: string[] }, need: string): boolean {
   return s.includes('general') || s.includes(need)
 }
 
+// ── 分辨率 / 宽高比（V2.8）────────────────────────────────────────
+const RES_SHORT: Record<string, number> = { '480P': 480, '720P': 720, '1K': 1024, '2K': 1440 }
+const RES_OPTS_IMG = ['480P', '720P', '1K', '2K']
+const RATIO_OPTS_IMG = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9']
+
+/** 按 短边(分辨率) × 宽高比 计算生成尺寸（取 8 的倍数） */
+function calcImageSize(resolution: string, ratio: string): string {
+  const short = RES_SHORT[resolution] || 1024
+  const m = ratio.split(':').map((x) => Number(x))
+  if (m.length !== 2 || !m[0] || !m[1]) return '1024x1024'
+  const [w, h] = m
+  let width: number
+  let height: number
+  if (w >= h) {
+    height = short
+    width = Math.round((short * w) / h)
+  } else {
+    width = short
+    height = Math.round((short * h) / w)
+  }
+  const round8 = (v: number) => Math.max(8, Math.round(v / 8) * 8)
+  return `${round8(width)}x${round8(height)}`
+}
+
 export default function SceneImageEditor({ id, locked }: { id: string; locked: boolean }) {
   const patchObject = useSceneStore((s) => s.patchObject)
   const objects = useSceneStore((s) => s.objects)
@@ -74,6 +98,9 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   // 生成方式：云端=模型库选模型（直连，不用商业接口）；ComfyUI=选渲染器
   const [mode, setMode] = useState<'cloud' | 'comfyui'>(String(payload.render_mode ?? 'cloud') === 'comfyui' ? 'comfyui' : 'cloud')
   const [cloudModelId, setCloudModelId] = useState(String(payload.gen_profile_id ?? payload.profile_id ?? ''))
+  // 分辨率 / 宽高比（V2.8：生成尺寸由短边×比例计算）
+  const [resolution, setResolution] = useState(String(payload.resolution || '1K'))
+  const [ratio, setRatio] = useState(String(payload.ratio || '1:1'))
   const [renderers, setRenderers] = useState<AnyObj[]>([])
   const [rendererId, setRendererId] = useState(String(payload.renderer_id ?? ''))
   const [checkpoints, setCheckpoints] = useState<string[]>([])
@@ -238,6 +265,17 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     setGenerating(true)
     setErrMsg('')
     try {
+      // 角色锁定参考源（V2.8）：收集场景内 locked_ref 图片作为参考图，跨分镜保持一致性
+      const refs = objects
+        .filter((o) => {
+          const p = (o?.data as AnyObj)?.payload as AnyObj | undefined
+          return !!p && p.locked_ref === true && String(p.url || p.main_image || '').trim()
+        })
+        .map((o) => {
+          const p = (o?.data as AnyObj)?.payload as AnyObj
+          return String(p.url || p.main_image || '')
+        })
+        .filter(Boolean)
       // 云端：优先模型库直连（profile_id）；未选则智能路由（兼容旧数据）
       const ids = mode === 'cloud' ? (cloudModelId ? [cloudModelId] : ['']) : ['']
       let lastErr = ''
@@ -249,8 +287,9 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
           renderer_id: mode === 'comfyui' ? rendererId : undefined,
           params: {
             prompt: genPrompt.trim(),
-            size: '1024x1024',
+            size: calcImageSize(resolution, ratio),
             ...(mode === 'comfyui' && checkpoint ? { checkpoint } : {}),
+            ...(mode === 'cloud' && refs.length ? { reference_images: refs } : {}),
           },
         })
         const d = res.data as AnyObj
@@ -266,6 +305,8 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
             checkpoint: mode === 'comfyui' ? checkpoint : '',
             skill_ref: skillId,
             kb_ref: kbId,
+            resolution,
+            ratio,
             category,
             selected,
             desc,
@@ -487,6 +528,36 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
               ComfyUI
             </button>
           </div>
+        </div>
+
+        {/* 分辨率 / 宽高比（V2.8） */}
+        <div className="grid grid-cols-2 gap-1.5">
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-ink-3">分辨率</span>
+            <select
+              className="nodrag h-7 w-full rounded-md border border-edge bg-input px-1 text-[11px] text-ink outline-none focus:border-brand-500"
+              value={RES_OPTS_IMG.includes(resolution) ? resolution : ''}
+              disabled={locked}
+              onChange={(e) => { setResolution(e.target.value); patchObject(id, { resolution: e.target.value }) }}
+            >
+              {RES_OPTS_IMG.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-ink-3">宽高比</span>
+            <select
+              className="nodrag h-7 w-full rounded-md border border-edge bg-input px-1 text-[11px] text-ink outline-none focus:border-brand-500"
+              value={RATIO_OPTS_IMG.includes(ratio) ? ratio : ''}
+              disabled={locked}
+              onChange={(e) => { setRatio(e.target.value); patchObject(id, { ratio: e.target.value }) }}
+            >
+              {RATIO_OPTS_IMG.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {mode === 'cloud' ? (

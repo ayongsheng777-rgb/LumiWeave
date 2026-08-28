@@ -4,7 +4,7 @@
  * 布局：左场景侧边栏 · 中无限画布（含动态工具条）· 右动态 Inspector（抽屉）· 底部六页签工作栏
  * 全部对象走同一个 sceneObject 节点组件，具体长相由后端注册表决定。
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   Controls,
@@ -18,13 +18,19 @@ import { Loader2, Sparkles, Upload, Clapperboard } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
 import { sceneNodeTypes } from './SceneObjectNode'
 import { sceneFilmUpload, sceneFilmAnalyze } from '../api'
+import { nodeInstanceColor } from './sceneColors'
 import SceneSidebar from './SceneSidebar'
 import SceneToolbar from './SceneToolbar'
 import SceneBottomBar from './SceneBottomBar'
+import SceneNodeModal from './SceneNodeModal'
+import SceneTemplateMarket from './SceneTemplateMarket'
+
+type AnyObj = Record<string, unknown>
 
 function SceneCanvasInner() {
   const objects = useSceneStore((s) => s.objects)
   const edges = useSceneStore((s) => s.edges)
+  const objectStatus = useSceneStore((s) => s.objectStatus)
   const onNodesChange = useSceneStore((s) => s.onNodesChange)
   const onEdgesChange = useSceneStore((s) => s.onEdgesChange)
   const onConnect = useSceneStore((s) => s.onConnect)
@@ -39,6 +45,23 @@ function SceneCanvasInner() {
   const undo = useSceneStore((s) => s.undo)
   const redo = useSceneStore((s) => s.redo)
   const { screenToFlowPosition } = useReactFlow()
+
+  // 语义连线（V2.8）：每条边用 source 节点实例色；端点节点运行中时加蚂蚁线动画
+  const coloredEdges = useMemo(() => {
+    const byId = new Map(objects.map((o) => [o.id, o]))
+    return edges.map((e) => {
+      const src = byId.get(e.source)
+      const srcType = String(((src?.data as AnyObj)?.objectType) || 'text')
+      const srcMeta = useSceneStore.getState().metaOf(srcType)
+      const color = nodeInstanceColor(srcType, e.source, srcMeta.color)
+      const running = objectStatus[e.source] === 'running' || objectStatus[e.target] === 'running'
+      return {
+        ...e,
+        style: { ...(e.style || {}), stroke: color, strokeWidth: 2.5 },
+        className: running ? 'scene-edge-anim' : undefined,
+      }
+    })
+  }, [edges, objects, objectStatus])
 
   const [filmBusy, setFilmBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -105,12 +128,11 @@ function SceneCanvasInner() {
     <div className="flex h-full w-full">
       <SceneSidebar />
 
-      <div className="relative min-w-0 flex-1" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-        {currentSceneId ? (
+      <div className="relative min-w-0 flex-1" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>        {currentSceneId ? (
           <>
             <ReactFlow
               nodes={objects}
-              edges={edges}
+              edges={coloredEdges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
@@ -211,6 +233,16 @@ function SceneCanvasInner() {
       {currentSceneId && typeDef && (
         <div className="pointer-events-none absolute left-1/2 top-1 z-10 max-w-md -translate-x-1/2 truncate rounded-full bg-panel/70 px-3 py-1 text-[10px] text-ink-3 backdrop-blur-md">
           {typeDef.description}
+        </div>
+      )}
+
+      {/* 编辑弹窗（V2.8：内容优先，编辑收敛到弹窗） */}
+      <SceneNodeModal />
+
+      {/* 营销模板市场（电商物料场景：按平台分类一键铺入） */}
+      {currentSceneId && typeDef?.id === 'ecommerce-material' && (
+        <div className="absolute bottom-24 right-4 z-20">
+          <SceneTemplateMarket />
         </div>
       )}
     </div>
