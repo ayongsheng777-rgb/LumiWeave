@@ -436,6 +436,36 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 `docker compose exec -T backend sh -c "rm -f /app/verify_*.py && cd /app/data/uploads && rm -f clip_*.mp4 concat_*.txt deep_vision.mp4 film_*.jpg final_*.mp4 test_*.mp4"`
 本地 `tmp/verify_*.py` 是验收脚本源（gitignored，保留），任务清单与 AGENTS.md 引用的也是它们。
 
+## 一·二十四、V2.8：场景画布 UI 重构 + 画布精简 + 电商物料增强（2026-08-28）
+
+按《UI UX 美化与重构指导文档.md》拍板实施（阿勇确认：A 彻底弹窗化 / 角色锁定做 / 不做局部重绘 / 连线按节点实例色 / 标题按分类色 / 工作流画布跟着改；专业场景画布后续不动）：
+
+**① 场景画布（SceneCanvas）UI 重构**
+- 节点外壳 `SceneObjectNode` 改**内容优先**：主体只展示结果（大图/视频/音频/剧本排版）+ 提示词 2 行摘要（点击展开）；编辑全部收敛到弹窗
+- `SceneNodeModal`（可拖拽弹窗，点外/Esc 关，Zustand 管 modalNodeId）；`SceneNodeEditPanel` 承载全部编辑（6 编辑器 + 通用字段 + 动作按钮，从节点迁移）
+- `SceneHoverToolbar`（悬停/选中浮现胶囊毛玻璃：润色/重生成/角色锁定/导出/设置）
+- 语义连线：`sceneColors.ts` 节点标题按分类色（🟡视觉 image/video / 🔵逻辑 text/story/director/product / 🟢音频 audio），连线=source 节点实例色（类型色相+id 哈希 HSL 偏移），节点运行中相连线蚂蚁线（.scene-edge-anim）
+- **角色锁定**：图片节点 `locked_ref` 标记 → 图片/视频生成时自动收集场景内锁定图作 `reference_images`（跨分镜一致性，走 Qwen-Image-Edit 多图参考）
+
+**② 反馈三项修复**
+- 动作区精简：`sceneActionsFor` 只保留 product 的 6 个动作（analyze_product/generate_strategy/主图/场景图/海报/详情页/batch_generate）；registry ecommerce-drama actions 移除旧体系 generate_characters/generate_scenes/generate_storyboard/generate_shots
+- 图片节点加分辨率（480P/720P/1K/2K）+ 宽高比（1:1 4:3 3:4 16:9 9:16 3:2 2:3 21:9），`calcImageSize` 按短边×比例算 size
+- 视频节点加 480P、技能库/知识库下拉（注入 AI 优化/配音稿/音效）、AI 配音稿/音效自定义要求输入框（dialogue_req/sfx_req）
+
+**③ 工作流/无限画布精简**
+- 移除工作流 NodeShell 悬浮工具栏（⚙️ 改节点内展开 expandConfig）；整体移除右侧 `NodeConfigDrawer` 抽屉 + LjPropertyPanel；两画布选中不再自动弹抽屉
+- 无限画布 CanvasCore 移除左 NodePalette、右 LayerPanel/CanvasInspector/FAB；节点库统一用 `FloatingToolbar`（mode!=='scene' 显示，infinite 模式分派 canvasStore.addObject），位置左上角向下展开
+- 删除 5 个组件文件：NodeConfigDrawer/LjPropertyPanel/NodePalette/LayerPanel/CanvasInspector
+
+**④ 电商物料场景增强（ecommerce-material，按结构化 Visual Production Board 方案）**
+- 营销策略：`_act_generate_strategy` → product.payload.strategy（核心/辅助卖点/人群/渠道/内容策略/文案基调）
+- 结构化视觉规划板：`_act_generate_visual_board`（VISUAL_BOARD_SYSTEM 提示词 → 完整 JSON board/campaign/product/characters/scenes/props/lighting/moods/audio/shots/keywords/render_tasks，实体带 ID+keywords）写回 story.payload.board；`MarketingBoard.tsx` 按 Production Board 版式渲染；SceneStoryEditor「制作板」视图仅电商物料场景显示（canBoard=typeDef.actions 判断）
+- 模板市场：templates.py 12 模板加 platform（淘宝/抖音/小红书/通用）；`SceneTemplateMarket.tsx` 平台分类+一键应用；SceneCanvas 右下浮动按钮
+- 营销 MCP：`mcp/tools/marketing_tools.py` 6 工具（create_project/generate_strategy/generate_storyboard/generate_visual_board/render_campaign/export_assets）
+- 🔴 坑：mcp 服务有独立镜像 lumiweave-mcp（build backend 不含）→ 改 mcp 代码须 `docker compose build mcp && up -d --force-recreate mcp`；tool_registry 在 `import app.mcp.server` 后才填充
+
+**⑤ 关键文件**：场景 `scene/`（SceneObjectNode/SceneNodeModal/SceneNodeEditPanel/SceneHoverToolbar/MarketingBoard/SceneTemplateMarket/sceneColors/sceneScript）；样式 `styles/index.css`（z-index 规范 + hover 工具栏显隐 + 蚂蚁线）；后端 `scene/actions.py`（+2 动作）/`scene/templates.py`/`mcp/tools/marketing_tools.py`
+
 ## 三、启动 / 重启 SOP
 
 ```bash
