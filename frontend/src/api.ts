@@ -887,6 +887,7 @@ export interface MarketingTemplate {
   id: string
   name: string
   category: string
+  platform: string
   description: string
   object_types: string[]
   actions: string[]

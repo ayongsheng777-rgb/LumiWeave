@@ -13,6 +13,7 @@ from app.scene import service
 TEMPLATES: dict[str, dict[str, Any]] = {
     "main-image": {
         "name": "主图速出",
+        "platform": "通用",
         "category": "ecommerce-material",
         "description": "商品 + 提示词 → 一键生成 3 张主图",
         "objects": [
@@ -24,6 +25,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "scene-image": {
         "name": "场景图生成",
+        "platform": "通用",
         "category": "ecommerce-material",
         "description": "商品 + 使用场景 → 生活化场景图",
         "objects": [
@@ -35,6 +37,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "poster": {
         "name": "营销海报",
+        "platform": "通用",
         "category": "ecommerce-material",
         "description": "商品 + 卖点 → 竖版海报",
         "objects": [
@@ -45,6 +48,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "detail-page": {
         "name": "详情页",
+        "platform": "淘宝",
         "category": "ecommerce-material",
         "description": "商品 → AI 卖点 + 模块化详情页文案",
         "objects": [
@@ -55,6 +59,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "vertical-video": {
         "name": "9:16 短视频",
+        "platform": "抖音",
         "category": "ecommerce-material",
         "description": "商品 + 剧情 → 竖版带货短视频",
         "objects": [
@@ -66,6 +71,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "batch-sku": {
         "name": "批量 SKU",
+        "platform": "淘宝",
         "category": "ecommerce-material",
         "description": "一个商品带 2 个 SKU → 主图/场景图/海报批量生成",
         "objects": [
@@ -77,6 +83,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "selling-points": {
         "name": "卖点提炼",
+        "platform": "通用",
         "category": "ecommerce-material",
         "description": "商品 → AI 提炼 3-5 条核心卖点 + 营销方案",
         "objects": [
@@ -87,6 +94,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "live-script": {
         "name": "直播脚本",
+        "platform": "抖音",
         "category": "ecommerce-material",
         "description": "商品 → AI 生成直播话术脚本",
         "objects": [
@@ -97,6 +105,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "coupon": {
         "name": "优惠券素材",
+        "platform": "淘宝",
         "category": "ecommerce-material",
         "description": "商品 + 优惠信息 → 券面素材",
         "objects": [
@@ -108,6 +117,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "comparison": {
         "name": "对比图",
+        "platform": "通用",
         "category": "ecommerce-material",
         "description": "本品 vs 竞品 → 对比主图",
         "objects": [
@@ -119,6 +129,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "unboxing": {
         "name": "开箱视频",
+        "platform": "抖音",
         "category": "ecommerce-drama",
         "description": "商品 + 分镜 → 开箱短视频",
         "objects": [
@@ -130,6 +141,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "product-card": {
         "name": "商品卡",
+        "platform": "小红书",
         "category": "ecommerce-material",
         "description": "商品 + 主图 + 卖点 → 信息流商品卡",
         "objects": [
@@ -149,6 +161,7 @@ def list_templates(category: str = "") -> list[dict]:
             continue
         out.append({
             "id": tid, "name": t["name"], "category": t.get("category", ""),
+            "platform": t.get("platform", "通用"),
             "description": t.get("description", ""),
             "object_types": [o[0] for o in t.get("objects", [])],
             "actions": t.get("actions", []),

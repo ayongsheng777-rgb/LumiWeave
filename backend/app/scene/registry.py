@@ -103,7 +103,8 @@ registry.register(SceneDefinition(
     description="商品→剧情→图片/视频/音频→导演台统筹→成片。",
     object_types=COMMON_OBJECT_TYPES,
     actions=[
-        "analyze_product", "generate_main_image", "generate_scene_image",
+        "analyze_product", "generate_strategy", "generate_visual_board",
+        "generate_main_image", "generate_scene_image",
         "generate_poster", "generate_detail_page", "batch_generate",
     ],
     toolbar=COMMON_TOOLBAR,
@@ -118,8 +119,7 @@ registry.register(SceneDefinition(
     description="商品→剧情→图片/视频/音频→导演台统筹→成片。",
     object_types=COMMON_OBJECT_TYPES,
     actions=[
-        "generate_story", "generate_characters", "generate_scenes",
-        "generate_storyboard", "generate_shots", "generate_images", "generate_video",
+        "generate_story", "generate_images", "generate_video",
         "generate_voiceover", "generate_music", "generate_subtitle", "compose_final",
     ],
     toolbar=COMMON_TOOLBAR,
