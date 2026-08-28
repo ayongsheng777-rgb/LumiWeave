@@ -17,7 +17,7 @@ import AiOptimizeBar from './AiOptimizeBar'
 import ErrorBanner from '../components/ErrorBanner'
 import {
   type AnyObj, type ParsedScript, EMPTY_PARSED, isStoryNode,
-  parseCharacters, parsePropsList, parseShotsFromScript, shotDesc,
+  parseCharacters, parsePropsList, parseShotsFromScript, sceneDesc,
   fitsCapability, fitsLlm,
 } from './sceneScript'
 
@@ -137,7 +137,8 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
       const nm = val.match(/^分镜(\d+)/)
       const no = nm ? parseInt(nm[1], 10) : NaN
       const s = mergedShots.find((x) => x.no === no)
-      setDesc(s ? shotDesc(s) : val)
+      // 场景图描述只含场景信息（地点/时间/氛围），不夹带人物动作/对白等
+      setDesc(s ? sceneDesc(s) : val)
     } else {
       setDesc(charDescs[val] || val)
     }
@@ -276,10 +277,14 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     setErrMsg('')
     try {
       // 角色锁定参考源（V2.8）：收集场景内 locked_ref 图片作为参考图，跨分镜保持一致性
+      // 问题4 修复：只取与当前类别相同的参考图（生成场景图不注入人物/道具图，避免夹带其它内容）
       const refs = objects
         .filter((o) => {
           const p = (o?.data as AnyObj)?.payload as AnyObj | undefined
-          return !!p && p.locked_ref === true && String(p.url || p.main_image || '').trim()
+          if (!p || p.locked_ref !== true) return false
+          if (!String(p.url || p.main_image || '').trim()) return false
+          // 同类别才作为参考：人物→人物 / 场景→场景 / 道具→道具
+          return category ? String(p.purpose ?? '') === category : true
         })
         .map((o) => {
           const p = (o?.data as AnyObj)?.payload as AnyObj
@@ -641,14 +646,18 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
                 title="选择模型库中的模型（直连，不使用商业接口预设）"
               >
                 <option value="">默认模型（系统自动选）</option>
-                {profiles.filter((p) => fitsCapability(p, 'image')).map((p) =>
-                  p && p.id ? (
+                {profiles.filter((p) => fitsCapability(p, 'image')).map((p) => {
+                  // 问题2：显示实际用于出图的图像模型名（scene_models.image），
+                  // 而不是主模型名（如 DeepSeek-V3 文本名会让人误以为没有图像模型）
+                  const sm = (p as AnyObj)?.scene_models as AnyObj | undefined
+                  const imgModel = String((sm && typeof sm === 'object' ? sm.image : '') ?? '') || String(p.model ?? '')
+                  return p && p.id ? (
                     <option key={p.id} value={p.id}>
                       {String(p.name ?? p.id)}
-                      {p.model ? ` · ${p.model}` : ''}
+                      {imgModel ? ` · ${imgModel}` : ''}
                     </option>
-                  ) : null,
-                )}
+                  ) : null
+                })}
               </select>
             </div>
             <div className="text-[10px] leading-snug text-ink-3">

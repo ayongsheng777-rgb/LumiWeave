@@ -72,14 +72,30 @@ export function isJunkLine(l: string): boolean {
   return false
 }
 
-/** 从剧本解析「人物」：名字 → 完整描述行 */
+/** 从剧本解析「人物」：名字 → 完整描述行。
+ * 兼容两种格式：
+ *   A. 子行列表：- 人物：\n  - 林晓（女，28岁）：...
+ *   B. 同行列表：- 人物：林晓、陈默（同行的道具/分镜解析一直正常，人物此前漏掉）
+ */
 export function parseCharacters(script: string): Record<string, string> {
   const desc: Record<string, string> = {}
   const sec = sectionOf(script, '人物', ['道具', '分镜'])
   if (!sec) return desc
   for (const raw of sec.split('\n')) {
     let l = raw.trim().replace(/^[-*]\s*/, '')
-    if (!l || l.startsWith('人物')) continue
+    if (!l) continue
+    // 同行格式：- 人物：林晓（女，28岁）、陈默 → 用顶层拆分逐个取名（括号内顿号不拆）
+    if (l.startsWith('人物')) {
+      const rest = l.replace(/^人物[：:]\s*/, '').trim()
+      if (rest) {
+        for (const piece of splitTopLevel(rest)) {
+          const nm = (piece.split(/[（(]/)[0] || '').trim()
+          if (!nm || nm.length > 12) continue
+          if (!desc[nm] || piece.length > desc[nm].length) desc[nm] = piece
+        }
+      }
+      continue
+    }
     if (isJunkLine(l)) continue
     l = l.replace(/^\s*\d+[.、）)]?\s*/, '')
     const name = (l.split(/[：:（(]/)[0] || '').trim()
@@ -190,6 +206,21 @@ export function shotDesc(s: ParsedShot): string {
   ]
     .filter(Boolean)
     .join('\n')
+}
+
+/** 纯场景描述（生成场景图用）：只含 地点/时间/氛围，不含目标/时长/人物动作等夹带内容 */
+export function sceneDesc(s: ParsedShot): string {
+  const base = [s.location || '', s.time || ''].filter(Boolean).join('，')
+  const parts = [base]
+  if (s.mood) parts.push(`氛围：${s.mood}`)
+  return parts.filter(Boolean).join('\n')
+}
+
+/** 按 URL 扩展名判断图片（问题3：图片地址误进 <video controls> 会显示无效播放器） */
+export function isImageUrl(url: string): boolean {
+  if (!url) return false
+  const clean = String(url).split('?')[0].split('#')[0].toLowerCase()
+  return /\.(jpe?g|png|webp|gif|bmp|avif)$/.test(clean)
 }
 
 /** LLM 用途匹配（AI 重写/润色等文本任务）：未设场景或含 prompt/general 均可用 */

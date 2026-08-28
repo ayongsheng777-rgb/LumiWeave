@@ -11,7 +11,7 @@ import { Lock, LockOpen, Trash2, Copy, ChevronDown, ChevronUp, Play, Loader2, Wa
 import { useSceneStore } from '../store/sceneStore'
 import { useUiStore } from '../store/uiStore'
 import { sceneRunAction } from '../api'
-import { isStoryNode } from './sceneScript'
+import { isStoryNode, isImageUrl } from './sceneScript'
 import { classifyFlow, FLOW_TITLE_COLORS } from './sceneColors'
 import SceneHoverToolbar from './SceneHoverToolbar'
 import { StoryboardTable, STORYBOARD_TABLE_W } from './StoryboardView'
@@ -260,7 +260,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
 
         {/* 主体：内容优先 —— 展示生成结果 */}
         <div className="nowheel min-h-0 flex-1 overflow-y-auto p-2">
-          {videoUrl ? (
+          {videoUrl && objectType === 'video' && !isImageUrl(videoUrl) ? (
             <div className="relative mb-1.5 w-full overflow-hidden rounded-lg bg-black">
               {Boolean(payload.shot_no) && (
                 <span className="absolute left-1.5 top-1.5 z-10 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">

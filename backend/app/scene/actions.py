@@ -508,6 +508,29 @@ def _parse_script(script: str) -> dict:
                     name = re.split(r"[（(]", line)[0].strip()
                     if name and name not in parsed["characters"]:
                         parsed["characters"].append(name)
+        # 同行格式兜底：- 人物：林晓（女，28岁）、陈默（子行列表匹配不到时用；括号内顿号不拆）
+        if not parsed["characters"]:
+            mp1 = re.search(r"-\s*人物[：:]\s*([^\n]+)", block)
+            if mp1:
+                pieces: list[str] = []
+                cur, depth = "", 0
+                for ch in mp1.group(1).strip():
+                    if ch in "（(":
+                        depth += 1
+                    if ch in "）)":
+                        depth -= 1
+                    if ch in "、,，" and depth == 0:
+                        if cur.strip():
+                            pieces.append(cur.strip())
+                        cur = ""
+                    else:
+                        cur += ch
+                if cur.strip():
+                    pieces.append(cur.strip())
+                for piece in pieces:
+                    name = re.split(r"[（(]", piece)[0].strip()
+                    if name and name not in parsed["characters"]:
+                        parsed["characters"].append(name)
         mp = re.search(r"-\s*道具[：:]\s*(.+)", block)
         if mp:
             raw = mp.group(1)

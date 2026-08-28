@@ -509,6 +509,26 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 - `_llm_json` 加 `max_tokens` 参数（默认 2000 不变）；`_act_generate_visual_board` 用 8000 + 解析失败切 `_siliconflow_profile()` 重试一次 + 失败返回明确 error
 - 🔴 坑：docker exec 新进程不触发 lifespan → AI_OVERRIDES/CUSTOM_MODELS 未加载 → active_profile 落回默认（无 key）→ 假报 INVALID_API_KEY；验证脚本开头须 `load_overrides()+load_custom_models()`
 
+## 一·二十七、影视复刻拉片 4 问题修复（2026-08-28，前后端已重建上线）
+
+拉片场景回归发现并修复 4 个问题（场景画布 SceneImageEditor / SceneObjectNode / SceneVideoEditor + 剧本解析）：
+
+**① 人物索引为空（道具/分镜正常）**：剧本 `- 人物：林晓（女，28岁）、陈默` 同行格式解析不出（前端 `parseCharacters` 与后端 `_parse_script` 只认"子行列表"格式，同行整行被跳过）
+- 前端 `sceneScript.ts parseCharacters`：加同行分支——`l.startsWith('人物')` 时用 `splitTopLevel`（括号保护）逐个取名
+- 后端 `scene/actions.py _parse_script`：加同行兜底——`if not characters` 时 `re.search(r"-\s*人物[：:]\s*([^\n]+)")` + 括号保护字符流拆分（🔴 不能 `re.split(r"[、,，]")`，`28岁` 里的顿号会被误拆成名字）
+
+**② 模型下拉"没有图像模型"**：真因是显示名误导——下拉显示 `p.name · p.model`（主模型名如 deepseek-ai/DeepSeek-V3，像文本模型），实际出图模型在 `scene_models.image`
+- `SceneImageEditor` 模型下拉改显示 `scene_models.image ?? model`；`SceneVideoEditor` 改显示 `scene_models.video ?? model`
+
+**③ 图片节点带播放功能**：媒体渲染只按节点类型判断，图片 URL（如生成回退图）被塞进 `<video controls>` → 显示无效播放器
+- 新增 `sceneScript.ts isImageUrl(url)`（按扩展名判断）；`SceneObjectNode` 播放器仅 `objectType==='video' && !isImageUrl(videoUrl)` 渲染；`SceneVideoEditor` 结果区图片 URL 用 `<img>` 渲染
+
+**④ 场景提示词夹杂其它内容**：场景描述组装 `shotDesc` 含目标/时长/画面镜头（夹带人物动作）
+- 新增 `sceneScript.ts sceneDesc(s)`：只输出 地点+时间+氛围；`SceneImageEditor` 场景分类选中用它
+- 生成参考图按类别过滤：`locked_ref` 只取 `purpose === category`（场景图不注入人物/道具参考图，"其它参考图生也是同理"）
+
+**验证**：`_parse_script` 容器内实测输出 `['林晓','陈默','老张']`（括号保护生效）；tsc 0 错、vite build 过；frontend 200 / backend 登录 200。
+
 ## 三、启动 / 重启 SOP
 
 ```bash

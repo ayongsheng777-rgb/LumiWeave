@@ -12,7 +12,7 @@ import { useUiStore } from '../store/uiStore'
 import { aiChat, getProfiles, getSkills, promptLearningList, renderMedia } from '../api'
 import {
   type AnyObj, type ParsedShot,
-  isStoryNode, parseShotsFromScript, shotDesc,
+  isStoryNode, parseShotsFromScript, shotDesc, isImageUrl,
   fitsCapability,
 } from './sceneScript'
 import ErrorBanner from '../components/ErrorBanner'
@@ -324,10 +324,14 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto nowheel">
-      {/* 视频预览 + 操作 */}
+      {/* 视频预览 + 操作（问题3：结果是图片 URL 时按图片展示，不渲染无效的视频播放器） */}
       {videoUrl && (
         <div className="relative overflow-hidden rounded-lg border border-edge bg-black/30">
-          <video src={videoUrl} controls className="max-h-44 w-full object-contain" />
+          {isImageUrl(videoUrl) ? (
+            <img src={videoUrl} alt="生成结果（图片）" className="max-h-44 w-full cursor-zoom-in object-contain" onClick={() => openLightbox(videoUrl)} />
+          ) : (
+            <video src={videoUrl} controls className="max-h-44 w-full object-contain" />
+          )}
           <div className="absolute right-1 top-1 flex gap-1">
             <button className="nodrag rounded bg-black/60 p-1 text-white hover:bg-black/80" title="下载" onClick={download}>
               <Download size={13} />
@@ -459,14 +463,17 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
             title="选择模型库中的视频模型"
           >
             <option value="">默认模型（系统自动选）</option>
-            {profiles.filter((p) => fitsCapability(p, 'video')).map((p) =>
-              p && p.id ? (
+            {profiles.filter((p) => fitsCapability(p, 'video')).map((p) => {
+              // 问题2：显示实际用于生视频的模型名（scene_models.video），而非文本主模型名
+              const sm = (p as AnyObj)?.scene_models as AnyObj | undefined
+              const vidModel = String((sm && typeof sm === 'object' ? sm.video : '') ?? '') || String(p.model ?? '')
+              return p && p.id ? (
                 <option key={p.id} value={p.id}>
                   {String(p.name ?? p.id)}
-                  {p.model ? ` · ${p.model}` : ''}
+                  {vidModel ? ` · ${vidModel}` : ''}
                 </option>
-              ) : null,
-            )}
+              ) : null
+            })}
           </select>
         </div>
       </div>
