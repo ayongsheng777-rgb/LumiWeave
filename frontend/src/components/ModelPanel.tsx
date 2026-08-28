@@ -26,7 +26,11 @@ const EMPTY_FORM = { id: '', name: '', model: '', base_url: '', api_key: '', pro
 const SCENES: { key: string; label: string }[] = [
   { key: 'prompt', label: '提示词生成' },
   { key: 'image', label: '图片生成' },
+  { key: 'text2image', label: '文生图' },
+  { key: 'image2image', label: '图生图' },
   { key: 'video', label: '视频生成' },
+  { key: 'video_understand', label: '视频解析理解' },
+  { key: 'image_understand', label: '图片理解' },
   { key: 'audio', label: '音频生成' },
   { key: 'kb', label: '知识库' },
   { key: 'skills', label: '技能库' },

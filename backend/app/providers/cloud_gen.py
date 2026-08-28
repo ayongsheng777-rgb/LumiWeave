@@ -115,8 +115,9 @@ async def cloud_image_generate(
     refs = [r for r in (reference_images or []) if r and str(r).strip()]
 
     # 图生图（多图参考合成）：走 Qwen-Image-Edit-2509，image 为数组
+    # 🔴 纯文生模型（如 Qwen/Qwen-Image）不支持 image 参数 → 带参考图时自动切 Edit 版
     if refs:
-        model_name = model or "Qwen/Qwen-Image-Edit-2509"
+        model_name = model if ("edit" in str(model).lower()) else "Qwen/Qwen-Image-Edit-2509"
         logs.append({"step": "provider", "message": f"云端图生图（参考合成）· {prov_name}", "provider_id": provider_id, "endpoint": endpoint})
         logs.append({"step": "model", "message": f"模型：{model_name}", "model": model_name})
         logs.append({"step": "refs", "message": f"参考图 {len(refs)} 张", "count": len(refs)})

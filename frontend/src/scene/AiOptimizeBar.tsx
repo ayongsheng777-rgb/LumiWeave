@@ -30,7 +30,9 @@ export default function AiOptimizeBar({
   system = DEFAULT_SYSTEM,
   getContext,
   quickReqs,
+  quickTemplates,
   disabled,
+  requireInput = false,
 }: {
   id: string
   target: 'prompt' | 'desc' | 'text'
@@ -38,7 +40,11 @@ export default function AiOptimizeBar({
   system?: string
   getContext?: () => string
   quickReqs?: string[]
+  /** 快捷标签 → 完整指令模板（界面重构）：点选标签执行时展开为具体指令，避免模型忽略关键词 */
+  quickTemplates?: Record<string, string>
   disabled?: boolean
+  /** 非空校验（界面重构文档）：为 true 时要求框为空点执行 → 拦截并警告，不触发接口 */
+  requireInput?: boolean
 }) {
   const patchObject = useSceneStore((s) => s.patchObject)
   const obj = useSceneStore((s) => s.objects.find((o) => o.id === id))
@@ -50,6 +56,7 @@ export default function AiOptimizeBar({
   const [aiProfileId, setAiProfileId] = useState(String(payload.ai_profile_id ?? payload.profile_id ?? ''))
   const [req, setReq] = useState('')
   const [running, setRunning] = useState(false)
+  const [errMsg, setErrMsg] = useState('')
 
   useEffect(() => {
     getProfiles()
@@ -64,12 +71,25 @@ export default function AiOptimizeBar({
 
   const run = async () => {
     if (running || disabled || !current.trim()) return
+    // 非空校验（界面重构文档）：要求框为空 → 拦截并警告，不触发接口
+    if (requireInput && !req.trim()) {
+      setErrMsg(`请先输入${label}要求，内容不能为空`)
+      return
+    }
+    setErrMsg('')
     setRunning(true)
     try {
+      // 快捷标签模板展开：点选的标签展开为完整指令（如「细节特写」→ 局部特写描述），100% 生效
+      const picked = req
+        .split(/[、,，]/)
+        .map((x) => x.trim())
+        .filter(Boolean)
+      const expandedReq = picked.map((p) => (quickTemplates && quickTemplates[p] ? quickTemplates[p] : p)).join('；')
+      const userReq = req.trim() ? `【用户要求】${expandedReq}` : '【用户要求】优化表达，使其更具体、专业、可直接使用'
       const parts = [
         current.trim() ? `【现有内容】\n${current.trim()}` : '',
         getContext ? getContext() : '',
-        req.trim() ? `【用户要求】${req.trim()}` : '【用户要求】优化表达，使其更具体、专业、可直接使用',
+        userReq,
       ].filter(Boolean).join('\n')
       const res = await aiChat({
         system,
@@ -177,6 +197,9 @@ export default function AiOptimizeBar({
           <Send size={11} className="opacity-70" />
         </button>
       </div>
+      {errMsg && (
+        <div className="rounded border border-red-500/20 bg-red-500/10 px-2 py-1 text-[10px] text-red-400">{errMsg}</div>
+      )}
     </div>
   )
 }

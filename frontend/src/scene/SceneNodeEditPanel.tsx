@@ -206,9 +206,9 @@ function InlineAiBar({
       )}
       <div className="flex items-end gap-1.5">
         <textarea
-          className="nodrag nowheel min-h-8 max-h-32 min-w-0 flex-1 resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
+          className="nodrag nowheel min-h-8 max-h-40 min-w-0 flex-1 resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
           placeholder="告诉我写什么，回车发送（Shift+Enter 换行）"
-          rows={Math.min(4, Math.max(1, prompt.split('\n').length))}
+          rows={Math.min(12, Math.max(1, prompt.split('\n').length))}
           value={prompt}
           disabled={disabled || running}
           onChange={(e) => setPrompt(e.target.value)}
@@ -635,9 +635,9 @@ export default function SceneNodeEditPanel({ id }: { id: string }) {
                   <span className="mb-1 block text-[11px] text-ink-3">{String(label)}（一行一项）</span>
                   <textarea
                     className="w-full resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
-                    rows={2}
-                    disabled={locked}
-                    value={arr.map((x) => (typeof x === 'object' ? JSON.stringify(x) : String(x))).join('\n')}
+          rows={Math.min(30, Math.max(2, String(val ?? '').split('\n').length))}
+          disabled={locked}
+          value={arr.map((x) => (typeof x === 'object' ? JSON.stringify(x) : String(x))).join('\n')}
                     onChange={(e) =>
                       patchObject(id, { [key]: e.target.value.split('\n').map((l) => l.trim()).filter(Boolean) })
                     }
@@ -720,7 +720,7 @@ export default function SceneNodeEditPanel({ id }: { id: string }) {
                   <span className="mb-1 block text-[11px] text-ink-3">{String(label)}（JSON）</span>
                   <textarea
                     className="w-full resize-y rounded-md border border-edge bg-input px-2 py-1 font-mono text-sm text-ink outline-none focus:border-brand-500"
-                    rows={2}
+                    rows={Math.min(30, Math.max(2, (JSON.stringify(val, null, 2) || '').split('\n').length))}
                     disabled={locked}
                     defaultValue={JSON.stringify(val, null, 2)}
                     onBlur={(e) => {

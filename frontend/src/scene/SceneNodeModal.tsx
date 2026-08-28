@@ -62,7 +62,10 @@ export default function SceneNodeModal() {
   const objects = useSceneStore((s) => s.objects)
   const metaOf = useSceneStore((s) => s.metaOf)
   const boxRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  // 文本自适应（界面重构）：打开时按内容自动算初始高度（min 320 / 上限 80vh），仍可手动拖调
+  const [autoH, setAutoH] = useState<number | undefined>(undefined)
 
   const obj = objects.find((o) => o.id === modalNodeId)
   const payload = ((obj?.data as Payload)?.payload || {}) as Payload
@@ -80,14 +83,25 @@ export default function SceneNodeModal() {
     return () => window.removeEventListener('keydown', onKey)
   }, [modalNodeId, closeNodeModal])
 
-  // 打开时定位（顶部留出余量，配合 max-h 保证底部内容不被遮挡；可被拖拽）
+  // 打开时定位 + 按内容自动撑高
   useEffect(() => {
     if (modalNodeId) {
       setPos({
         left: Math.max(16, Math.round(window.innerWidth / 2 - 300)),
         top: Math.max(16, Math.round(window.innerHeight * 0.06)),
       })
+      // 等一帧内容渲染后测量：内容高 > 当前高 → 撑到内容高（上限 80vh）
+      const timer = window.setTimeout(() => {
+        const el = contentRef.current
+        if (el) {
+          const contentH = el.scrollHeight
+          const maxH = Math.round(window.innerHeight * 0.8)
+          setAutoH(Math.min(Math.max(contentH + 8, 320), maxH))
+        }
+      }, 120)
+      return () => window.clearTimeout(timer)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modalNodeId])
 
   useDrag(boxRef, !!modalNodeId)
@@ -120,8 +134,9 @@ export default function SceneNodeModal() {
           width: '640px',
           minWidth: 420,
           minHeight: 320,
-          maxWidth: 'calc(100vw - 48px)',
+          height: autoH,
           maxHeight: 'calc(100vh - 48px)',
+          maxWidth: 'calc(100vw - 48px)',
           // V2.9f：可拖右下角调整大小（CSS resize），内容超高时内部滚动
           resize: 'both',
           overflow: 'hidden',
@@ -156,7 +171,7 @@ export default function SceneNodeModal() {
           </button>
         </div>
         {/* 编辑面板（V2.9f：外层滚动保证最底部内容完整可见） */}
-        <div className="min-h-0 flex-1 overflow-y-auto nowheel">
+        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto nowheel">
           <SceneNodeEditPanel id={modalNodeId} />
         </div>
       </div>

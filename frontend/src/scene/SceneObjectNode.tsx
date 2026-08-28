@@ -5,7 +5,7 @@
  * 编辑能力全部收敛到弹窗（SceneNodeModal），由双击节点或悬浮工具栏（SceneHoverToolbar）打开。
  * 标题色按数据流分类（视觉橙黄/逻辑蓝紫/音频绿），连线色由 SceneCanvas 按 source 节点实例色渲染。
  */
-import { memo, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react'
 import { Lock, LockOpen, Trash2, Copy, ChevronDown, ChevronUp, Play, Loader2, Wand2 } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
@@ -109,6 +109,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
   const duplicateObjects = useSceneStore((s) => s.duplicateObjects)
   const openNodeModal = useSceneStore((s) => s.openNodeModal)
   const patchObject = useSceneStore((s) => s.patchObject)
+  const resizeObject = useSceneStore((s) => s.resizeObject)
   const status = useSceneStore((s) => s.objectStatus[id])
   const objects = useSceneStore((s) => s.objects)
   const edges = useSceneStore((s) => s.edges)
@@ -122,6 +123,24 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
   const [expanded, setExpanded] = useState(false)
   const [genBusy, setGenBusy] = useState(false)
   const [genErr, setGenErr] = useState('')
+  // 文本自适应：内容变化时自动撑高节点（上限 60vh），仍可手动拖拽调整
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const maybeGrow = () => {
+      const maxH = Math.round(window.innerHeight * 0.6)
+      // 内容被截断（scrollHeight > clientHeight）→ 撑高到内容高度（≤ 60vh）
+      if (el.scrollHeight > el.clientHeight + 24) {
+        resizeObject(id, el.offsetWidth || 300, Math.min(el.scrollHeight + 48, maxH))
+      }
+    }
+    maybeGrow()
+    const mo = new MutationObserver(maybeGrow)
+    mo.observe(el, { childList: true, subtree: true, characterData: true })
+    return () => mo.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, summary, objectType, videoUrl, imageUrl])
 
   // 导演台骨架节点：待生成（无 url 但有 prompt）→ 节点上直接出图/出视频并回填
   const sceneId = useSceneStore((s) => s.currentSceneId)
@@ -258,8 +277,8 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
           </button>
         </div>
 
-        {/* 主体：内容优先 —— 展示生成结果 */}
-        <div className="nowheel min-h-0 flex-1 overflow-y-auto p-2">
+        {/* 主体：内容优先 —— 展示生成结果（文本自适应：bodyRef 测量内容自动撑高节点） */}
+        <div ref={bodyRef} className="nowheel min-h-0 flex-1 overflow-y-auto p-2">
           {videoUrl && objectType === 'video' && !isImageUrl(videoUrl) ? (
             <div className="relative mb-1.5 w-full overflow-hidden rounded-lg bg-black">
               {Boolean(payload.shot_no) && (
@@ -289,7 +308,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
                   </span>
                 )}
               </div>
-              <div className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words rounded bg-soft px-2 py-1.5 text-[11px] leading-relaxed text-ink-2">
+              <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words rounded bg-soft px-2 py-1.5 text-[11px] leading-relaxed text-ink-2">
                 {directorStory.script || '（剧情节点尚未生成剧本）'}
               </div>
             </div>

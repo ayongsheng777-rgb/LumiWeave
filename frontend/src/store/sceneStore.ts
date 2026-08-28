@@ -213,6 +213,7 @@ interface SceneState {
 
   addObject: (objectType: string, position: { x: number; y: number }) => Promise<void>
   patchObject: (id: string, patch: Record<string, unknown>) => void
+  resizeObject: (id: string, w: number, h: number) => void
   persistGeometry: (id: string) => void
   deleteObjects: (ids: string[]) => Promise<void>
   toggleLock: (id: string) => void
@@ -475,6 +476,21 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       width: Math.round(Number(node.width ?? style.width ?? 300)),
       height: Math.round(Number(node.height ?? style.height ?? 220)),
     })
+  },
+
+  /** 文本自适应（界面重构）：按内容自动撑高节点卡片（仅高度），防抖落库 */
+  resizeObject: (id, w, h) => {
+    const sceneId = get().currentSceneId
+    set((s) => ({
+      objects: s.objects.map((o) =>
+        o.id === id ? { ...o, width: Math.round(w), height: Math.round(h) } : o,
+      ),
+    }))
+    if (sceneId) {
+      debouncePersist(`resize:${id}`, () => {
+        void sceneObjectUpdate(sceneId, id, { width: Math.round(w), height: Math.round(h) })
+      })
+    }
   },
 
   deleteObjects: async (ids) => {

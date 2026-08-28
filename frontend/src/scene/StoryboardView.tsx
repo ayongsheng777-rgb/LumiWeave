@@ -172,7 +172,7 @@ export function StoryboardTable({
     )
   }
   return (
-    <div className="max-h-[560px] overflow-auto nowheel rounded-lg border border-edge">
+    <div className="max-h-[70vh] overflow-auto nowheel rounded-lg border border-edge">
       <div className="min-w-[1480px]">
         {/* 表头（固定，滚动不跟随） */}
         <div className="sticky top-0 z-10 flex items-stretch border-b border-white/10 bg-slate-800 text-[10px] font-semibold text-white dark:bg-slate-800">

@@ -138,11 +138,15 @@ async def auto_best(profile_id: str | None = None) -> dict[str, Any]:
 # 场景 → 模型名关键词（V2.8 按场景优选：image 只优选生图模型、video 只优选视频模型，避免选出无关 LLM）
 _SCENE_KEYWORDS: dict[str, list[str]] = {
     "image": ["image", "flux", "stable-diffusion", "stable_diffusion", "sd3", "sdxl", "qwen-image", "wanx", "dall-e", "dall-e", "kolors", "illustrious", "playground", "t2i", "sd-"],
+    "text2image": ["t2i", "text-to-image", "text2image", "image", "flux", "sdxl", "sd3", "qwen-image", "wanx", "dall-e", "kolors"],
+    "image2image": ["image2image", "i2i", "img2img", "image-edit", "image_edit", "edit", "qwen-image-edit", "inpaint", "control"],
     "video": ["video", "wan", "wanx", "hailuo", "kling", "minimax-video", "runway", "ltx", "cogvideo", "veo", "doubao-video", "t2v", "sora"],
     "audio": ["audio", "tts", "music", "voice", "sing", "speech", "cosyvoice", "minimax-audio", "spark-tts", "gpt-4o-audio"],
     "prompt": ["deepseek", "qwen", "glm", "gpt", "kimi", "moonshot", "gemini", "grok", "hunyuan", "ernie", "doubao", "minimax-text", "llama", "mistral"],
     "kb": ["deepseek", "qwen", "glm", "gpt", "kimi", "gemini", "grok", "hunyuan", "doubao", "llama", "embedding", "bge"],
     "skills": ["deepseek", "qwen", "glm", "gpt", "kimi", "gemini", "grok", "hunyuan", "doubao", "llama"],
+    "video_understand": ["video-llm", "video understanding", "video-understanding", "qwen2.5-vl", "qwen-vl", "gemini", "gpt-4o", "internvl", "vl"],
+    "image_understand": ["vl", "vision", "qwen-vl", "qwen2.5-vl", "gpt-4o", "gemini", "glm-4v", "internvl", "image-understanding", "image understanding"],
 }
 
 
@@ -205,12 +209,14 @@ async def _test_scene_model(profile: dict[str, Any], model: str, scene: str) -> 
     key = (profile.get("api_key") or "").strip()
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
-    if scene in ("prompt", "kb", "skills", "chat", "general", "copywriting"):
+    # 文本类 / 多模态理解类（视频解析理解、图片理解）：chat 实测（与全局优选同款，不额外花钱）
+    if scene in ("prompt", "kb", "skills", "chat", "general", "copywriting", "video_understand", "image_understand"):
         # 文本类：chat 实测（与全局优选同款，不额外花钱）
         r = await _test_one(profile, model, asyncio.Semaphore(1))
         return {"success": bool(r.get("success")), "latency_ms": int(r.get("latency_ms") or 0),
                 "error": str(r.get("error") or "")[:160]}
-    if scene == "image":
+    # 文生图 / 图生图：走图像实测
+    if scene in ("image", "text2image", "image2image"):
         mid = model.lower()
         # 图生图/编辑类模型：必须传 image 参数，文生图实测无意义 → 直接标记可用（scene_models 显式配置才进候选）
         if "edit" in mid:

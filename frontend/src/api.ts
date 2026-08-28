@@ -162,13 +162,14 @@ export async function getSkills() {
 }
 
 // ==================== 知识库 Prompt Learning ====================
+// 🔴 后端挂载前缀是 /api/prompt-kb（此前写成 /prompt-learning 导致 404，知识库全站不可用）
 
 export async function promptLearningList() {
-  return request('GET', '/prompt-learning/list')
+  return request('GET', '/prompt-kb/list')
 }
 
 export async function promptLearningSearch(q: string, k = 5) {
-  return request('GET', `/prompt-learning/search?q=${encodeURIComponent(q)}&k=${k}`)
+  return request('GET', `/prompt-kb/search?q=${encodeURIComponent(q)}&k=${k}`)
 }
 
 export async function getSkillDetail(skillId: string) {
