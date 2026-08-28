@@ -56,8 +56,10 @@ async def _record_usage(scene_id: str, result: Any) -> None:
         pass
 
 
-async def _llm_json(system: str, user: str, *, model_profile: dict | None = None) -> dict | None:
-    r = await _chat_full(system, user, json_mode=True, model_profile=model_profile)
+async def _llm_json(system: str, user: str, *, model_profile: dict | None = None,
+                    max_tokens: int = 2000) -> dict | None:
+    r = await _chat_full(system, user, json_mode=True, model_profile=model_profile,
+                         max_tokens=max_tokens)
     await _record_usage("", r)
     if not r.ok or not r.content:
         return None
@@ -230,12 +232,24 @@ async def _act_generate_visual_board(scene_id: str, obj_ids: list[str], params: 
             continue
         d = obj["data"]
         story_txt = str(d.get("script") or d.get("text") or d.get("summary") or "").strip()
-        r = await _llm_json(VISUAL_BOARD_SYSTEM, f"【商品信息】\n{ctx}\n【剧情/分镜参考（可为空）】\n{story_txt}")
+        # 视觉规划板输出很大（13 组实体 × ID/keywords），实测成功输出可达 15K 字符 ≈ 6000 tokens，
+        # 8000 留足余量；解析失败/空结果时换硅基流动重试一次（2026-08-28 两场景链路检查发现）
+        r = await _llm_json(VISUAL_BOARD_SYSTEM,
+                            f"【商品信息】\n{ctx}\n【剧情/分镜参考（可为空）】\n{story_txt}",
+                            max_tokens=8000)
+        if not r:
+            fb = await _siliconflow_profile()
+            if fb:
+                r = await _llm_json(VISUAL_BOARD_SYSTEM,
+                                    f"【商品信息】\n{ctx}\n【剧情/分镜参考（可为空）】\n{story_txt}",
+                                    model_profile=fb, max_tokens=8000)
         if not r:
             continue
         board = r.get("board") if isinstance(r.get("board"), dict) else r
         await service.update_object(oid, data={**d, "board": board})
         made.append(oid)
+    if not made:
+        return {"ok": False, "error": "视觉规划板生成失败（AI 输出解析失败，请检查 AI 配置后重试）"}
     return {"ok": bool(made), "updated": made,
             "message": f"已生成 {len(made)} 份视觉规划板（结构化，可被各节点按 ID/关键词引用）"}
 

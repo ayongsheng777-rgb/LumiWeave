@@ -498,6 +498,17 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 **⑤ 关键文件**：后端 `director/orchestrator.py`（整体重写，`build_film_skeleton` 供 MCP 复用）/`director/routes.py`/`scene/actions.py`/`scene/registry.py`/`mcp/tools/film_tools.py`；前端 `scene/SceneObjectNode.tsx`/`director/DirectorPanel.tsx`/`scene/SceneNodeEditPanel.tsx`
 **⑥ 验收**：`tmp/verify_director_skeleton.py`（容器内，24/24 绿：20s/4镜→4 镜时长和 20、13 列全字段、image 资产 7 + video 4、无文本节点、连线 22 条、节点生成 action 注册）；`tmp/verify_director_front.js`（puppeteer 端到端：画布 15 节点完整渲染无报错，截图 D:/tmp/skel_canvas.png）
 
+## 一·二十六、另两场景导演台+MCP 链路检查（19/19 绿）+ 修复 visual_board 截断 bug（2026-08-28）
+
+**① 检查结论**（脚本 `tmp/verify_two_scenes.py`，容器内 TOTP 登录）：
+- ecommerce-material：analyze_product → generate_strategy → generate_visual_board → generate_main_image（真实出图）全通；导演台无 story 预期 FAILED（纯商品场景无剧情入口），补 story 后 REVIEWING 可跑
+- ecommerce-drama：generate_story → 导演台骨架（videos/imgs 齐全）→ voiceover/music/subtitle 已注册；compose_final 需"至少 2 个本地视频"（业务前置，云端视频先下载到 /uploads/）
+- MCP：marketing.* 5 工具 + film.* 9 工具注册齐全；film.build_story 指定电商场景也能建骨架
+
+**② 修复 bug（generate_visual_board）**：`_llm_json` 写死 2000 tokens → 视觉板输出实测 15759 字符 ≈ 5000+ tokens 被截断 → 解析失败且 **ok:False 无 error**（routes 兜底"动作执行失败"误导排查）
+- `_llm_json` 加 `max_tokens` 参数（默认 2000 不变）；`_act_generate_visual_board` 用 8000 + 解析失败切 `_siliconflow_profile()` 重试一次 + 失败返回明确 error
+- 🔴 坑：docker exec 新进程不触发 lifespan → AI_OVERRIDES/CUSTOM_MODELS 未加载 → active_profile 落回默认（无 key）→ 假报 INVALID_API_KEY；验证脚本开头须 `load_overrides()+load_custom_models()`
+
 ## 三、启动 / 重启 SOP
 
 ```bash
