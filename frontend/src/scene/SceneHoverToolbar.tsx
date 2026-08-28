@@ -50,7 +50,7 @@ export default function SceneHoverToolbar({ id, objectType, payload }: { id: str
 
   return (
     <div
-      className="scene-hover-toolbar pointer-events-none absolute -top-11 left-1/2 z-30 flex -translate-x-1/2 translate-y-1 items-center gap-0.5 whitespace-nowrap rounded-full border border-edge bg-panel/90 px-1.5 py-1 opacity-0 shadow-lg backdrop-blur-md transition-all duration-200"
+      className="scene-hover-toolbar pointer-events-none absolute -top-11 left-1/2 z-30 flex -translate-x-1/2 translate-y-1 items-center gap-0.5 whitespace-nowrap rounded-full border border-white/50 bg-white/70 px-1.5 py-1 opacity-0 shadow-lg backdrop-blur-lg transition-all duration-200 dark:border-white/10 dark:bg-slate-900/70"
       onClick={(e) => e.stopPropagation()}
     >
       <button className={btn} title="智能润色（AI 优化提示词，在编辑面板内）" onClick={() => openNodeModal(id)}>

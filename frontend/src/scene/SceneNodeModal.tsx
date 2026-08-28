@@ -106,20 +106,20 @@ export default function SceneNodeModal() {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/30"
+      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/20 backdrop-blur-sm"
       style={{ paddingTop: '6vh' }}
       onMouseDown={onBackdrop}
     >
       <div
         ref={boxRef}
-        className="flex w-[640px] max-w-[94vw] flex-col overflow-hidden rounded-2xl border border-edge bg-panel-2 text-[11px] shadow-2xl"
+        className="lw-glass-strong flex w-[640px] max-w-[94vw] flex-col overflow-hidden rounded-[20px] text-[11px] shadow-2xl"
         style={{ left: pos?.left, top: pos?.top, position: 'fixed', maxHeight: 'calc(100vh - 96px)' }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* 头部（拖拽柄） */}
         <div
           data-drag-handle
-          className="flex shrink-0 cursor-grab items-center gap-2 border-b border-edge px-3 py-2 select-none"
+          className="flex shrink-0 cursor-grab items-center gap-2 border-b border-white/30 px-3 py-2 select-none dark:border-white/10"
         >
           <span className="h-3 w-1 shrink-0 rounded-full" style={{ background: meta.color }} />
           <span className="shrink-0 text-sm font-medium" style={{ color: meta.color }}>

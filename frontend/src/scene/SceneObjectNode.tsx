@@ -194,14 +194,14 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
         lineClassName="!border-brand-500"
         handleClassName="!h-2 !w-2 !rounded-sm !border-brand-500 !bg-white"
       />
-      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-none !bg-brand-500" isConnectableStart={false} />
-      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-none !bg-brand-500" isConnectableEnd={false} />
+      <Handle type="target" position={Position.Left} className="!h-3 !w-3 !rounded-full !border-2 !border-white !bg-brand-500 dark:!border-white/30" isConnectableStart={false} />
+      <Handle type="source" position={Position.Right} className="!h-3 !w-3 !rounded-full !border-2 !border-white !bg-brand-500 dark:!border-white/30" isConnectableEnd={false} />
 
       <div
-        className={`canvas-node group flex h-full flex-col overflow-hidden rounded-xl text-[11px] transition ${
+        className={`canvas-node jelly group flex h-full flex-col overflow-hidden rounded-2xl text-[11px] transition ${
           selected ? 'ring-2 ring-[var(--lw-edge-active)]' : ''
         }`}
-        style={{ height: '100%' }}
+        style={{ height: '100%', '--lw-node-tint': titleColor } as React.CSSProperties}
         onContextMenu={onContextMenu}
         onDoubleClick={() => openNodeModal(id)}
         title="双击打开编辑面板"
@@ -209,8 +209,8 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
         {/* 悬浮工具栏（悬停/选中浮现） */}
         <SceneHoverToolbar id={id} objectType={objectType} payload={payload} />
 
-        {/* 标题栏：分类色条 + 类型名 + 状态 + 匹配标签 + 标题 */}
-        <div className="flex shrink-0 items-center gap-1.5 border-b border-edge px-2 py-1.5">
+        {/* 标题栏：分类色条 + 类型名 + 状态 + 匹配标签 + 标题（玻璃内边） */}
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-white/30 px-2 py-1.5 dark:border-white/10">
           <span className="h-3 w-1 shrink-0 rounded-full" style={{ background: titleColor }} />
           <span className="shrink-0 text-[11px] font-medium" style={{ color: titleColor }}>
             {meta.label}
@@ -358,10 +358,10 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
             </div>
           )}
 
-          {/* 提示词极简摘要：2 行截断，点击展开 */}
+          {/* 提示词极简摘要：2 行截断，点击展开（玻璃内衬保证半透明背景上可读） */}
           {summary && (
             <div
-              className="mt-1.5 cursor-pointer rounded-lg border border-edge bg-canvas px-2 py-1.5"
+              className="jelly-inner mt-1.5 cursor-pointer rounded-lg px-2 py-1.5"
               onClick={(e) => {
                 e.stopPropagation()
                 setExpanded((v) => !v)

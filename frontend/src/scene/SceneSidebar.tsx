@@ -52,7 +52,7 @@ export default function SceneSidebar() {
   }
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-[var(--lw-glass-edge)] bg-[var(--lw-glass-bg)] backdrop-blur-md">
+    <aside className="flex w-56 shrink-0 flex-col border-r border-[var(--lw-glass-edge)] bg-[var(--lw-glass-bg)] backdrop-blur-lg">
       {/* 标题 */}
       <div className="flex items-center justify-between border-b border-edge px-3 py-2">
         <span className="text-xs font-medium text-ink">专业场景</span>

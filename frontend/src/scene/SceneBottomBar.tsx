@@ -58,7 +58,7 @@ export default function SceneBottomBar() {
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex flex-col items-center">
       {/* 展开的内容面板 */}
       {open && (
-        <div className="nowheel pointer-events-auto mb-1 w-[min(96%,1100px)] overflow-hidden rounded-2xl border border-edge bg-panel/95 shadow-node-dark backdrop-blur-md">
+        <div className="nowheel pointer-events-auto mb-1 w-[min(96%,1100px)] overflow-hidden rounded-2xl border border-white/40 bg-white/70 shadow-xl backdrop-blur-lg dark:border-white/10 dark:bg-slate-900/70">
           <div className="max-h-56 overflow-y-auto p-3">
             {/* ── 对象页签 ── */}
             {tab === 'object' && (

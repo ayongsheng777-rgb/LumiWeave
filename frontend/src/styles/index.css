@@ -39,6 +39,14 @@
   --lw-glass-edge: rgba(255, 255, 255, 0.6);   /* 玻璃边 */
   --lw-glow: none;                              /* 明色不发散光 */
   --lw-toast-bg: rgba(255, 255, 255, 0.92);    /* 报错条底 */
+
+  /* ===== 果冻皮肤（V2.9 Glassmorphism） ===== */
+  --lw-tint-pct: 50%;                  /* 节点类型色透明背景：浅色 50% */
+  --lw-jelly-blur: 16px;               /* 毛玻璃模糊半径 */
+  --lw-glass-strong-bg: rgba(255, 255, 255, 0.62);   /* 强玻璃底（弹窗/悬浮条） */
+  --lw-glass-strong-edge: rgba(255, 255, 255, 0.55); /* 强玻璃边（浅色=白高光） */
+  --lw-input-glass: rgba(255, 255, 255, 0.55);       /* 表单玻璃内衬底 */
+  --lw-node-rounded: 16px;             /* 节点圆角 */
 }
 
 .dark {
@@ -74,6 +82,14 @@
   --lw-glass-edge: rgba(255, 255, 255, 0.08);
   --lw-glow: 0 0 10px rgba(139, 92, 246, 0.45);
   --lw-toast-bg: rgba(30, 30, 34, 0.92);
+
+  /* ===== 果冻皮肤（暗色：低透明度染色 + 深色玻璃） ===== */
+  --lw-tint-pct: 16%;
+  --lw-jelly-blur: 16px;
+  --lw-glass-strong-bg: rgba(22, 22, 26, 0.62);
+  --lw-glass-strong-edge: rgba(255, 255, 255, 0.10);
+  --lw-input-glass: rgba(0, 0, 0, 0.28);
+  --lw-node-rounded: 16px;
 }
 
 html,
@@ -126,6 +142,71 @@ body {
 }
 .dark .canvas-node.ring-2 {
   box-shadow: var(--lw-node-inner), var(--lw-accent-ring);
+}
+
+/* ===== 果冻皮肤（V2.9）：类型色半透明节点 / 玻璃容器 / 表单内衬 ===== */
+
+/* 果冻节点：--lw-node-tint 由 JSX 按节点类型色注入（color-mix 随主题变量自动切换深浅） */
+.canvas-node.jelly {
+  background: var(--lw-node-bg); /* 兜底：不支持 color-mix 时保持原白/深底 */
+  background: color-mix(in srgb, var(--lw-node-tint, #ffffff) var(--lw-tint-pct), transparent);
+  border: 1px solid var(--lw-glass-edge);
+  backdrop-filter: blur(var(--lw-jelly-blur));
+  -webkit-backdrop-filter: blur(var(--lw-jelly-blur));
+  box-shadow: var(--lw-node-inner), 0 8px 32px rgba(15, 23, 42, 0.10);
+}
+.canvas-node.jelly:hover {
+  box-shadow: var(--lw-node-inner), 0 12px 40px rgba(15, 23, 42, 0.16);
+}
+.canvas-node.jelly.ring-2 {
+  box-shadow: var(--lw-node-inner), var(--lw-accent-ring), 0 8px 32px rgba(15, 23, 42, 0.10);
+}
+.dark .canvas-node.jelly {
+  background: color-mix(in srgb, var(--lw-node-tint, #1e1e22) var(--lw-tint-pct), transparent);
+  border-color: var(--lw-glass-edge);
+  box-shadow: var(--lw-node-inner), 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+.dark .canvas-node.jelly:hover {
+  box-shadow: var(--lw-node-inner), 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+.dark .canvas-node.jelly.ring-2 {
+  box-shadow: var(--lw-node-inner), var(--lw-accent-ring), 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* 表单玻璃内衬：半透明节点/弹窗内保证输入框、文字可读 */
+.jelly-inner {
+  background: var(--lw-input-glass);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid var(--lw-glass-edge);
+}
+
+/* 通用玻璃容器（侧栏/底栏/顶栏/悬浮条/弹窗）：随主题切换 */
+.lw-glass {
+  background: var(--lw-glass-bg);
+  backdrop-filter: blur(var(--lw-jelly-blur));
+  -webkit-backdrop-filter: blur(var(--lw-jelly-blur));
+  border: 1px solid var(--lw-glass-edge);
+}
+.lw-glass-strong {
+  background: var(--lw-glass-strong-bg);
+  backdrop-filter: blur(var(--lw-jelly-blur));
+  -webkit-backdrop-filter: blur(var(--lw-jelly-blur));
+  border: 1px solid var(--lw-glass-strong-edge);
+}
+
+/* 画布微渐变底：衬托毛玻璃折射感（浅色白→微灰 / 暗色深阶） */
+.lw-canvas-bg {
+  background:
+    radial-gradient(1100px 700px at 18% -5%, rgba(255, 255, 255, 0.9) 0%, transparent 60%),
+    radial-gradient(900px 600px at 100% 110%, rgba(124, 110, 240, 0.06) 0%, transparent 55%),
+    var(--lw-canvas);
+}
+.dark .lw-canvas-bg {
+  background:
+    radial-gradient(1100px 700px at 18% -5%, rgba(42, 42, 48, 0.9) 0%, transparent 60%),
+    radial-gradient(900px 600px at 100% 110%, rgba(139, 92, 246, 0.10) 0%, transparent 55%),
+    var(--lw-canvas);
 }
 
 /* React Flow 主题适配（浅色默认 + 暗色覆盖） */

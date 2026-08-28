@@ -134,7 +134,7 @@ function SceneCanvasInner() {
   )
 
   return (
-    <div className="flex h-full w-full">
+    <div className="lw-canvas-bg flex h-full w-full">
       <SceneSidebar />
 
       <div className="relative min-w-0 flex-1" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>        {currentSceneId ? (
@@ -155,7 +155,7 @@ function SceneCanvasInner() {
               multiSelectionKeyCode={['Shift', 'Meta', 'Control']}
               proOptions={{ hideAttribution: true }}
             >
-              <Background gap={24} size={1} />
+              <Background gap={24} size={1} color="var(--lw-canvas-dot)" />
               <Controls showInteractive={false} className="!bottom-16" />
               <MiniMap
                 pannable

@@ -19,7 +19,7 @@ export default function TopHeader() {
   }
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-edge bg-panel/80 px-4 backdrop-blur-md">
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/40 bg-white/70 px-4 backdrop-blur-lg dark:border-white/10 dark:bg-slate-900/70">
       <div className="flex items-center gap-3">
         <img src="/logo.jpg" alt="绵绣" className="h-8 w-8 rounded-lg" />
         <input
