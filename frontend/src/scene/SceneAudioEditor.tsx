@@ -50,6 +50,7 @@ function shotsFromStoryboard(raw: unknown): ParsedShot[] {
         goal: String(d.description ?? d.goal ?? ''),
         mood: String(d.mood ?? ''),
         bgm: String(d.bgm ?? ''),
+        body: String(d.body ?? ''),
         duration: String(d.duration ?? ''),
         shots: [],
         dialogue,

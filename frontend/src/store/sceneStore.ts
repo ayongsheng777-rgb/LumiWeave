@@ -67,6 +67,7 @@ export const ACTION_LABELS: Record<string, string> = {
   generate_characters: '生成人物',
   generate_scenes: '生成场景',
   generate_storyboard: '生成分镜',
+  storyboard_import: '从剧本引入分镜',
   generate_shots: '生成镜头',
   generate_images: '生成图片',
   generate_video: '生成视频',

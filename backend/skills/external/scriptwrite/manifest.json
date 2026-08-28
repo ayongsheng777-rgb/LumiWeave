@@ -1,0 +1,13 @@
+{
+  "id": "scriptwrite",
+  "name": "剧本生成 Agent (Scriptwriter Master Agent) (scriptwriter-master-agent)",
+  "version": "1.0.0",
+  "description": "剧本生成Agent - 视频制作流程的最前端环节。当用户提出视频创意（\"做一个广告\"\"拍一支品牌片\"\"帮我写个短视频脚本\"等）时，先与用户协作生成可读的文学化剧本，经用户确认后再交给总分镜导演。支持两种扩写：一句话/模糊创意做发散性扩写，较完整文本做补充性扩写；剧本输出中会单独列出人物/道具/场景（出场元素）。触发关键词：剧本、脚本、scriptwriter、writescript、视频创意、视频构思、写一个视频、品牌故事、广告创意、短视频构思、视频立项。**重要**：本 skill 必须在 storyboard-master-agent 之前运行；只有当用户明确表示\"跳过剧本\"\"直接出分镜\"\"我已经有剧本\"时才不触发本 skill。",
+  "runtime": "prompt",
+  "entry": "SKILL.md",
+  "permissions": [],
+  "tags": [
+    "scriptwrite"
+  ],
+  "params": []
+}

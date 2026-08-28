@@ -6,14 +6,15 @@ import { Loader2, Sparkles, Send, LayoutGrid } from 'lucide-react'
 import { useSceneStore, ACTION_LABELS } from '../store/sceneStore'
 import { CAMERA_ZH, cameraLabel } from '../cameraLabels'
 import type { SceneTypeDef } from '../api'
-import { aiChat, getProfiles } from '../api'
+import { aiChat, getProfiles, getSkills } from '../api'
 import MarketingBoard from './MarketingBoard'
 import SceneFieldPopover from './SceneFieldPopover'
 import SceneTextWriter from './SceneTextWriter'
 import SceneImageEditor from './SceneImageEditor'
 import SceneVideoEditor from './SceneVideoEditor'
 import SceneAudioEditor from './SceneAudioEditor'
-import { type ParsedScript, EMPTY_PARSED, isStoryNode, parseShotsFromScript, parseCharacters, parsePropsList } from './sceneScript'
+import { type AnyObj, type ParsedScript, EMPTY_PARSED, isStoryNode, parseShotsFromScript, parseCharacters, parsePropsList } from './sceneScript'
+import SkillPicker from './SkillPicker'
 import { StoryboardTable } from './StoryboardView'
 
 /** 长文本字段 → 用 AI 对话弹窗编辑 */
@@ -94,6 +95,7 @@ function InlineAiBar({
   systemPrompt = STORY_SYSTEM_PROMPT,
   getContextExtra,
   actionRoute,
+  skillRef,
 }: {
   id: string
   onResult: (text: string) => void
@@ -102,6 +104,7 @@ function InlineAiBar({
   systemPrompt?: string
   getContextExtra?: () => string
   actionRoute?: string
+  skillRef?: string
 }) {
   const patchObject = useSceneStore((s) => s.patchObject)
   const runAction = useSceneStore((s) => s.runAction)
@@ -130,6 +133,7 @@ function InlineAiBar({
       await runAction(actionRoute, [id], {
         prompt: prompt.trim(),
         profile_id: profileId || undefined,
+        skill_ref: skillRef || undefined,
         ...(withTiming
           ? { duration: duration > 0 ? duration : undefined, shotCount: shotCount > 0 ? shotCount : undefined }
           : {}),
@@ -158,7 +162,7 @@ function InlineAiBar({
       onResult(String((res.data as { result: string }).result))
       setPrompt('')
     }
-  }, [prompt, running, disabled, profileId, onResult, withTiming, systemPrompt, getContextExtra, duration, shotCount, per, actionRoute, runAction, id])
+  }, [prompt, running, disabled, profileId, onResult, withTiming, systemPrompt, getContextExtra, duration, shotCount, per, actionRoute, runAction, id, skillRef])
 
   return (
     <div className="border-t border-edge pt-2 space-y-2">
@@ -250,6 +254,19 @@ function SceneStoryEditor({ id, payload, locked }: { id: string; payload: Payloa
   const [value, setValue] = useState(combined)
   const [view, setView] = useState<'edit' | 'board'>('edit')
   const board = payload.board as Payload | undefined
+  // 技能库选择（V2.9l：注入技能指令提升剧本画面/提示词质量；知识库走后端自动 RAG）
+  const [skills, setSkills] = useState<AnyObj[]>([])
+  const [skillId, setSkillId] = useState(String(payload.skill_ref ?? ''))
+  useEffect(() => {
+    getSkills()
+      .then((r) => {
+        const d = r.data as AnyObj
+        const list = Array.isArray(d) ? d : Array.isArray((d as AnyObj)?.skills) ? (d as AnyObj).skills : []
+        setSkills((list as AnyObj[]) || [])
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   useEffect(() => {
     setValue(combined)
   }, [combined])
@@ -306,6 +323,14 @@ function SceneStoryEditor({ id, payload, locked }: { id: string; payload: Payloa
             onResult={(text) => patchObject(id, { script: text, text })}
             disabled={locked}
             actionRoute="generate_story"
+            skillRef={skillId || undefined}
+          />
+          {/* ── 技能库选择（注入剧本生成质量；知识库后端自动 RAG） ── */}
+          <SkillPicker
+            value={skillId}
+            skills={skills}
+            disabled={locked || !!busy}
+            onChange={(v) => { setSkillId(v); patchObject(id, { skill_ref: v }) }}
           />
           {/* ── 影视拉片（文案驱动）：从文本生成三幕式故事 + 全字段分镜 ── */}
           {isFilm && (
@@ -313,7 +338,13 @@ function SceneStoryEditor({ id, payload, locked }: { id: string; payload: Payloa
               <button
                 className="nodrag flex h-7 flex-1 items-center justify-center gap-1 rounded-md bg-brand-600 text-[11px] text-white transition hover:bg-brand-500 disabled:opacity-50"
                 disabled={locked || !!busy}
-                onClick={() => void runAction('generate_story_from_text', [id])}
+                onClick={() =>
+                  void runAction('generate_story_from_text', [id], {
+                    duration: Number(payload.duration) || undefined,
+                    shotCount: Number(payload.shotCount) || undefined,
+                    skill_ref: skillId || undefined,
+                  })
+                }
                 title="从画布中的「文本」节点取原始故事，AI 生成三幕式结构 + 情绪曲线 + 人物/场景/道具"
               >
                 {busy === 'generate_story_from_text' ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
@@ -514,8 +545,92 @@ function SceneShotDialogEditor({ id, payload, locked }: { id: string; payload: P
 function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: Payload; locked: boolean }) {
   const patchObject = useSceneStore((s) => s.patchObject)
   const runAction = useSceneStore((s) => s.runAction)
+  const pushLog = useSceneStore((s) => s.pushLog)
   const busy = useSceneStore((s) => s.busy)
+  const objects = useSceneStore((s) => s.objects)
+  const edges = useSceneStore((s) => s.edges)
   const shots = Array.isArray(payload.shots) ? (payload.shots as Payload[]) : []
+  // 生成设置：模型选择 + 自定义要求（V2.9j）
+  const [profiles, setProfiles] = useState<AnyProfile[]>([])
+  const [profileId, setProfileId] = useState('')
+  const [extraReq, setExtraReq] = useState('')
+
+  useEffect(() => {
+    getProfiles().then((res) => {
+      const list = (res.ok ? (res.data as { profiles?: AnyProfile[] }).profiles : []) || []
+      setProfiles(list)
+    })
+  }, [])
+
+  /** 从剧情节点剧本直接解析引入（不调 AI）：优先连线关联，其次场景内第一个剧情节点 */
+  const importFromScript = () => {
+    if (locked) return
+    const linked = edges
+      .map((e) => (e.source === id ? e.target : e.target === id ? e.source : ''))
+      .map((x) => objects.find((o) => o.id === x))
+      .find((o) => o && isStoryNode(o))
+    const story = linked || objects.find((o) => isStoryNode(o))
+    if (!story) {
+      pushLog({ ts: Date.now(), action: 'storyboard_import', ok: false, message: '没有找到剧情节点——请先创建剧情节点并生成剧本' })
+      return
+    }
+    const script = String((((story.data as Payload)?.payload as Payload)?.script) ?? '')
+    if (!script.trim()) {
+      pushLog({ ts: Date.now(), action: 'storyboard_import', ok: false, message: '剧情节点还没有剧本内容，请先生成故事' })
+      return
+    }
+    const parsed = parseShotsFromScript(script)
+    if (!parsed.length) {
+      pushLog({ ts: Date.now(), action: 'storyboard_import', ok: false, message: '剧本中未解析到分镜/场景块' })
+      return
+    }
+    // 剧本全局元素（出场元素段）：人物 / 道具 → 供分镜列回填
+    const allChars = Object.keys(parseCharacters(script))
+    const allProps = parsePropsList(script)
+    const next = parsed.map((sh, i) => {
+      const dialogs = sh.dialogue || []
+      const isVo = (d: { speaker: string }) => /旁白|画外/.test(d.speaker)
+      const vo = dialogs.filter(isVo).map((d) => d.line).filter(Boolean)
+      const chars = dialogs.filter((d) => !isVo(d)).map((d) => d.speaker).filter(Boolean)
+      // 关键画面/正文中出现的剧本人物 → 该镜角色（长词优先，避免短名误匹配）
+      const bodyText = [sh.body, ...(sh.shots || []).map((x) => x.desc)].join(' ')
+      const sceneChars = allChars.filter((c) => c.length >= 2 && bodyText.includes(c))
+      const character = [...new Set([...chars, ...sceneChars])].join('、')
+      // 画面描述：正文 + 关键画面（完整提取，不丢内容）
+      const frames = (sh.shots || []).map((x) => x.desc).filter(Boolean)
+      const desc = [sh.body, ...frames].filter(Boolean).join('；')
+      // 分镜提示词：电影级完整组合（地点/时间/目标/氛围/正文/关键画面）
+      const prompt = [
+        sh.location ? `场景：${sh.location}` : '',
+        sh.time ? `时间：${sh.time}` : '',
+        sh.goal ? `目标：${sh.goal}` : '',
+        sh.mood ? `氛围：${sh.mood}` : '',
+        sh.body ? `画面：${sh.body}` : '',
+        frames.length ? `关键画面：${frames.join('；')}` : '',
+      ].filter(Boolean).join('\n')
+      // 镜头控制描述：规则生成（以第一句画面/正文主体为对象）
+      const subject = (frames[0] || sh.body || sh.location || '主体').slice(0, 24)
+      const camera_control_description = `固定机位、${sh.mood ? `氛围${sh.mood}` : '自然光'}，交代「${subject}」的景别与环境细节，运镜平稳`
+      return {
+        shot_no: i + 1,
+        duration: Number(sh.duration) || 0,
+        description: desc,
+        shot_size: '',
+        character,
+        scene: sh.location || '',
+        props: allProps,
+        lighting: '',
+        sound_effect: (sh.sfx || []).join('；'),
+        dialogue: dialogs.filter((d) => !isVo(d)).map((d) => d.line).join('\n'),
+        voice_over: vo.join('\n'),
+        prompt,
+        camera_control_description,
+      }
+    })
+    patchObject(id, { shots: next })
+    pushLog({ ts: Date.now(), action: 'storyboard_import', ok: true, message: `已从剧本引入 ${next.length} 个分镜（含画面正文/关键画面/角色/道具/对白/旁白/音效）` })
+  }
+
   return (
     <div className="flex h-full min-h-[160px] flex-col gap-2">
       <div className="flex items-center justify-between">
@@ -523,15 +638,58 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
           <span className="text-sm font-bold text-brand-300">分镜脚本</span>
           <span className="text-[11px] text-ink-3">{shots.length} 镜 · 点击单元格编辑 · Esc 取消</span>
         </div>
-        <button
-          className="nodrag flex h-7 items-center gap-1 rounded-md bg-brand-600 px-2.5 text-[11px] text-white transition hover:bg-brand-500 disabled:opacity-50"
+        <div className="flex items-center gap-1.5">
+          <button
+            className="nodrag flex h-7 items-center gap-1 rounded-md border border-edge bg-soft px-2.5 text-[11px] text-ink-2 transition hover:bg-soft-2 disabled:opacity-50"
+            disabled={locked || !!busy}
+            onClick={importFromScript}
+            title="解析剧情节点剧本，直接把分镜/场景数据填入本表（不调 AI）"
+          >
+            <LayoutGrid size={11} />
+            从剧本引入
+          </button>
+          <button
+            className="nodrag flex h-7 items-center gap-1 rounded-md bg-brand-600 px-2.5 text-[11px] text-white transition hover:bg-brand-500 disabled:opacity-50"
+            disabled={locked || !!busy}
+            onClick={() =>
+              void runAction('generate_storyboard', [id], {
+                prompt: extraReq.trim() || undefined,
+                model_profile: profileId || undefined,
+              })
+            }
+            title="基于场景内的剧情节点生成全字段分镜，写入本节点"
+          >
+            {busy === 'generate_storyboard' ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+            {busy === 'generate_storyboard' ? '生成中…' : 'AI 生成分镜'}
+          </button>
+        </div>
+      </div>
+      {/* 生成设置：模型选择 + 自定义要求（可选，作创作要求附加给 AI） */}
+      <div className="flex items-center gap-2">
+        <select
+          className="nodrag nowheel h-7 w-44 shrink-0 rounded-md border border-edge bg-input px-1.5 text-[11px] text-ink outline-none focus:border-brand-500"
+          value={profileId}
           disabled={locked || !!busy}
-          onClick={() => void runAction('generate_storyboard', [])}
-          title="基于场景内的剧情节点生成全字段分镜，写入本节点"
+          onChange={(e) => setProfileId(e.target.value)}
+          title="选择生成分镜使用的 AI 模型，留空为系统自动选择"
         >
-          {busy === 'generate_storyboard' ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-          {busy === 'generate_storyboard' ? '生成中…' : 'AI 生成分镜'}
-        </button>
+          <option value="">默认模型（系统自动选）</option>
+          {profiles.map((p) =>
+            p && p.id ? (
+              <option key={p.id} value={p.id}>
+                {String(p.name ?? p.id)}
+                {p.model ? ` · ${p.model}` : ''}
+              </option>
+            ) : null,
+          )}
+        </select>
+        <input
+          className="nodrag nowheel h-7 min-w-0 flex-1 rounded-md border border-edge bg-input px-2 text-[11px] text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
+          value={extraReq}
+          disabled={locked || !!busy}
+          placeholder="自定义要求（可选）：如 2 秒快切、多特写、结尾留悬念…"
+          onChange={(e) => setExtraReq(e.target.value)}
+        />
       </div>
       <StoryboardTable
         shots={shots}

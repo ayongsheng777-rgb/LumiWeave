@@ -1,0 +1,13 @@
+{
+  "id": "seedance",
+  "name": "Seedance 2.0 视频 & 图片提示词生成器 (seedance)",
+  "version": "1.0.0",
+  "description": "> Generate production-ready Chinese video prompts and image prompts for ByteDance Seedance 2.0 (即梦), and optionally execute them via the official dreamina CLI. Use when the user mentions \"Seedance\", \"即梦\", \"视频提示词\", \"视频生成\", \"AI视频\", \"短剧\", \"广告视频\", \"视频延长\", \"角色图\", \"首帧图\", \"角色参考图\", \"生图\", \"运镜\", \"镜头\", \"景别\", \"机位\", \"推拉摇移\", \"四维编码\", \"Z轴\", \"Y轴\", \"X轴\", \"剪辑\", \"剪辑节奏\", \"剪辑公式\", \"拼接\", \"25格\", \"分镜流水线\", \"美学约束\", \"Octane渲染\", \"冷暖色调\", \"赛博霓虹\", or asks to create video prompts, image prompts, character sheets, first-frame images, camera movement codecs, editing rhythm, or long video production pipelines. \"图生视频\", \"图生视频提示词\", \"根据图片生成视频\", \"这张图怎么做成视频\", \"用这张图打满15秒\", \"图片变视频\", \"图片转视频\", \"社交媒体爆款视频\", \"dreamina\", \"调用即梦CLI\", \"用CLI跑\", \"直接生成视频\", \"帮我跑一下\", or uploads an image and asks to turn it into a video, or asks to create video prompts, image prompts, character sheets, or first-frame images.",
+  "runtime": "prompt",
+  "entry": "SKILL.md",
+  "permissions": [],
+  "tags": [
+    "seedance"
+  ],
+  "params": []
+}

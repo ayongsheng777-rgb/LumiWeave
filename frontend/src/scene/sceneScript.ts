@@ -10,6 +10,7 @@ export interface ParsedShot {
   goal: string
   mood: string
   bgm: string
+  body: string
   duration: string
   shots: { no: string; desc: string }[]
   dialogue: { speaker: string; emotion: string; line: string }[]
@@ -217,6 +218,8 @@ export function parseShotsFromScript(script: string): ParsedShot[] {
     const { dialogue, sfx } = parseDialogueBlock(block)
     // 时长：标题（约X秒）优先，其次「- 时长：约X秒」行
     const durLine = get('时长')
+    // 画面正文（V2.9l）：场景正文段落（模板单行「- 画面正文：xxx」）
+    const body = get('画面正文')
     shots.push({
       no,
       location: loc,
@@ -224,6 +227,7 @@ export function parseShotsFromScript(script: string): ParsedShot[] {
       goal: get('场景目标') || get('分镜目标'),
       mood: get('情绪基调'),
       bgm: get('背景音乐'),
+      body,
       duration: durLine || durTitle,
       shots: shotArr,
       dialogue,

@@ -640,6 +640,36 @@ def _parse_script(script: str) -> dict:
     return parsed
 
 
+async def _story_quality_context(query: str, params: dict) -> str:
+    """剧本质量增强上下文（V2.9l）：技能库（skill_ref 指定 SKILL.md 指令）+ 知识库（RAG 语义检索）。
+
+    注入后 LLM 会参考技能指令与知识库资料组织画面描述，避免提示词空泛简化。
+    """
+    parts: list[str] = []
+    sid = str(params.get("skill_ref") or "").strip()
+    if sid:
+        try:
+            from app.skills import skill_manager
+            entry = skill_manager.get(sid)
+            if entry and entry.content:
+                body = entry.content
+                if body.startswith("---"):
+                    idx = body.find("---", 3)
+                    if idx > 0:
+                        body = body[idx + 3:].strip()
+                if body.strip():
+                    parts.append(f"【技能指令参考】\n{body[:1000]}")
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        refs = await _rag_retrieve(str(query)[:150], limit=4)
+        if refs:
+            parts.append("【知识库参考】\n" + "\n".join(refs))
+    except Exception:  # noqa: BLE001
+        pass
+    return "\n\n".join(parts)
+
+
 async def _act_generate_story(scene_id: str, obj_ids: list[str], params: dict) -> dict:
     """围绕商品为主角生成规范化带货剧本（剧本 Agent：格式约束在系统提示词，
     模型用前端选中的 profile——任何模型都按 SCRIPT_FORMAT 输出）。
@@ -664,7 +694,9 @@ async def _act_generate_story(scene_id: str, obj_ids: list[str], params: dict) -
             story_text = obj["data"].get("text", "") or obj["data"].get("summary", "")
             break
     sys = ("你是顶级带货短剧编剧。围绕商品作为主角创作完整剧本。"
-           f"严格按以下 Markdown 结构输出（不要 JSON、不要开场白、不要额外解释）：\n\n{SCRIPT_FORMAT}")
+           f"严格按以下 Markdown 结构输出（不要 JSON、不要开场白、不要额外解释）：\n\n{SCRIPT_FORMAT}"
+           "\n\n【画面质量硬要求】画面正文与关键画面必须具体、电影级：明确景别、光线、色彩、材质、构图与氛围，"
+           "每一句都要有画面感，可直接作为文生图/文生视频提示词使用；禁止空泛概括（如'展现氛围''体现情感'）。")
     user = f"商品信息（请结合链接/SKU/主图/信息组织商品背景）：\n{product_ctx or '（无商品，创作普通剧情短剧）'}"
     if story_text:
         user += f"\n\n用户已有剧情想法：\n{story_text}"
@@ -695,6 +727,10 @@ async def _act_generate_story(scene_id: str, obj_ids: list[str], params: dict) -
     extra = str(params.get("prompt") or "").strip()
     if extra:
         user += f"\n\n额外要求：{extra}"
+    # 技能库 + 知识库内容注入（V2.9l：提升画面描述/提示词质量）
+    qctx = await _story_quality_context(user, params)
+    if qctx:
+        user += f"\n\n{qctx}"
     # 模型：用前端选中的 profile（剧本 Agent 的格式约束在系统提示词，任何模型按格式输出）
     prof = None
     pid = str(params.get("profile_id") or "").strip()
@@ -1026,6 +1062,45 @@ async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], param
         return {"ok": False, "error": "没有找到可用的原始故事文本——请先放一个「文本」节点并写入故事/文案，或选中文本节点后重试"}
     raw = "\n\n".join(raw_parts)
 
+    # 时长/分镜数硬约束：params 优先（前端按钮传），其次 story 节点 data（InlineAiBar 配置）
+    def _to_num(v, t=float) -> float:
+        try:
+            return t(v or 0)
+        except (TypeError, ValueError):
+            return 0
+    dur_cfg = _to_num(params.get("duration"))
+    cnt_cfg = int(_to_num(params.get("shotCount"), int))
+    if not dur_cfg and not cnt_cfg:
+        for oid in (obj_ids or []):
+            o0 = await service.get_object(oid)
+            if o0 and o0["object_type"] == "story":
+                dur_cfg = _to_num(o0["data"].get("duration"))
+                cnt_cfg = int(_to_num(o0["data"].get("shotCount"), int))
+                break
+    if not dur_cfg and not cnt_cfg:
+        for o in await service.list_objects(scene_id):
+            if o["object_type"] == "story":
+                dur_cfg = _to_num(o["data"].get("duration"))
+                cnt_cfg = int(_to_num(o["data"].get("shotCount"), int))
+                break
+    # 约束文本注入系统提示词（与 _act_generate_story 同款口径）
+    timing_ctx = ""
+    if dur_cfg > 0 or cnt_cfg > 0:
+        timing_ctx = "【时长与场景硬约束（必须严格执行）】"
+        if dur_cfg > 0:
+            timing_ctx += (f" 总时长必须严格为 {dur_cfg:.0f} 秒，target_duration 填 {dur_cfg:.0f}；"
+                           f"所有场景时长之和必须等于 {dur_cfg:.0f} 秒（误差不超过 ±2 秒）")
+        if cnt_cfg > 0:
+            timing_ctx += f" 场景个数必须严格为 {cnt_cfg} 个（一个不多一个不少，禁止多拆或合并）"
+            if dur_cfg > 0:
+                timing_ctx += f"，每段约 {dur_cfg / cnt_cfg:.1f} 秒"
+    if timing_ctx:
+        raw += f"\n\n{timing_ctx}"
+    # 技能库 + 知识库内容注入（V2.9l：提升场景/画面描述质量）
+    qctx = await _story_quality_context(raw, params)
+    if qctx:
+        raw += f"\n\n{qctx}"
+
     sys = (
         "你是资深影视编剧。根据给定的原始故事/文案，创作一部影视短片的故事方案。"
         "严格只输出 JSON，结构如下：\n"
@@ -1050,6 +1125,9 @@ async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], param
         "}\n"
         "要求：3-5 个场景、各场景时长之和≈总时长、场景目标/情绪基调/背景音乐/画面正文/关键画面/对白旁白完整；"
         "情绪曲线有起伏；人物/场景/道具贴合原始故事；全部用中文。"
+        "\n\n【画面质量硬要求】画面正文(body)与关键画面(key_frames)必须具体、电影级："
+        "明确景别、光线、色彩、材质、构图与氛围（如'逆光下灰蓝色荒漠，风沙在镜头前形成纱幕'），"
+        "每一句都要有画面感，可直接作为文生图/文生视频提示词使用；禁止空泛概括（如'展现氛围''体现情感'）。"
     )
     # 新模板 schema 含场景级字段（目标/基调/BGM/正文/关键画面/对白/节奏/信息点），
     # 输出体量大，2000 tokens 会被截断导致 JSON 解析失败 → 放 6000
@@ -1125,6 +1203,24 @@ async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], param
     story += "# 场景剧本\n" + _fmt_scenes() + "\n\n"
     story += f"# 整体节奏与风格说明\n{str(r.get('rhythm') or '')}\n\n"
     story += "# 核心信息点对应\n" + ("\n".join(info_lines) if info_lines else "- 无") + "\n"
+
+    # 场景时长归一化：配置了总时长 → 各场景时长之和强制对齐配置值（AI 输出可能有偏差）
+    if dur_cfg > 0 and isinstance(scenes, list) and scenes:
+        try:
+            total = sum(float(s.get("duration") or 0) for s in scenes if isinstance(s, dict))
+            if total > 0 and abs(total - dur_cfg) > 0.5:
+                scale = dur_cfg / total
+                for s in scenes:
+                    if isinstance(s, dict):
+                        s["duration"] = max(1, round(float(s.get("duration") or 0) * scale))
+                diff = dur_cfg - sum(float(s.get("duration") or 0) for s in scenes if isinstance(s, dict))
+                for s in reversed(scenes):
+                    if isinstance(s, dict) and diff:
+                        s["duration"] = max(1, int(float(s["duration"])) + int(diff))
+                        break
+        except Exception:  # noqa: BLE001
+            pass
+
     # 2) 写回 story 节点（优先当前触发的 story；没有则找场景内第一个；再没有则新建）
     write_oid = None
     for oid in (obj_ids or []):
@@ -1146,6 +1242,8 @@ async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], param
             "script": story, "story": story,
             "narrative": narrative, "emotion_curve": emotion_curve,
             "characters": characters, "scenes": scenes, "props": props,
+            "duration": dur_cfg or int(_to_num(obj["data"].get("duration"))),
+            "shotCount": cnt_cfg or int(_to_num(obj["data"].get("shotCount"), int)),
         })
         created = [write_oid]
     else:
@@ -1170,50 +1268,72 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
       镜号/时长/画面描述/景别/角色/场景/道具/光影/音效/对白/旁白/分镜提示词/镜头控制描述
       + 焦距/机位/构图/色调/动作/情绪（供视频生成）
     严格遵循 story 节点 data.duration（总时长）与 data.shotCount（分镜个数）约束。
-    写回 story 节点 data.storyboard。
+    写回目标：优先当前编辑的 storyboard 节点（data.shots，前端读取键）；
+    无 storyboard 节点时写回 story 节点（data.storyboard，兼容旧端）。
     """
-    # 1) 取故事上下文 + 时长/分镜数约束
+    # 1) 取故事上下文 + 时长/分镜数约束；区分 上下文来源(story) 与 写回目标(storyboard)
     story_ctx = ""
+    story_oid = None
     write_oid = None
+    write_is_storyboard = False
     duration = 0
     shot_count = 0
+
+    def _read_story(obj: dict) -> None:
+        nonlocal story_ctx, duration, shot_count
+        d = obj["data"]
+        story_ctx = (str(d.get("script") or "") or str(d.get("story") or "")
+                     or str(d.get("summary") or "") or str(d.get("text") or "")).strip()
+        try:
+            duration = int(float(d.get("duration") or 0))
+        except Exception:  # noqa: BLE001
+            duration = 0
+        try:
+            shot_count = int(float(d.get("shotCount") or 0))
+        except Exception:  # noqa: BLE001
+            shot_count = 0
+
     for oid in (obj_ids or []):
         obj = await service.get_object(oid)
-        if obj and obj["object_type"] == "story":
+        if not obj:
+            continue
+        ot = obj["object_type"]
+        if ot == "story" and not story_ctx:
+            story_oid = oid
+            _read_story(obj)
+        elif ot == "storyboard":
+            # 当前编辑的分镜脚本节点 → 写回目标
             write_oid = oid
-            d = obj["data"]
-            story_ctx = (str(d.get("script") or "") or str(d.get("story") or "")
-                         or str(d.get("summary") or "") or str(d.get("text") or "")).strip()
-            try:
-                duration = int(float(d.get("duration") or 0))
-            except Exception:  # noqa: BLE001
-                duration = 0
-            try:
-                shot_count = int(float(d.get("shotCount") or 0))
-            except Exception:  # noqa: BLE001
-                shot_count = 0
+            write_is_storyboard = True
+        if story_oid and write_oid:
             break
     if not story_ctx:
         for o in await service.list_objects(scene_id):
             if o["object_type"] == "story":
-                write_oid = o["id"]
-                d = o["data"]
-                story_ctx = (str(d.get("script") or "") or str(d.get("story") or "")
-                             or str(d.get("summary") or "") or str(d.get("text") or "")).strip()
-                try:
-                    duration = int(float(d.get("duration") or 0))
-                except Exception:  # noqa: BLE001
-                    duration = 0
-                try:
-                    shot_count = int(float(d.get("shotCount") or 0))
-                except Exception:  # noqa: BLE001
-                    shot_count = 0
+                story_oid = o["id"]
+                _read_story(o)
                 break
     if not story_ctx:
         return {"ok": False, "error": "没有可用的故事——请先「从文本生成故事」或填写剧情节点"}
+    if not write_oid:
+        # 无显式分镜节点：优先场景内已存在的 storyboard 节点，其次 story 节点（旧行为）
+        for o in await service.list_objects(scene_id):
+            if o["object_type"] == "storyboard":
+                write_oid = o["id"]
+                write_is_storyboard = True
+                break
+        if not write_oid and story_oid:
+            write_oid = story_oid
     extra = str(params.get("prompt") or "").strip()
     if extra:
         story_ctx += f"\n\n【创作要求】{extra}"
+
+    # 模型选择：params.model_profile 指定 → 第一轮直接用该模型；否则默认模型 + 失败走硅基流动兜底
+    sel_profile = None
+    mid = str(params.get("model_profile") or "").strip()
+    if mid:
+        from app.ai import config as ai_config
+        sel_profile = ai_config.get_profile(mid)
 
     # 约束：duration/shot_count 优先用 story 节点设置，其次 params，都没有则默认
     if not shot_count:
@@ -1250,7 +1370,8 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
         "3. 镜头衔接有叙事逻辑、覆盖完整故事线；props 用数组、无道具给空数组；全部中文。"
     )
     # 全字段分镜输出很长（每镜 13 字段 × 多镜头），默认 2000 tokens 会被截断导致解析失败 → 用 6000
-    r2 = await _chat_full(sys, story_ctx, json_mode=True, temperature=0.5, max_tokens=6000)
+    r2 = await _chat_full(sys, story_ctx, json_mode=True, temperature=0.5, max_tokens=6000,
+                          model_profile=sel_profile)
     await _record_usage("", r2)
     r: dict | None = None
     if r2.ok and r2.content:
@@ -1303,10 +1424,14 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
                 shots[-1]["duration"] = max(1, int(float(shots[-1]["duration"])) + int(diff))
     except Exception:  # noqa: BLE001
         pass
-    # 4) 写回 story 节点
+    # 4) 写回：storyboard 节点 → data.shots（前端读取键）；story 节点 → data.storyboard（旧兼容）
     if write_oid:
         obj = await service.get_object(write_oid)
-        await service.update_object(write_oid, data={**obj["data"], "storyboard": shots})
+        if obj:
+            if write_is_storyboard:
+                await service.update_object(write_oid, data={**obj["data"], "shots": shots})
+            else:
+                await service.update_object(write_oid, data={**obj["data"], "storyboard": shots})
     return {"ok": True, "created": [write_oid] if write_oid else [],
             "storyboard": shots, "message": f"分镜生成完成 · {len(shots)} 个镜头（目标 {shot_count}）"}
 
@@ -1410,24 +1535,34 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 async def _embed(text: str) -> list[float] | None:
-    """调用 embedding Provider 获取向量（深度增强 #2：RAG 真向量）。"""
+    """调用 embedding Provider 获取向量（深度增强 #2：RAG 真向量）。
+
+    🔴 不走 best_provider：其 _row_to_provider 会把 api_key 脱敏（mask_key），
+    拿到的 key 无效（401）。这里直接从 providers 表取明文 key 直连。
+    """
     try:
         import httpx
-        from app.providers.service import best_provider
-        prov = await best_provider("embedding")
-        if not prov:
+        from app.db import get_pool
+        pool = await get_pool()
+        row = await pool.fetchrow(
+            "SELECT endpoint, api_key, models FROM providers "
+            "WHERE type='embedding' AND status='enabled' "
+            "ORDER BY (health->>'quality_score')::float DESC NULLS LAST LIMIT 1"
+        )
+        if not row:
             return None
-        endpoint = (prov.get("endpoint") or "").rstrip("/")
-        if not endpoint:
+        endpoint = str(row["endpoint"] or "").rstrip("/")
+        raw_key = str(row["api_key"] or "")
+        if not endpoint or not raw_key:
             return None
-        models = prov.get("models") or []
+        models = row["models"] or []
         if isinstance(models, str):
             try:
                 models = json.loads(models)
             except Exception:  # noqa: BLE001
                 models = []
         model = str(models[0]) if models else "text-embedding-v3"
-        headers = {"Authorization": f"Bearer {prov.get('api_key', '')}", "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {raw_key}", "Content-Type": "application/json"}
         async with httpx.AsyncClient(timeout=30.0) as c:
             r = await c.post(f"{endpoint}/embeddings",
                              json={"model": model, "input": text[:800]}, headers=headers)

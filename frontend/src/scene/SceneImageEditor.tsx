@@ -19,6 +19,7 @@ import {
 import SceneImageEdit from './SceneImageEdit'
 import { LockedDrawer, LockedModal } from './LockedOverlays'
 import AiOptimizeBar from './AiOptimizeBar'
+import SkillPicker from './SkillPicker'
 import ErrorBanner from '../components/ErrorBanner'
 import {
   type AnyObj, type ParsedScript, EMPTY_PARSED, isStoryNode,
@@ -633,17 +634,14 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
         <div className="grid grid-cols-1 gap-2">
           <label className="block">
             <span className="mb-1 block text-[11px] text-ink-3">技能库（内容注入生成提示词）</span>
-            <select
-              className="nodrag h-8 w-full rounded-md border border-edge bg-input px-1 text-sm text-ink outline-none focus:border-brand-500"
+            <SkillPicker
               value={skillId}
+              skills={skills}
               disabled={locked}
-              onChange={(e) => { setSkillId(e.target.value); patchObject(id, { skill_ref: e.target.value }) }}
-            >
-              <option value="">不引用技能</option>
-              {skills.map((s) => (
-                <option key={String(s.id)} value={String(s.id)}>{String(s.name || s.id)}</option>
-              ))}
-            </select>
+              onChange={(v) => { setSkillId(v); patchObject(id, { skill_ref: v }) }}
+              placeholder="不引用技能"
+              className="h-8"
+            />
           </label>
           <label className="block">
             <span className="mb-1 block text-[11px] text-ink-3">知识库（内容注入生成提示词）</span>
