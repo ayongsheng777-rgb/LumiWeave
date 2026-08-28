@@ -87,23 +87,46 @@ export default function AiOptimizeBar({
     }
   }
 
+  /** 快捷要求多选（V2.9f）：点选叠加进要求框，再点取消 */
+  const reqParts = req
+    .split(/[、,，]/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+  const toggleQuick = (q: string) => {
+    setReq((prev) => {
+      const parts = prev
+        .split(/[、,，]/)
+        .map((x) => x.trim())
+        .filter(Boolean)
+      if (parts.includes(q)) return parts.filter((x) => x !== q).join('、')
+      return [...parts, q].join('、')
+    })
+  }
+
   return (
     <div className="space-y-1.5">
-      {/* 快捷要求 chips（点击填入要求框） */}
+      {/* 快捷要求 chips（V2.9f：可多选叠加，点选高亮，再点取消） */}
       {quickReqs && quickReqs.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {quickReqs.map((q) => (
-            <button
-              key={q}
-              type="button"
-              className="nodrag rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] text-brand-300 transition hover:bg-brand-500/25 disabled:opacity-40"
-              disabled={disabled || running}
-              onClick={() => setReq(q)}
-              title={`把「${q}」填入要求框`}
-            >
-              {q}
-            </button>
-          ))}
+          {quickReqs.map((q) => {
+            const active = reqParts.includes(q)
+            return (
+              <button
+                key={q}
+                type="button"
+                className={`nodrag rounded-full border px-2 py-0.5 text-[10px] transition disabled:opacity-40 ${
+                  active
+                    ? 'border-brand-500 bg-brand-500/25 font-medium text-brand-300'
+                    : 'border-brand-500/30 bg-brand-500/10 text-brand-300 hover:bg-brand-500/25'
+                }`}
+                disabled={disabled || running}
+                onClick={() => toggleQuick(q)}
+                title={`${active ? '取消' : '加入'}「${q}」（可多选）`}
+              >
+                {q}
+              </button>
+            )
+          })}
         </div>
       )}
       {/* 模型选择 */}

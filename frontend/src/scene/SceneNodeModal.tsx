@@ -112,8 +112,20 @@ export default function SceneNodeModal() {
     >
       <div
         ref={boxRef}
-        className="lw-glass-strong flex w-[640px] max-w-[94vw] flex-col overflow-hidden rounded-[20px] text-[11px] shadow-2xl"
-        style={{ left: pos?.left, top: pos?.top, position: 'fixed', maxHeight: 'calc(100vh - 96px)' }}
+        className="lw-glass-strong flex w-[640px] flex-col overflow-hidden rounded-[20px] text-[11px] shadow-2xl"
+        style={{
+          left: pos?.left,
+          top: pos?.top,
+          position: 'fixed',
+          width: '640px',
+          minWidth: 420,
+          minHeight: 320,
+          maxWidth: 'calc(100vw - 48px)',
+          maxHeight: 'calc(100vh - 48px)',
+          // V2.9f：可拖右下角调整大小（CSS resize），内容超高时内部滚动
+          resize: 'both',
+          overflow: 'hidden',
+        }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* 头部（拖拽柄） */}
@@ -143,8 +155,8 @@ export default function SceneNodeModal() {
             <X size={14} />
           </button>
         </div>
-        {/* 编辑面板 */}
-        <div className="min-h-0 flex-1 overflow-hidden">
+        {/* 编辑面板（V2.9f：外层滚动保证最底部内容完整可见） */}
+        <div className="min-h-0 flex-1 overflow-y-auto nowheel">
           <SceneNodeEditPanel id={modalNodeId} />
         </div>
       </div>
