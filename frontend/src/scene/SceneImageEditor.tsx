@@ -13,6 +13,7 @@ import {
   getSkills, promptLearningList, renderMedia,
 } from '../api'
 import SceneImageEdit from './SceneImageEdit'
+import AiOptimizeBar from './AiOptimizeBar'
 import ErrorBanner from '../components/ErrorBanner'
 import {
   type AnyObj, type ParsedScript, EMPTY_PARSED, isStoryNode,
@@ -378,6 +379,41 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
           </div>
         </div>
       )}
+
+      {/* AI 润色（V2.8.1 全局修复：独立模型选择 + 用户要求输入，不依赖是否选中对象） */}
+      <div className="space-y-1.5 rounded-lg border border-edge p-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-ink-3">✨ AI 润色（优化生成提示词）</span>
+          {!String(payload.prompt ?? '').trim() && (
+            <span className="text-[10px] text-ink-3">提示词为空时，将基于下方对象描述生成</span>
+          )}
+        </div>
+        <AiOptimizeBar
+          id={id}
+          target="prompt"
+          label="润色"
+          disabled={locked}
+          system={
+            '你是角色/道具/场景生图提示词专家。把现有提示词优化成可直接用于图像生成模型的高质量中文提示词：画面具体、含光线构图与质感描述、符合所选对象用途。只输出优化后的提示词，不要多余解释。'
+          }
+          getContext={() => {
+            const parts: string[] = []
+            if (selected) parts.push(`【对象】${category} · ${selected}`)
+            if (desc.trim()) parts.push(`【对象描述】\n${desc.trim()}`)
+            if (skillId) {
+              const s = skills.find((x) => String(x.id) === skillId)
+              const content = String(s?.content || s?.description || s?.prompt || '')
+              if (content) parts.push(`【技能参考】\n${content}`)
+            }
+            if (kbId) {
+              const k = kbs.find((x) => String(x.id) === kbId)
+              const content = String(k?.content || '')
+              if (content) parts.push(`【知识库参考】\n${content}`)
+            }
+            return parts.join('\n')
+          }}
+        />
+      </div>
 
       {/* 类型识别：始终显示，连剧情自动识别，也可手动选择 */}
       <div className="flex gap-1.5">{catBtn('人物')}{catBtn('道具')}{catBtn('场景')}</div>

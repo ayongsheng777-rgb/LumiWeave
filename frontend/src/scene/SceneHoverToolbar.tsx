@@ -26,14 +26,16 @@ export default function SceneHoverToolbar({ id, objectType, payload }: { id: str
   const url = resultUrl(payload, objectType)
   const lockedRef = payload.locked_ref === true
 
-  // 🔄 重新生成：有场景生成动作的类型直接触发；否则打开编辑面板
+  // 🔄 重新生成：有场景生成动作的类型直接触发（回填当前节点）；否则打开编辑面板
+  // V2.8.1 修复：图片用 generate_node_image、视频用 generate_node_video（原 generate_video 会新建节点而非回填）
   const regenAction =
-    objectType === 'video' ? 'generate_video'
+    objectType === 'video' ? 'generate_node_video'
       : objectType === 'audio' ? 'generate_music'
-        : objectType === 'image' ? ''
+        : objectType === 'image' ? 'generate_node_image'
           : ''
+  const hasPrompt = String(payload.prompt ?? payload.desc ?? payload.text ?? '').trim()
   const regen = () => {
-    if (regenAction) void runAction(regenAction, [id])
+    if (regenAction && hasPrompt) void runAction(regenAction, [id])
     else openNodeModal(id)
   }
   const download = () => {

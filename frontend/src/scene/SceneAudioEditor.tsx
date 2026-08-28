@@ -3,12 +3,12 @@
 // 连线剧情后：列出各分镜背景音乐 → 选分镜序号自动带出 BGM 描述 → AI 识别建议
 // （走后端 generate_music 动作，写回 style/instruments/prompt）→ 可手改 + AI 优化
 // 说明：后端暂无音乐合成 API，产出为「音乐描述/提示词」，真实音频需外部 Suno 类服务。
-import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Wand2, Sparkles, Music2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Loader2, Sparkles, Music2 } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
-import { aiChat, getProfiles } from '../api'
 import { type AnyObj, isStoryNode, parseShotsFromScript } from './sceneScript'
 import ErrorBanner from '../components/ErrorBanner'
+import AiOptimizeBar from './AiOptimizeBar'
 
 const AUDIO_TYPE_OPTS = ['配音', 'BGM', '音效', '对白']
 
@@ -39,7 +39,6 @@ export default function SceneAudioEditor({ id, locked }: { id: string; locked: b
 
   const [style, setStyle] = useState(String(payload.style ?? ''))
   const [instruments, setInstruments] = useState(String(payload.instruments ?? ''))
-  const [rewriting, setRewriting] = useState(false)
   const [errMsg, setErrMsg] = useState('')
 
   // ── 选分镜 → 带出 BGM 描述 ──
@@ -64,41 +63,8 @@ export default function SceneAudioEditor({ id, locked }: { id: string; locked: b
     setInstruments(String(p.instruments ?? ''))
   }
 
-  // ── 提示词 AI 优化 ──
-  const [profiles, setProfiles] = useState<{ id: string; name?: string; model?: string }[]>([])
-  const [aiProfileId, setAiProfileId] = useState(String(payload.profile_id ?? ''))
-  useEffect(() => {
-    getProfiles()
-      .then((r) => {
-        const list = ((r.data as AnyObj)?.profiles as { id: string; name?: string; model?: string }[]) || []
-        setProfiles(list)
-        if (list.length && !aiProfileId) setAiProfileId(list[0].id)
-      })
-      .catch(() => {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const optimizePrompt = async () => {
-    const cur = String(payload.prompt ?? '').trim()
-    if (!cur || rewriting) return
-    setRewriting(true)
-    try {
-      const res = await aiChat({
-        system: '你是影视配乐提示词专家。把音乐提示词优化成可直接用于音乐生成模型的高质量中文提示词：含情绪、节奏/BPM、风格、乐器、层次结构。只输出优化后的提示词，不要多余解释。',
-        user: [
-          cur,
-          style ? `【音乐风格】${style}` : '',
-          instruments ? `【乐器设定】${instruments}` : '',
-        ].filter(Boolean).join('\n'),
-        profile_id: aiProfileId || undefined,
-        scenario: 'general',
-      })
-      const out = res.ok ? String((res.data as AnyObj)?.result ?? '') : ''
-      if (out) patchObject(id, { prompt: out })
-    } finally {
-      setRewriting(false)
-    }
-  }
+  // ── 提示词 AI 优化（V2.8.1：已迁移到通用 AiOptimizeBar —— 独立模型选择 + 用户要求输入框）
+  // 原 optimizePrompt 函数移除，由 AiOptimizeBar 承担（含【用户要求】注入）
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto nowheel">
@@ -187,19 +153,9 @@ export default function SceneAudioEditor({ id, locked }: { id: string; locked: b
             </label>
           </div>
 
-          {/* 音乐提示词 + AI 优化 */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-ink-3">音乐提示词</span>
-              <button
-                className="nodrag flex items-center gap-1 rounded bg-soft px-2 py-1 text-[11px] text-ink-2 transition hover:text-ink disabled:opacity-50"
-                disabled={locked || rewriting || !String(payload.prompt ?? '').trim()}
-                onClick={() => void optimizePrompt()}
-              >
-                {rewriting ? <Loader2 size={11} className="animate-spin" /> : <Wand2 size={11} />}
-                AI 优化
-              </button>
-            </div>
+          {/* 音乐提示词 + AI 优化（V2.8.1：独立模型选择 + 用户要求输入框） */}
+          <div className="space-y-1.5 rounded-lg border border-edge p-1.5">
+            <span className="text-[11px] text-ink-3">音乐提示词（AI 优化可带要求，如：更欢快、加人声哼唱）</span>
             <textarea
               className="nodrag nowheel w-full resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500"
               rows={3}
@@ -208,25 +164,21 @@ export default function SceneAudioEditor({ id, locked }: { id: string; locked: b
               placeholder="AI 识别建议后自动生成音乐提示词，可手改…"
               onChange={(e) => patchObject(id, { prompt: e.target.value })}
             />
-            <div className="flex items-center gap-1.5">
-              <span className="shrink-0 text-[11px] text-ink-3">AI 模型</span>
-              <select
-                className="nodrag h-7 min-w-0 flex-1 rounded-md border border-edge bg-input px-1 text-[11px] text-ink outline-none focus:border-brand-500"
-                value={aiProfileId}
-                disabled={locked}
-                onChange={(e) => { setAiProfileId(e.target.value); patchObject(id, { profile_id: e.target.value }) }}
-              >
-                <option value="">默认模型</option>
-                {profiles.map((p) =>
-                  p && p.id ? (
-                    <option key={p.id} value={p.id}>
-                      {String(p.name ?? p.id)}
-                      {p.model ? ` · ${p.model}` : ''}
-                    </option>
-                  ) : null,
-                )}
-              </select>
-            </div>
+            <AiOptimizeBar
+              id={id}
+              target="prompt"
+              label="AI 优化"
+              disabled={locked}
+              system={
+                '你是影视配乐提示词专家。把音乐提示词优化成可直接用于音乐生成模型的高质量中文提示词：含情绪、节奏/BPM、风格、乐器、层次结构。只输出优化后的提示词，不要多余解释。'
+              }
+              getContext={() =>
+                [
+                  style ? `【音乐风格】${style}` : '',
+                  instruments ? `【乐器设定】${instruments}` : '',
+                ].filter(Boolean).join('\n')
+              }
+            />
             <div className="rounded-lg bg-soft px-2 py-1.5 text-[10px] leading-snug text-ink-3">
               说明：当前产出为音乐描述/提示词（后端暂无音乐合成 API）。真实音乐文件可用该提示词在 Suno 等外部音乐生成服务中生成，再把音频地址填到下方。
             </div>

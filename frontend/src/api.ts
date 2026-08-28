@@ -854,11 +854,15 @@ export async function sceneListAssets(sceneId: string, assetType = '') {
 export async function sceneFilmUpload(sceneId: string, file: File) {
   const form = new FormData()
   form.append('file', file)
+  // 🔴 必须带 Bearer 令牌：/api/scenes/* 被 auth_guard 拦截，裸 fetch 会 401 静默失败
+  const token = getToken()
   const res = await fetch(`${API_BASE}/scenes/${encodeURIComponent(sceneId)}/film/upload`, {
     method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     body: form,
   })
-  return res.json()
+  const data = await res.json().catch(() => ({}))
+  return { ok: res.ok, status: res.status, data }
 }
 
 export async function sceneFilmAnalyze(sceneId: string, videoUrl: string) {

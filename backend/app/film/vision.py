@@ -146,7 +146,7 @@ async def _call_openai_vision_batch(prov: dict, frame_urls: list[str]) -> list[d
         except Exception:  # noqa: BLE001
             models = []
     model = str(models[0]) if models else "qwen-vl-max"
-    content: list[dict] = [{"type": "text", "text": BATCH_PROMPT.format(n=len(frame_urls))}]
+    content: list[dict] = [{"type": "text", "text": BATCH_PROMPT.replace("{n}", str(len(frame_urls)))}]
     for u in frame_urls:
         content.append({"type": "image_url", "image_url": {"url": u}})
     headers = {"Authorization": f"Bearer {prov.get('api_key','')}", "Content-Type": "application/json"}

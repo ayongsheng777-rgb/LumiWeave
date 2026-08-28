@@ -64,6 +64,7 @@ function SceneCanvasInner() {
   }, [edges, objects, objectStatus])
 
   const [filmBusy, setFilmBusy] = useState(false)
+  const [filmErr, setFilmErr] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   // 切换场景时加载素材库与版本列表（§35/§38）
@@ -97,15 +98,23 @@ function SceneCanvasInner() {
   const handleFilmUpload = async (file: File) => {
     if (!currentSceneId) return
     setFilmBusy(true)
+    setFilmErr('')
     try {
       const up = await sceneFilmUpload(currentSceneId, file)
-      const url = up?.url || up?.data?.url
-      if (!url) return
+      const url = up?.data?.url
+      if (!url || up?.ok === false) {
+        setFilmErr(up?.data?.error || up?.data?.message || '视频上传失败（请确认已登录 / 文件格式为 mp4/webm/mov/m4v）')
+        return
+      }
       const res = await sceneFilmAnalyze(currentSceneId, url)
       if (res.ok && res.data?.ok !== false) {
         await useSceneStore.getState().openScene(currentSceneId)
         await useSceneStore.getState().loadAssets()
+      } else {
+        setFilmErr(String(res.data?.error || '拆镜失败：视频解析异常（请检查 ffmpeg / 网络）'))
       }
+    } catch (e) {
+      setFilmErr(`上传/拆镜异常：${String(e)}`)
     } finally {
       setFilmBusy(false)
     }
@@ -191,6 +200,11 @@ function SceneCanvasInner() {
                     e.target.value = ''
                   }}
                 />
+                {filmErr && (
+                  <div className="mt-1.5 max-w-[260px] rounded-md border border-red-400/40 bg-red-400/10 px-2 py-1 text-[10px] leading-snug text-red-400">
+                    {filmErr}
+                  </div>
+                )}
               </div>
             )}
 

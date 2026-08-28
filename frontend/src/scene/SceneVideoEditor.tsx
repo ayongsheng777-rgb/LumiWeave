@@ -15,6 +15,7 @@ import {
   isStoryNode, parseShotsFromScript, shotDesc,
 } from './sceneScript'
 import ErrorBanner from '../components/ErrorBanner'
+import AiOptimizeBar from './AiOptimizeBar'
 
 // ── 配置选项（用户定稿）────────────────────────────────────────────
 const RATIO_OPTS = ['16:9', '9:16', '1:1', '4:3', '3:4']
@@ -181,32 +182,8 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
     if (s.sfx.length) setSfx(s.sfx)
   }
 
-  // ── 提示词 AI 优化（把分镜内容/配置优化成高质量生视频提示词）──
-  const optimizePrompt = async () => {
-    const cur = String(payload.prompt ?? '').trim()
-    if (!cur || rewriting) return
-    setRewriting(true)
-    try {
-      const parts = [
-        `【现有提示词】\n${cur}`,
-        style ? `【画面风格】${style}` : '',
-        motion && motion !== '固定镜头' ? `【运镜】${motion}` : '',
-        resolution ? `【清晰度】${resolution}` : '',
-        aspectRatio ? `【画面比例】${aspectRatio}` : '',
-        buildRefContext(),
-      ].filter(Boolean).join('\n')
-      const res = await aiChat({
-        system: '你是短视频分镜视频提示词专家。把提示词优化成可直接用于视频生成模型的高质量中文提示词：画面具体、有镜头感、含光线构图与运镜描述、符合所选风格/运镜/清晰度。只输出优化后的提示词，不要多余解释。',
-        user: parts,
-        profile_id: cloudModelId || undefined,
-        scenario: 'general',
-      })
-      const out = res.ok ? String((res.data as AnyObj)?.result ?? '') : ''
-      if (out) patchObject(id, { prompt: out })
-    } finally {
-      setRewriting(false)
-    }
-  }
+  // ── 提示词 AI 优化（V2.8.1：已迁移到通用 AiOptimizeBar —— 独立模型选择 + 用户要求输入框）
+  // 原 optimizePrompt 函数移除，由 AiOptimizeBar 承担（含【用户要求】注入）
 
   // ── 分镜音频：AI 生成配音稿（对白/画内画外音，支持技能/知识库参考 + 自定义要求）──
   const genDialogue = async () => {
@@ -434,19 +411,9 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
         </select>
       </div>
 
-      {/* 提示词 + AI 优化 */}
-      <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-ink-3">生成提示词</span>
-          <button
-            className="nodrag flex items-center gap-1 rounded bg-soft px-2 py-1 text-[11px] text-ink-2 transition hover:text-ink disabled:opacity-50"
-            disabled={locked || rewriting || !String(payload.prompt ?? '').trim()}
-            onClick={() => void optimizePrompt()}
-          >
-            {rewriting ? <Loader2 size={11} className="animate-spin" /> : <Wand2 size={11} />}
-            AI 优化
-          </button>
-        </div>
+      {/* 提示词 + AI 优化（V2.8.1：独立模型选择 + 用户要求输入框） */}
+      <div className="space-y-1.5 rounded-lg border border-edge p-1.5">
+        <span className="text-[11px] text-ink-3">生成提示词（AI 优化可带要求，如：强调产品特写、节奏加快）</span>
         <textarea
           className="nodrag nowheel w-full resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500"
           rows={3}
@@ -455,8 +422,27 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
           placeholder="选择分镜后自动带入，或手动编写视频提示词…"
           onChange={(e) => patchObject(id, { prompt: e.target.value })}
         />
+        <AiOptimizeBar
+          id={id}
+          target="prompt"
+          label="AI 优化"
+          disabled={locked}
+          system={
+            '你是短视频分镜视频提示词专家。把提示词优化成可直接用于视频生成模型的高质量中文提示词：画面具体、有镜头感、含光线构图与运镜描述、符合所选风格/运镜/清晰度。只输出优化后的提示词，不要多余解释。'
+          }
+          getContext={() =>
+            [
+              style ? `【画面风格】${style}` : '',
+              motion && motion !== '固定镜头' ? `【运镜】${motion}` : '',
+              resolution ? `【清晰度】${resolution}` : '',
+              aspectRatio ? `【画面比例】${aspectRatio}` : '',
+              buildRefContext(),
+            ].filter(Boolean).join('\n')
+          }
+        />
+        {/* 生成视频模型（独立于 AI 优化模型） */}
         <div className="flex items-center gap-1.5">
-          <span className="shrink-0 text-[11px] text-ink-3">模型</span>
+          <span className="shrink-0 text-[11px] text-ink-3">生成模型</span>
           <select
             className="nodrag h-7 min-w-0 flex-1 rounded-md border border-edge bg-input px-1 text-[11px] text-ink outline-none focus:border-brand-500"
             value={cloudModelId}
