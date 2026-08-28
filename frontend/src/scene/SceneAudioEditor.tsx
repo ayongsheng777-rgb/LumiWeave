@@ -93,9 +93,13 @@ export default function SceneAudioEditor({ id, locked }: { id: string; locked: b
             <div className="flex items-center gap-1 text-[11px] text-ink-3">
               <Music2 size={12} /> 分镜背景音乐匹配
             </div>
-            {!storyObj && (
+            {storyObj ? (
+              <div className="rounded-lg border border-brand-500/30 bg-brand-500/5 px-2 py-1.5 text-[11px] leading-snug text-brand-300">
+                已连线剧情节点：自动识别 {mergedShots.length} 个分镜（含 BGM 描述 {bgmShots.length} 个），选中后自动带入背景音乐描述
+              </div>
+            ) : (
               <div className="rounded-lg border border-dashed border-edge px-2 py-1.5 text-[11px] text-ink-3">
-                未连线剧情节点：可手动填写分镜序号与背景音乐描述
+                未连线剧情节点：可手动填写分镜序号与背景音乐描述；连线剧情后自动匹配分镜 BGM
               </div>
             )}
             <select

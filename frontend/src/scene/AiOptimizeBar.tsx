@@ -20,6 +20,7 @@ const DEFAULT_SYSTEM =
  * @param label     按钮文案（默认「AI 优化」，图片场景可传「润色」）
  * @param system    系统提示词（按目标字段定制）
  * @param getContext 返回额外上下文（如风格/运镜/景别等配置，追加到提示中）
+ * @param quickReqs 快捷要求 chips（点击填入要求框，如：三视图 / 细节特写）
  * @param disabled  锁定态禁用
  */
 export default function AiOptimizeBar({
@@ -28,6 +29,7 @@ export default function AiOptimizeBar({
   label = 'AI 优化',
   system = DEFAULT_SYSTEM,
   getContext,
+  quickReqs,
   disabled,
 }: {
   id: string
@@ -35,6 +37,7 @@ export default function AiOptimizeBar({
   label?: string
   system?: string
   getContext?: () => string
+  quickReqs?: string[]
   disabled?: boolean
 }) {
   const patchObject = useSceneStore((s) => s.patchObject)
@@ -86,6 +89,23 @@ export default function AiOptimizeBar({
 
   return (
     <div className="space-y-1.5">
+      {/* 快捷要求 chips（点击填入要求框） */}
+      {quickReqs && quickReqs.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {quickReqs.map((q) => (
+            <button
+              key={q}
+              type="button"
+              className="nodrag rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] text-brand-300 transition hover:bg-brand-500/25 disabled:opacity-40"
+              disabled={disabled || running}
+              onClick={() => setReq(q)}
+              title={`把「${q}」填入要求框`}
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
       {/* 模型选择 */}
       <div className="flex items-center gap-1.5">
         <span className="shrink-0 text-[11px] text-ink-3">模型</span>

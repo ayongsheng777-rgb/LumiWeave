@@ -339,6 +339,17 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
         </div>
       )}
 
+      {/* 连线剧情节点状态提示（V2.8.1 对齐图片/音频编辑器） */}
+      {storyObj ? (
+        <div className="rounded-lg border border-brand-500/30 bg-brand-500/5 px-2 py-1.5 text-[11px] leading-snug text-brand-300">
+          已连线剧情节点：自动识别 {mergedShots.length} 个分镜，选中分镜后自动带入画面内容 / 对白 / 音效
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-edge px-2 py-1.5 text-[11px] leading-snug text-ink-3">
+          未连线剧情节点：可手动填写提示词直接生成；连线剧情后自动识别分镜内容 / 人物 / 道具 / 音频素材
+        </div>
+      )}
+
       {/* 分镜选择 + 素材库入口 */}
       <div className="flex items-center gap-1.5">
         <select

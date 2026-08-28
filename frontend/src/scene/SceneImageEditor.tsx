@@ -393,8 +393,12 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
           target="prompt"
           label="润色"
           disabled={locked}
+          quickReqs={['三视图', '细节特写', '多角度', '环境融入', '表情夸张']}
           system={
-            '你是角色/道具/场景生图提示词专家。把现有提示词优化成可直接用于图像生成模型的高质量中文提示词：画面具体、含光线构图与质感描述、符合所选对象用途。只输出优化后的提示词，不要多余解释。'
+            '你是角色/道具/场景生图提示词专家。把现有提示词优化成可直接用于图像生成模型的高质量中文提示词：画面具体、含光线构图与质感描述、符合所选对象用途。' +
+            '若用户要求"三视图/多角度"：输出"角色（或物体）三视图/多角度同图，正面/侧面/背面依次排列，纯色背景，全身展示"；' +
+            '若要求"细节特写"：输出"局部细节特写，如面部/手部/服饰纹理/材质放大，浅景深微距质感"；' +
+            '若要求"环境融入"：补充场景环境、光影与氛围描述。只输出优化后的提示词，不要多余解释。'
           }
           getContext={() => {
             const parts: string[] = []
@@ -420,7 +424,11 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
 
       {/* 列表选择 + 描述 */}
       <div className="space-y-1.5">
-        {!storyObj && (
+        {storyObj ? (
+          <div className="rounded-lg border border-brand-500/30 bg-brand-500/5 px-2 py-1.5 text-[11px] leading-snug text-brand-300">
+            已连线剧情节点：自动识别 人物 {script ? Object.keys(charDescs).length : parsed.characters.length} / 道具 {script ? propList.length : parsed.props.length} / 分镜 {mergedShots.length}，选中后自动提取描述
+          </div>
+        ) : (
           <div className="rounded-lg border border-dashed border-edge px-2 py-1.5 text-[11px] text-ink-3">
             未连线剧情节点：可手动选择/添加对象；连线剧情后自动识别人物/道具/场景
           </div>
