@@ -167,10 +167,16 @@ async def auto_best_scene(profile_id: str, scene: str) -> dict[str, Any]:
     if not available_models:
         return {"ok": False, "reason": "无法获取模型列表（检查 Base URL / API Key 与平台兼容性）", "tested": []}
     # 候选 = 已设过的模型(优先验证) + 场景关键词匹配（无匹配兜底平台前 8），去重保序
+    # V2.9d：排除非本场景的无关模型（tts/stt/embedding/rerank/voice 等），避免误混入
+    EXCLUDE_KW = ("tts", "stt", "embedding", "rerank", "voice", "speech", "audio", "music", "sing")
     sm = profile.get("scene_models") or {}
     preset = str(sm.get(scene) or "") if isinstance(sm, dict) else ""
     kws = _SCENE_KEYWORDS.get(scene, [])
-    matched = [m for m in available_models if kws and any(kw in m.lower() for kw in kws)]
+    matched = [
+        m for m in available_models
+        if kws and any(kw in m.lower() for kw in kws)
+        and not any(x in m.lower() for x in EXCLUDE_KW)
+    ]
     candidates = [m for m in dict.fromkeys([preset] + (matched[:8] if matched else available_models[:8])) if m]
 
     tested: list[dict[str, Any]] = []
@@ -205,10 +211,15 @@ async def _test_scene_model(profile: dict[str, Any], model: str, scene: str) -> 
         return {"success": bool(r.get("success")), "latency_ms": int(r.get("latency_ms") or 0),
                 "error": str(r.get("error") or "")[:160]}
     if scene == "image":
+        mid = model.lower()
+        # 图生图/编辑类模型：必须传 image 参数，文生图实测无意义 → 直接标记可用（scene_models 显式配置才进候选）
+        if "edit" in mid:
+            return {"success": True, "latency_ms": 0, "error": ""}
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(40.0, connect=10.0)) as c:
+                # V2.9d：尺寸 128x128 → 512x512（多数图像模型要求宽高 ≥256，128 会误判失败）
                 resp = await c.post(f"{base_url}/images/generations", headers=headers,
-                                    json={"model": model, "prompt": "test", "image_size": "128x128", "batch_size": 1})
+                                    json={"model": model, "prompt": "test", "image_size": "512x512", "batch_size": 1})
             ok = resp.status_code == 200
             return {"success": ok, "latency_ms": int((asyncio.get_event_loop().time() - t0) * 1000),
                     "error": "" if ok else f"HTTP {resp.status_code}: {resp.text[:140]}"}

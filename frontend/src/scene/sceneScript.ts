@@ -198,12 +198,12 @@ export function fitsLlm(p: { scenes?: string[] }): boolean {
   return s.length === 0 || s.includes('prompt') || s.includes('general')
 }
 
-/** 模型能力匹配（V2.8.2）：生图/生视频下拉只列具备对应能力的模型。
+/** 模型能力匹配（V2.8.2/2.9d）：生图/生视频下拉只列具备对应能力的模型。
  * 避免纯文本模型（glm/deepseek 等）被误选导致生成失败。
  * 放行条件（任一）：
  *  1. 平台显式配置了该场景的模型映射 scene_models[need]
  *  2. 模型名/描述含生成类关键词（image/flux/... 或 video/wan/...）
- *  3. scenes 明确含 need 或 general
+ *  3. scenes 明确含 need（🔴 不含 general：通用文本模型不得进入生图/生视频下拉）
  */
 export function fitsCapability(
   p: { scenes?: string[]; scene_models?: Record<string, unknown>; model?: string; description?: string; name?: string },
@@ -217,5 +217,5 @@ export function fitsCapability(
   if (need === 'image' && imgRe.test(hay)) return true
   if (need === 'video' && vidRe.test(hay)) return true
   const scenes = Array.isArray(p.scenes) ? p.scenes : []
-  return scenes.includes(need) || scenes.includes('general')
+  return scenes.includes(need)
 }
