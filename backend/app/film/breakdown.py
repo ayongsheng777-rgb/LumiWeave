@@ -36,6 +36,10 @@ def _resolve_video(video_url: str) -> str:
     """把 video_url（http(s) 或 /uploads/...）解析为本地文件路径。"""
     if video_url.startswith("http://") or video_url.startswith("https://"):
         import urllib.request
+        from app.services.net_guard import is_safe_remote_url
+        safe, _reason = is_safe_remote_url(video_url)
+        if not safe:
+            return ""
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         dst = UPLOAD_DIR / f"src_{uuid.uuid4().hex[:12]}.mp4"
         try:

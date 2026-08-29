@@ -1,6 +1,7 @@
 """素材库 REST API（V2 Issue #009）。"""
 from __future__ import annotations
 
+import re
 import uuid
 from pathlib import Path
 
@@ -32,6 +33,33 @@ async def get_assets_dir():
     return {"dir": str(d), "exists": d.exists()}
 
 
+# 禁止把素材目录指向这些高危位置（配合公开 /uploads 路由会造成任意文件暴露）
+_BLOCKED_DIR_PREFIXES = (
+    "/etc", "/root", "/proc", "/sys", "/boot", "/var/lib", "/usr", "/bin", "/sbin", "/lib",
+    "c:\\windows", "c:\\users", "c:\\program files",
+)
+
+
+def _dir_allowed(p: Path) -> bool:
+    """素材目录守卫：拒绝盘符根目录与系统目录（同时按 POSIX/Windows 两种形式检查）。"""
+    raw = str(p).strip().lower().replace("/", "\\").rstrip("\\")
+    if re.fullmatch(r"[a-z]:", raw):  # Windows 盘符根（c:\ 、 f:\）
+        return False
+    try:
+        rp = p.resolve()
+    except Exception:
+        return False
+    if rp.parent == rp:  # 文件系统根
+        return False
+    posix = str(rp).lower()
+    win = posix.replace("/", "\\")
+    for b in _BLOCKED_DIR_PREFIXES:
+        bl = b.lower()
+        if posix.startswith(bl) or win.startswith(bl.replace("/", "\\")):
+            return False
+    return True
+
+
 @router.post("/dir")
 async def set_assets_dir(request: Request):
     """设置素材保存目录（本地路径；也可配置后把旧目录文件迁移）。"""
@@ -40,6 +68,8 @@ async def set_assets_dir(request: Request):
     if not d:
         return JSONResponse(status_code=400, content={"error": "目录不能为空"})
     p = Path(d)
+    if not _dir_allowed(p):
+        return JSONResponse(status_code=400, content={"error": "出于安全考虑，素材目录不能指向盘符根目录或系统目录"})
     try:
         p.mkdir(parents=True, exist_ok=True)
     except Exception as exc:  # noqa: BLE001

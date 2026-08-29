@@ -47,6 +47,8 @@ async def ai_chat(request: Request):
     profile_id = data.get("profile_id")
     json_mode = data.get("json_mode", False)
     scenario = data.get("scenario", "general")
+    if not str(user).strip():
+        return JSONResponse(status_code=400, content={"error": "消息内容不能为空（字段名 user）"})
     profile = config.get_profile(profile_id)
     if json_mode:
         result = await client.chat_json(system, user, model_profile=profile, scenario=scenario)

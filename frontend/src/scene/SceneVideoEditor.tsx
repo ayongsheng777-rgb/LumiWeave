@@ -67,7 +67,9 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
   const currentShot: ParsedShot | undefined = mergedShots.find((s) => s.no === shotNo)
   const pickShot = (no: number) => {
     const s = mergedShots.find((x) => x.no === no)
-    patchObject(id, { shot_no: no ? String(no) : '', desc: s ? shotDesc(s) : '' })
+    // 🔴 必须同时写 prompt：生成按钮只读 payload.prompt，此前只写 desc 导致按钮永远灰
+    const d = s ? shotDesc(s) : ''
+    patchObject(id, { shot_no: no ? String(no) : '', desc: d, prompt: d })
   }
 
   // ── 关联素材：连线指向本节点的图片（人物/道具）与音频（BGM/对白）──
@@ -228,14 +230,15 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
 
   // ── 生成视频（云端，结果写回当前节点）──
   const generate = async () => {
-    const prompt = String(payload.prompt ?? '').trim()
-    if (!prompt || generating) return
+    const basePrompt = String(payload.prompt ?? '').trim()
+    if (!basePrompt || generating) return
     setGenerating(true)
     setErrMsg('')
     try {
       const native: AnyObj = {}
       if (motion && motion !== '固定镜头') native.camera_movement = motion
-      const refs = objects
+      // 参考图 = 角色锁定图 + 连线进本节点的图片素材（此前只收 locked_ref，素材库连线图被漏掉，与节点卡片按钮行为相反）
+      const lockedRefs = objects
         .filter((o) => {
           const p = (o?.data as AnyObj)?.payload as AnyObj | undefined
           return !!p && p.locked_ref === true && String(p.url || p.main_image || '').trim()
@@ -244,7 +247,16 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
           const p = (o?.data as AnyObj)?.payload as AnyObj
           return String(p.url || p.main_image || '')
         })
-        .filter(Boolean)
+      const linkedRefs = materials.filter((m) => m.kind === 'image' && m.url).map((m) => m.url)
+      const refs = Array.from(new Set([...lockedRefs, ...linkedRefs])).filter(Boolean)
+      // 提示词拼全字段（与后端 generate_node_video 一致）：风格/运镜/清晰度/对白/音效
+      const extra: string[] = []
+      if (style) extra.push(`【画面风格】${style}`)
+      if (motion && motion !== '固定镜头') extra.push(`【运镜】${motion}`)
+      if (resolution) extra.push(`【清晰度】${resolution}`)
+      if (dialogue.length) extra.push(`【对白】${dialogue.filter(Boolean).join('；')}`)
+      if (sfx.length) extra.push(`【音效】${sfx.filter(Boolean).join('、')}`)
+      const prompt = extra.length ? `${basePrompt}\n${extra.join('\n')}` : basePrompt
       const res = await renderMedia({
         kind: 'video',
         render_mode: 'cloud',
@@ -252,7 +264,7 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
         params: {
           prompt,
           ratio: aspectRatio,
-          duration: Number(payload.duration) || 6,
+          duration: Number(payload.duration) || 5,
           native,
           ...(refs.length ? { reference_images: refs } : {}),
         },
@@ -263,7 +275,7 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
       if (res.ok && url) {
         patchObject(id, {
           url,
-          prompt,
+          prompt: basePrompt, // 回写原始提示词（拼接串只用于本次请求，避免二次生成时重复拼接）
           aspect_ratio: aspectRatio,
           camera_motion: motion,
           resolution,
@@ -458,6 +470,19 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
           {dd('motion', '运镜', CAMERA_MOTION_OPTS, motion, (v) => { setMotion(v); patchObject(id, { camera_motion: v }) })}
           {dd('res', '清晰度', RES_OPTS, resolution, (v) => { setResolution(v); patchObject(id, { resolution: v }) })}
           {dd('style', '风格', STYLE_OPTS, style, (v) => { setStyle(v); patchObject(id, { style: v }) })}
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-ink-3">时长（秒）</span>
+            <input
+              type="number"
+              min={1}
+              max={60}
+              className="nodrag nowheel w-full rounded-md border border-edge bg-input px-1.5 py-1 text-sm text-ink outline-none focus:border-brand-500"
+              disabled={locked}
+              value={String(payload.duration ?? '')}
+              placeholder="默认 5 秒"
+              onChange={(e) => patchObject(id, { duration: e.target.value })}
+            />
+          </label>
         </div>
       </LockedModal>
 

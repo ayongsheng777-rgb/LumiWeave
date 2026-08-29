@@ -558,11 +558,32 @@ def _parse_script(script: str) -> dict:
                     name = re.split(r"[（(]", piece)[0].strip()
                     if name and name not in parsed["characters"]:
                         parsed["characters"].append(name)
-        mp = re.search(r"-\s*道具[：:]\s*(.+)", block)
-        if mp:
-            raw = mp.group(1)
-            names = [x.strip() for x in re.split(r"[、,，]", raw) if x.strip()]
-            parsed["props"] = names
+        # 道具：多行区间（止于 场景/分镜 字段行），括号内顿号逗号不拆（与前端 parsePropsList 对齐）
+        props_sec = re.search(r"-\s*道具[：:]\s*([^\n]*)([\s\S]*?)(?=\n\s*-\s*(?:场景|分镜|人物)[：:]|\Z)", block)
+        if props_sec:
+            raw_lines = props_sec.group(1) + "\n" + props_sec.group(2)
+            for raw_line in raw_lines.splitlines():
+                line = raw_line.strip().lstrip("-* ").strip()
+                if not line:
+                    continue
+                cur, depth = "", 0
+                pieces2: list[str] = []
+                for ch in line:
+                    if ch in "（(":
+                        depth += 1
+                    if ch in "）)":
+                        depth -= 1
+                    if ch in "、,，" and depth == 0:
+                        if cur.strip():
+                            pieces2.append(cur.strip())
+                        cur = ""
+                    else:
+                        cur += ch
+                if cur.strip():
+                    pieces2.append(cur.strip())
+                for piece in pieces2:
+                    if piece and piece not in parsed["props"]:
+                        parsed["props"].append(piece)
     # 场景/分镜块：兼容新模板「# 场景一：名称（约 X 秒）」与旧模板「## 分镜N：（地点，时间）」
     for m in re.finditer(r"^#{1,2}\s*(?:场景|分镜)\s*([一二三四五六七八九十\d]+)[：:]?\s*(.*)$", script, re.M):
         no = _parse_cn_num(m.group(1))
@@ -1963,7 +1984,8 @@ async def _act_generate_voiceover(scene_id: str, obj_ids: list[str], params: dic
             continue
         nid = await service.create_object(scene_id, "audio", x=400, y=float(obj.get("y") or 0) + 300,
                                           width=360, height=200,
-                                          data={"text": text, "voiceover": True, "source_object_id": oid})
+                                          data={"text": text, "voiceover": True, "audio_type": "配音",
+                                                "source_object_id": oid})
         created.append(nid)
     return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 段配音稿"}
 

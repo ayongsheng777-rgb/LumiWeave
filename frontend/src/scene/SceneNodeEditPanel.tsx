@@ -38,7 +38,7 @@ function sceneActionsFor(objectType: string, typeDef?: SceneTypeDef | null): str
 type Payload = Record<string, unknown>
 
 // ── 图片用途 / 音频类型 动态选项 ──
-const PURPOSE_OPTS = ['人物', '道具', '分镜']
+const PURPOSE_OPTS = ['人物', '道具', '场景']
 const AUDIO_TYPE_OPTS = ['配音', 'BGM', '音效', '对白']
 
 // ── 剧情/文本生成：系统提示词 + 内嵌 AI 输入条（从 SceneObjectNode 迁移）──

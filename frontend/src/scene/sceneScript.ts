@@ -110,7 +110,8 @@ export function parseCharacters(script: string): Record<string, string> {
 /** 从剧本解析「道具」名字列表 */
 export function parsePropsList(script: string): string[] {
   const out: string[] = []
-  const sec = sectionOf(script, '道具', ['分镜'])
+  // 🔴 endFields 必须含「场景」：否则模板里道具段之后的场景行会被整段吞进道具名单
+  const sec = sectionOf(script, '道具', ['场景', '分镜'])
   if (!sec) return out
   for (const raw of sec.split('\n')) {
     let l = raw.trim().replace(/^[-*]\s*/, '')
@@ -123,6 +124,26 @@ export function parsePropsList(script: string): string[] {
     })
   }
   return out
+}
+
+/** 从剧本解析「道具」名字 → 描述（取含名字的最长片段，供生图提示词使用） */
+export function parseProps(script: string): Record<string, string> {
+  const desc: Record<string, string> = {}
+  const sec = sectionOf(script, '道具', ['场景', '分镜'])
+  if (!sec) return desc
+  for (const raw of sec.split('\n')) {
+    let l = raw.trim().replace(/^[-*]\s*/, '')
+    if (!l) continue
+    if (l.startsWith('道具')) l = l.replace(/^道具[：:]\s*/, '')
+    if (!l || isJunkLine(l)) continue
+    l = l.replace(/^\s*\d+[.、）)]?\s*/, '')
+    for (const piece of splitTopLevel(l)) {
+      const nm = (piece.split(/[（(:：]/)[0] || '').trim()
+      if (!nm || nm.length > 20) continue
+      if (!desc[nm] || piece.length > desc[nm].length) desc[nm] = piece
+    }
+  }
+  return desc
 }
 
 /** 从分镜块解析对白 + 画内画外音（环境音/音效标注）。

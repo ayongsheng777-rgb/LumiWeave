@@ -140,7 +140,7 @@ async def list_objects(scene_id: str):
 @router.post("/{scene_id}/objects")
 async def create_object(scene_id: str, request: Request):
     data = await request.json()
-    obj_type = str(data.get("type") or "text")
+    obj_type = str(data.get("type") or data.get("object_type") or "text")
     # 商业化配额（§73 / P2-03）：单场景对象数上限
     ok, msg = await plans.check_object_quota(scene_id)
     if not ok:

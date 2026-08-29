@@ -23,7 +23,7 @@ import SkillPicker from './SkillPicker'
 import ErrorBanner from '../components/ErrorBanner'
 import {
   type AnyObj, type ParsedScript, EMPTY_PARSED, isStoryNode,
-  parseCharacters, parsePropsList, parseShotsFromScript, sceneDesc,
+  parseCharacters, parseProps, parsePropsList, parseShotsFromScript, sceneDesc,
   fitsCapability, fitsLlm,
 } from './sceneScript'
 
@@ -73,6 +73,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
   const script = String(storyPayload.script ?? '')
   const parsed: ParsedScript = (storyPayload.parsed as ParsedScript) || EMPTY_PARSED
   const charDescs = useMemo(() => parseCharacters(script), [script])
+  const propDescs = useMemo(() => parseProps(script), [script])
   const propList = useMemo(() => parsePropsList(script), [script])
   const mergedShots = useMemo(() => {
     if (script) return parseShotsFromScript(script)
@@ -191,11 +192,12 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rendererId, mode])
 
-  // 类别切换 → 重置选中与描述
+  // 类别切换 → 重置选中与描述（同步写 purpose，保证后端参考图按用途匹配不漂移）
   const switchCategory = (c: Category) => {
     setCategory(c)
     setSelected('')
     setDesc('')
+    patchObject(id, { purpose: c })
   }
 
   // 选中对象 → 提取描述 + 标题自动识别为选中对象
@@ -208,6 +210,9 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
       const s = mergedShots.find((x) => x.no === no)
       // 场景图描述只含场景信息（地点/时间/氛围），不夹带人物动作/对白等
       setDesc(s ? sceneDesc(s) : val)
+    } else if (category === '道具') {
+      // 道具描述查道具表（此前错查人物表导致道具提示词只剩名词）
+      setDesc(propDescs[val] || val)
     } else {
       setDesc(charDescs[val] || val)
     }
@@ -329,7 +334,8 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
             kb_ref: kbId,
             resolution,
             ratio,
-            category,
+            size: calcImageSize(resolution, ratio), // 写回尺寸：节点卡片「生成图片」按钮（后端 generate_node_image）读 data.size
+            purpose: category, // 🔴 统一写 purpose（废弃 category 双字段），后端参考图按 purpose 匹配
             selected,
             desc,
           })

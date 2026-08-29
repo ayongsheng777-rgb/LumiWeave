@@ -99,6 +99,13 @@ async def render_websocket(websocket: WebSocket):
     """
     from app.render_kernel.websocket import get_ws_manager
     from app.render_kernel.db import job_get_events
+    from app import auth as _auth
+
+    # 与 /ws 一致：WebSocket 不经 HTTP 鉴权中间件，须自行校验 token
+    token = websocket.query_params.get("token", "")
+    if not _auth.verify_token(token):
+        await websocket.close(code=1008)
+        return
 
     ws_manager = get_ws_manager()
     raw_job_ids = websocket.query_params.get("job_ids", "")

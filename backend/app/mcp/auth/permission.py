@@ -39,6 +39,31 @@ _TOOL_PERMISSIONS: dict[str, str] = {
     # 执行类
     "canvas.generate": PERMISSION_EXECUTE,
     "workflow.execute": PERMISSION_EXECUTE,
+    # 影视类（LLM/出图/生视频均消耗云端费用 → 执行权限）
+    "film.story_parse": PERMISSION_EXECUTE,
+    "film.character_generate": PERMISSION_EXECUTE,
+    "film.scene_generate": PERMISSION_EXECUTE,
+    "film.prop_generate": PERMISSION_EXECUTE,
+    "film.storyboard_generate": PERMISSION_EXECUTE,
+    "film.video_generate": PERMISSION_EXECUTE,
+    "film.subtitle_generate": PERMISSION_EXECUTE,
+    "film.build_story": PERMISSION_EXECUTE,
+    "film.export": PERMISSION_WRITE,
+    # 场景类
+    "scene.list": PERMISSION_READ,
+    "scene.load": PERMISSION_READ,
+    "scene.asset.list": PERMISSION_READ,
+    "scene.create": PERMISSION_WRITE,
+    "scene.save": PERMISSION_WRITE,
+    "scene.version.save": PERMISSION_WRITE,
+    "scene.action.execute": PERMISSION_EXECUTE,
+    # 营销类
+    "marketing.create_project": PERMISSION_WRITE,
+    "marketing.export_assets": PERMISSION_WRITE,
+    "marketing.generate_strategy": PERMISSION_EXECUTE,
+    "marketing.generate_storyboard": PERMISSION_EXECUTE,
+    "marketing.generate_visual_board": PERMISSION_EXECUTE,
+    "marketing.render_campaign": PERMISSION_EXECUTE,
 }
 
 
@@ -53,8 +78,8 @@ def has_permission(client_permissions: list[str] | Any, tool_name: str) -> bool:
     if req is None:
         return True
     if isinstance(client_permissions, str):
-        return True  # 字符串视为通配/旧格式，放行
+        client_permissions = [client_permissions]  # 单字符串按单条权限处理（不再视为通配）
     perms = set(client_permissions or [])
-    if "*" in perms or "all" in perms:
+    if "*" in perms:
         return True
     return req in perms

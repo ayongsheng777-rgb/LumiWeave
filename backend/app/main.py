@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -61,7 +62,7 @@ app = FastAPI(title="绵绣 LumiWeave", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # Bearer 头鉴权无需 Cookie 凭证；* + credentials 属危险组合
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -101,12 +102,38 @@ async def auth_setup():
     }
 
 
+# ── 登录限流（防 OTP 在线爆破）：同一 IP 10 分钟内失败 5 次则锁定 10 分钟 ──
+_LOGIN_FAILS: dict[str, list[float]] = {}
+_LOGIN_MAX_FAILS = 5
+_LOGIN_WINDOW = 600.0
+
+
+def _login_rate_check(ip: str) -> bool:
+    """返回 True 表示允许尝试；False 表示已锁定。"""
+    now = time.time()
+    fails = [t for t in _LOGIN_FAILS.get(ip, []) if now - t < _LOGIN_WINDOW]
+    _LOGIN_FAILS[ip] = fails
+    return len(fails) < _LOGIN_MAX_FAILS
+
+
+def _login_rate_record(ip: str, ok: bool) -> None:
+    if ok:
+        _LOGIN_FAILS.pop(ip, None)
+    else:
+        _LOGIN_FAILS.setdefault(ip, []).append(time.time())
+
+
 @app.post("/api/auth/login")
 async def auth_login(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    if not _login_rate_check(ip):
+        return JSONResponse(status_code=429, content={"error": "尝试次数过多，请 10 分钟后再试"})
     data = await request.json()
     code = str(data.get("otp", "")).strip()
     if not auth.verify_otp(code):
+        _login_rate_record(ip, False)
         return JSONResponse(status_code=401, content={"error": "动态码无效或已过期"})
+    _login_rate_record(ip, True)
     auth.mark_enrolled()
     return auth.generate_token()
 
@@ -187,13 +214,25 @@ _UPLOAD_DIR = DATA_DIR / "uploads"
 _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _safe_join(root: Path, fname: str) -> Path | None:
+    """把用户输入的相对文件名拼到 root 下，拒绝任何跑出 root 的路径（防 ../ 穿越）。"""
+    try:
+        root_r = root.resolve()
+        p = (root_r / fname).resolve()
+    except Exception:
+        return None
+    if p != root_r and root_r not in p.parents:
+        return None
+    return p
+
+
 @app.get("/uploads/{fname:path}")
 async def _uploads_file(fname: str):
     from app.assets.routes import _assets_dir
     d = await _assets_dir()
-    p = d / fname
-    if not p.is_file():
-        p = _UPLOAD_DIR / fname  # 回退默认目录（历史文件）
-    if not p.is_file():
+    p = _safe_join(d, fname)
+    if p is None or not p.is_file():
+        p = _safe_join(_UPLOAD_DIR, fname)  # 回退默认目录（历史文件）
+    if p is None or not p.is_file():
         return JSONResponse(status_code=404, content={"error": "文件不存在"})
     return FileResponse(p)

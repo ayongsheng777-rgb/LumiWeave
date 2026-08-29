@@ -96,7 +96,7 @@ AI_ACTIVE=deepseek
 │   │   ├── tasks/            【V2.1】Task API（创建/查/取消/重试/事件）
 │   │   ├── schemas/          【V2】统一 DAG 协议（workflow.py）
 │   │   ├── ai/               AI 模型面板 + provider_gateway（统一 LLM 网关）+ errors（统一错误码）
-│   │   ├── agent/            多智能体 Agent + engine（DAG 执行引擎）+ node_registry + workflow_service
+│   │   ├── workflow/         工作流执行核心（engine/node_registry/types/routes，MCP 改造时从 agent/ 迁来）
 │   │   ├── skills/           Skill 中央仓库
 │   │   ├── renderers/        ComfyUI Renderer + dispatcher（异构算力路由）
 │   │   ├── canvas/           画布对象 CRUD + workflow_adapter + result_writer

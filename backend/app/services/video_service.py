@@ -50,8 +50,13 @@ async def extract_frame(video_url: str, mode: str = "last", time_seconds: float 
     tmp_path = ""
     try:
         if video_url.startswith(("http://", "https://")):
+            # 防 SSRF：拒绝内网/回环/链路本地地址
+            from app.services.net_guard import is_safe_remote_url
+            safe, reason = is_safe_remote_url(video_url)
+            if not safe:
+                return _err(f"视频地址不安全：{reason}")
             # 远程视频先落地临时文件（比 cv2 直连 http 更稳）
-            async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=120, follow_redirects=False) as client:
                 resp = await client.get(video_url)
                 resp.raise_for_status()
             with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:

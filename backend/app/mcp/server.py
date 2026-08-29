@@ -74,6 +74,44 @@ def http_app():
                 await resp(scope, receive, send)
                 return
 
+            # 权限强制：拦截 tools/call，校验客户端 permissions 是否覆盖工具所需权限
+            if scope.get("method") == "POST":
+                from app.mcp.auth.permission import has_permission
+                messages: list[dict] = []
+                body = b""
+                while True:
+                    msg = await receive()
+                    messages.append(msg)
+                    if msg["type"] != "http.request":
+                        break
+                    body += msg.get("body", b"")
+                    if not msg.get("more_body"):
+                        break
+                import json as _json
+                try:
+                    payload = _json.loads(body) if body else {}
+                except Exception:
+                    payload = {}
+                calls = payload if isinstance(payload, list) else [payload]
+                for c in calls:
+                    if isinstance(c, dict) and c.get("method") == "tools/call":
+                        tool_name = str((c.get("params") or {}).get("name") or "")
+                        if not has_permission(client.get("permissions"), tool_name):
+                            resp = JSONResponse(
+                                {"error": f"客户端无调用 {tool_name} 的权限", "code": "PERMISSION_DENIED"},
+                                status_code=403,
+                            )
+                            await resp(scope, receive, send)
+                            return
+
+                async def replay_receive(msgs=messages):
+                    if msgs:
+                        return msgs.pop(0)
+                    return {"type": "http.request", "body": b"", "more_body": False}
+
+                await base(scope, replay_receive, send)
+                return
+
         await base(scope, receive, send)
 
     return wrapped

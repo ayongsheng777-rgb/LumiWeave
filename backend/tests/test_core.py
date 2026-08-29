@@ -7,9 +7,9 @@ import asyncio
 
 import pytest
 
-from app.agent.engine import WorkflowEngine, WorkflowExecutionError
-from app.agent.node_registry import get_node, list_nodes
-from app.agent.types import (
+from app.workflow.engine import WorkflowEngine, WorkflowExecutionError
+from app.workflow.node_registry import get_node, list_nodes
+from app.workflow.types import (
     NodeResult,
     WorkflowEdge,
     WorkflowGraph,
@@ -100,7 +100,7 @@ def test_workflow_adapter_roundtrip():
 def test_node_registry():
     nodes = list_nodes()
     types = {n["type"] for n in nodes}
-    for t in ("input", "llm", "prompt_template", "agent", "skill", "render", "output"):
+    for t in ("input", "llm", "prompt_template", "skill", "render", "output"):
         assert t in types
     assert get_node("llm") is not None
     assert get_node("not_exist") is None

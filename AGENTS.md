@@ -529,6 +529,42 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 **验证**：`_parse_script` 容器内实测输出 `['林晓','陈默','老张']`（括号保护生效）；tsc 0 错、vite build 过；frontend 200 / backend 登录 200。
 
+## 一·二十八、安全验收修复 + 影视拉片链路修复（2026-08-29）
+
+按《AI软件验收智能体规范 V1.0》全面验收（报告见 `验收报告_2026-08-29/`，初评 C 级）后修复全部 P0/P1 及关联项；同时按阿勇反馈修复影视拉片场景链路 bug。前后端镜像均已重建上线。
+
+**① 安全修复（验收 16 项全绿）**
+- **P0 /uploads 路径穿越**：`main.py` 加 `_safe_join()`（resolve 后校验 is_relative_to），实测 `../otp_secret`、`../../../../etc/passwd` 均 404
+- **P0 依赖**：python-multipart 0.0.9 → 0.0.27（3 个 DoS CVE）
+- **P1 MCP 权限强制**：`mcp/server.py` 在 ASGI 层拦截 tools/call 校验 `has_permission`（只读 token 调写/执行工具 403 实测）；`permission.py` 补全 film/scene/marketing 40+ 工具权限映射，移除"字符串视为通配"漏洞
+- **P1 登录限流**：同 IP 10 分钟失败 5 次锁 10 分钟（429 实测）
+- **P1 端口收敛**：PG 5435 / Redis 6385 绑回 127.0.0.1
+- **P2**：assets/dir 守卫（拒盘符根/系统目录，POSIX+Windows 双形式检查）；渲染 WS 补 token 校验；SSRF 防护 `services/net_guard.py`（拒内网/回环/链路本地，extract-frame 与 film/breakdown 接入）；CORS 关 credentials；nginx gzip + 安全响应头
+- **chat 空消息 400 校验**（验收时 B03 误判为配置失效，实为请求字段名错误，已更正报告）
+
+**② 影视拉片链路修复（阿勇反馈：提示词不完整/实体数据缺失/节点属性混乱/图片音频功能混乱）**
+- **purpose/category 双字段统一**：图片编辑器生成后只写 `purpose`（废弃 category），切类别即同步，后端参考图按 purpose 匹配不再漂移
+- **视频编辑器选分镜只写 desc 不写 prompt**（生成按钮永远灰）→ pickShot 同时写 prompt
+- **视频编辑器参考图漏连线素材**：refs 合并 locked_ref + 连线 image 素材；提示词补拼 风格/运镜/清晰度/对白/音效（与后端 generate_node_video 对齐）；画面配置加时长输入；生成后回写原始提示词（防二次拼接累积）
+- **道具解析吞场景行**：前端 `parsePropsList` endFields 补「场景」；后端 `_parse_script` 道具段同样修（多行+括号保护拆分）
+- **道具描述查错表**：新增 `parseProps()` 名字→描述映射，道具提示词不再只剩名词
+- **配音稿节点显示成 BGM 面板**：后端建节点补 `audio_type:'配音'`，前端 `audio_type ?? (voiceover ? '配音' : 'BGM')`；音频编辑器「分镜引入」对所有音频类型开放（配音/对白取台词、音效取音效、BGM 取音乐）
+- **图片编辑器生成回写 size**：节点卡片「生成图片」按钮（后端读 data.size）不再永远 1024x1024
+- **PURPOSE_OPTS** 分镜→场景；**ACTION_LABELS** 补 generate_node_image/video、storyboard_import_ai
+
+**③ 工程修复**
+- `tests/test_core.py`：`app.agent.*` 死引用改 `app.workflow.*`，注册表断言移除已删的 agent 节点类型；requirements 加 pytest/pytest-asyncio；**8/8 全绿**（容器内 docker cp tests 后跑，.dockerignore 有意排除 tests/ 保持镜像干净）
+- README 目录结构残留 agent/ 描述修正；遗留表 cleanup_bak×2 已导出到 `D:/tmp/lw_bak_tables_20260829.sql` 后 DROP；frontend/dist_new 已挪 `D:/tmp/lw_dist_new_removed`
+- 遗留不修项（有理由）：Redis 死依赖暂留（9MB，后续可作队列）；场景 actions.py 2144 行拆分属大重构，列入下一批；.env MiniMax Key 需阿勇手动轮换
+
+**踩坑**
+- `docker compose up -d` 部分重建时 mcp 容器可能丢端口绑定（docker port 空）→ `compose rm -f -s mcp && up -d mcp` 彻底重建
+- mcp SDK 有 DNS 重绑定防护：容器间访问（Host=lumiweave-mcp:8901）直接 421 Misdirected Request，宿主机 localhost 正常——验收 MCP 要在宿主机侧测
+- backend force-recreate 后内存 token 全失效，验收脚本须重新登录
+- httpx 会客户端归一化 `../`，路径穿越测试必须用 curl `--path-as-is`
+
+
+
 ## 三、启动 / 重启 SOP
 
 ```bash

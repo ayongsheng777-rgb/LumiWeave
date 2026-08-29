@@ -81,6 +81,9 @@ export const ACTION_LABELS: Record<string, string> = {
   generate_music: '生成音乐提示词',
   generate_subtitle: '生成字幕',
   compose_final: '合成成片',
+  generate_node_image: '节点生成图片',
+  generate_node_video: '节点生成视频',
+  storyboard_import_ai: 'AI 导入分镜',
 }
 
 export interface RunLogEntry {

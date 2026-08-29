@@ -90,7 +90,9 @@ export default function SceneAudioEditor({ id, locked }: { id: string; locked: b
   const mergedShots = linked.shots
   const bgmShots = useMemo(() => mergedShots.filter((s) => String(s.bgm ?? '').trim() || s.dialogue.length || s.sfx.length), [mergedShots])
 
-  const audioType = String(payload.audio_type ?? 'BGM')
+  // 🔴 配音稿节点（后端 generate_voiceover 建的 {text, voiceover:true}）默认应是「配音」，
+  // 此前兜底 BGM 导致配音稿节点显示成 BGM 面板、正文 text 被藏起来
+  const audioType = String(payload.audio_type ?? (payload.voiceover ? '配音' : 'BGM'))
   const shotNo = Number(payload.shot_no) || 0
   const currentShot = mergedShots.find((s) => s.no === shotNo)
 
@@ -141,19 +143,30 @@ export default function SceneAudioEditor({ id, locked }: { id: string; locked: b
     return parts.join('\n\n')
   }
 
-  // ── 选分镜 → 带出 BGM 描述（story 取 bgm；storyboard 取 描述+对白+音效）──
+  // ── 选分镜 → 按音频类型带出对应内容（BGM→背景音乐；配音/对白→对白；音效→音效）──
   const pickShot = (no: number) => {
     const s = mergedShots.find((x) => x.no === no)
     if (!s) return
-    const desc = linked.kind === 'storyboard'
-      ? [
-          s.bgm || s.location || `分镜${s.no}`,
-          s.goal ? s.goal : '',
-          s.dialogue.length ? `对白：${s.dialogue.map((d) => `${d.speaker}：${d.line}`).join('；')}` : '',
-          s.sfx.length ? `音效：${s.sfx.join('、')}` : '',
-        ].filter(Boolean).join('\n')
-      : String(s.bgm ?? '')
-    patchObject(id, { shot_no: no ? String(no) : '', desc })
+    let desc: string
+    if (linked.kind === 'storyboard') {
+      desc = [
+        s.bgm || s.location || `分镜${s.no}`,
+        s.goal ? s.goal : '',
+        s.dialogue.length ? `对白：${s.dialogue.map((d) => `${d.speaker}：${d.line}`).join('；')}` : '',
+        s.sfx.length ? `音效：${s.sfx.join('、')}` : '',
+      ].filter(Boolean).join('\n')
+    } else if (audioType === '配音' || audioType === '对白') {
+      desc = s.dialogue.length
+        ? s.dialogue.map((d) => `${d.speaker}${d.emotion ? `（${d.emotion}）` : ''}：${d.line}`).join('\n')
+        : String(s.bgm ?? '')
+    } else if (audioType === '音效') {
+      desc = s.sfx.length ? s.sfx.join('\n') : String(s.bgm ?? '')
+    } else {
+      desc = String(s.bgm ?? '')
+    }
+    // 配音/对白/音效写 text（正文框），BGM 写 desc（音乐描述框）
+    if (audioType === 'BGM') patchObject(id, { shot_no: no ? String(no) : '', desc })
+    else patchObject(id, { shot_no: no ? String(no) : '', text: desc })
   }
 
   // ── AI 识别建议（后端动作：分镜内容 → 风格/乐器/提示词写回）──
@@ -216,43 +229,47 @@ export default function SceneAudioEditor({ id, locked }: { id: string; locked: b
         </div>
       )}
 
+      {/* 分镜 / 故事板引入（全部音频类型可用：BGM 取背景音乐，配音/对白取台词，音效取音效） */}
+      <div className="space-y-1.5 rounded-lg border border-edge p-1.5">
+        <div className="flex items-center gap-1 text-[11px] text-ink-3">
+          <Music2 size={12} /> 分镜 / 故事板引入
+        </div>
+        {linked.kind ? (
+          <div className="rounded-lg border border-brand-500/30 bg-brand-500/5 px-2 py-1.5 text-[11px] leading-snug text-brand-300">
+            {linked.kind === 'story'
+              ? `已连线剧情节点：自动识别 ${mergedShots.length} 个分镜（含 BGM ${bgmShots.length} 个），选中自动带入${audioType === 'BGM' ? '背景音乐描述' : audioType === '音效' ? '音效' : '对白'}`
+              : `已连线分镜脚本表：自动识别 ${mergedShots.length} 个分镜（含对白/音效），选中自动带入内容`}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-edge px-2 py-1.5 text-[11px] text-ink-3">
+            未连线剧情节点/分镜脚本表：可手动填写分镜内容；连线剧情（分镜 BGM）或分镜脚本表（对白/音效）后自动引入
+          </div>
+        )}
+        <select
+          className="nodrag h-8 w-full rounded-md border border-edge bg-input px-1.5 text-sm text-ink outline-none focus:border-brand-500"
+          value={shotNo ? String(shotNo) : ''}
+          disabled={locked}
+          onChange={(e) => pickShot(Number(e.target.value))}
+        >
+          <option value="">选择分镜（匹配其{audioType === 'BGM' ? '背景音乐' : audioType === '音效' ? '音效' : '对白'}）</option>
+          {(bgmShots.length ? bgmShots : mergedShots).map((s) => (
+            <option key={s.no} value={s.no}>
+              分镜{s.no}：{s.bgm || s.location || `分镜${s.no}`}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {audioType === 'BGM' ? (
         <>
-          {/* 分镜 / 故事板引入 */}
+          {/* BGM 音乐描述（选分镜带入，可手改）+ AI 识别建议 */}
           <div className="space-y-1.5 rounded-lg border border-edge p-1.5">
-            <div className="flex items-center gap-1 text-[11px] text-ink-3">
-              <Music2 size={12} /> 分镜 / 故事板引入
-            </div>
-            {linked.kind ? (
-              <div className="rounded-lg border border-brand-500/30 bg-brand-500/5 px-2 py-1.5 text-[11px] leading-snug text-brand-300">
-                {linked.kind === 'story'
-                  ? `已连线剧情节点：自动识别 ${mergedShots.length} 个分镜（含 BGM ${bgmShots.length} 个），选中自动带入背景音乐描述`
-                  : `已连线分镜脚本表：自动识别 ${mergedShots.length} 个分镜（含对白/音效），选中自动带入内容`}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-dashed border-edge px-2 py-1.5 text-[11px] text-ink-3">
-                未连线剧情节点/分镜脚本表：可手动填写分镜内容；连线剧情（分镜 BGM）或分镜脚本表（对白/音效）后自动引入
-              </div>
-            )}
-            <select
-              className="nodrag h-8 w-full rounded-md border border-edge bg-input px-1.5 text-sm text-ink outline-none focus:border-brand-500"
-              value={shotNo ? String(shotNo) : ''}
-              disabled={locked}
-              onChange={(e) => pickShot(Number(e.target.value))}
-            >
-              <option value="">选择分镜（匹配其背景音乐/内容）</option>
-              {(bgmShots.length ? bgmShots : mergedShots).map((s) => (
-                <option key={s.no} value={s.no}>
-                  分镜{s.no}：{s.bgm || s.location || `分镜${s.no}`}
-                </option>
-              ))}
-            </select>
             <textarea
               className="nodrag nowheel w-full resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500"
               rows={Math.min(12, Math.max(2, String(payload.desc ?? '').split('\n').length))}
               value={String(payload.desc ?? '')}
               disabled={locked}
-              placeholder="选中分镜自动带入内容，可手改…"
+              placeholder="选中分镜自动带入背景音乐描述，可手改…"
               onChange={(e) => patchObject(id, { desc: e.target.value })}
             />
             <button
