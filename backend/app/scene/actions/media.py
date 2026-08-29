@@ -25,6 +25,86 @@ _SCENE_VARIANTS = [
 ]
 
 
+def _ref_label(d: dict, obj_type: str = "image") -> str:
+    """参考图语义标签：用途/标题 → 中文说明，用于提示词 Ref 序号标注。"""
+    purpose = str(d.get("purpose") or "").strip()
+    title = str(d.get("title") or d.get("name") or d.get("selected") or "").strip()
+    if purpose:
+        return f"{purpose}{'·' + title if title else ''}"
+    if title:
+        return title
+    if obj_type == "product":
+        return "商品主图"
+    return "参考图"
+
+
+async def _collect_refs(
+    scene_id: str,
+    oid: str,
+    params: dict,
+    *,
+    include_product: bool = True,
+) -> list[tuple[str, str]]:
+    """收集某视频/图片节点可用参考图（url, 语义标签）。
+
+    优先级：显式 params.reference_images → 连到本节点的 image 资产 →
+    场景内商品图（main_image / refined_image / url，带货一致性刚需）。
+    返回 [(url, label)]，供提示词 Ref 序号标注与 native.reference_images 注入。
+    """
+    refs: list[tuple[str, str]] = []
+
+    def _push(u: str, label: str) -> None:
+        u = str(u or "").strip()
+        if not u:
+            return
+        if any(u == r[0] for r in refs):
+            return
+        refs.append((u, label))
+
+    for x in (params.get("reference_images") or []):
+        if isinstance(x, dict):
+            _push(x.get("url") or x.get("reference") or "", str(x.get("label") or "参考图"))
+        else:
+            _push(x, "参考图")
+
+    # 连到本节点的 image 资产（素材库同一来源）
+    if not refs:
+        for e in await service.list_edges(scene_id):
+            if e.get("target_id") != oid:
+                continue
+            src = await service.get_object(e.get("source_id") or "")
+            if not src:
+                continue
+            sd = src.get("data") or {}
+            st = src.get("object_type") or ""
+            if st == "image":
+                _push(sd.get("url"), _ref_label(sd, "image"))
+            elif st == "product":
+                _push(sd.get("main_image") or sd.get("refined_image") or sd.get("url"),
+                      _ref_label(sd, "product"))
+
+    # 场景内商品图兜底（未连线也带上，保证带货视频里商品外观一致）
+    if include_product and not refs:
+        for o in await service.list_objects(scene_id):
+            if o["id"] == oid:
+                continue
+            d = o.get("data") or {}
+            if o.get("object_type") == "product":
+                _push(d.get("main_image") or d.get("refined_image") or d.get("url"),
+                      _ref_label(d, "product"))
+                break
+
+    return refs
+
+
+def _refs_into_prompt(p: str, refs: list[tuple[str, str]]) -> str:
+    """把参考图语义标注写进提示词（对齐灵境 Ref 序号，供多参考视频模型区分角色/场景/商品）。"""
+    if not refs:
+        return p
+    notes = "；".join(f"参考图{i + 1}={label}" for i, (_, label) in enumerate(refs))
+    return f"{p}\n【参考图说明】{notes}"
+
+
 async def _gen_image(scene_id: str, obj_ids: list[str], params: dict, kind: str) -> dict:
     prov = await _image_provider()
     if not prov:
@@ -178,11 +258,21 @@ async def _act_generate_video(scene_id: str, obj_ids: list[str], params: dict) -
         native: dict[str, Any] = {}
         if motion and motion != "固定镜头":
             native["camera_movement"] = motion
+        # 参考图收集（对齐灵境：商品图/人物图/场景图一并带上）+ Ref 语义标注
+        refs = await _collect_refs(scene_id, oid, params)
+        ref_urls = [u for u, _ in refs]
+        if ref_urls:
+            p = _refs_into_prompt(p, refs)
+        # 负面提示词（V2.10）
+        negative = str(params.get("negative") or d.get("negative_prompt") or "").strip()
+        if negative:
+            native["negative_prompt"] = negative
         from app.providers.cloud_gen import cloud_video_generate
         res = await cloud_video_generate(prov["id"], p,
-                                         image_url=d.get("url") or params.get("image_url", ""),
+                                         image_url=d.get("url") or params.get("image_url", "") or (ref_urls[0] if ref_urls else ""),
                                          duration=int(params.get("duration") or d.get("duration") or 5),
                                          ratio=str(params.get("ratio") or d.get("aspect_ratio") or "16:9"),
+                                         negative=negative,
                                          native=native or None)
         if not res.get("ok"):
             return {"ok": False, "error": res.get("error", "生视频失败"), "logs": res.get("logs")}
@@ -285,15 +375,18 @@ async def _act_generate_node_image(scene_id: str, obj_ids: list[str], params: di
                 if pd.get("url") and str(pd.get("purpose") or "") == purpose and title and str(pd.get("title") or pd.get("name") or pd.get("selected") or "") == title:
                     refs.append(str(pd["url"]))
         from app.providers.cloud_gen import cloud_image_generate
+        negative = str(params.get("negative") or d.get("negative_prompt") or "").strip()
         res = await cloud_image_generate(prov["id"], p,
                                          size=str(params.get("size") or d.get("size") or "1024x1024"),
+                                         negative=negative,
                                          reference_images=refs or None)
         if not res.get("ok"):
             return {"ok": False, "error": res.get("error", "出图失败"), "logs": res.get("logs")}
         urls = [i.get("url") for i in res.get("images", []) if i.get("url")]
         if not urls:
             continue
-        await service.update_object(oid, data={**d, "url": urls[0], "model": prov.get("name"), "prompt": p})
+        await service.update_object(oid, data={**d, "url": urls[0], "model": prov.get("name"), "prompt": p,
+                                               "negative_prompt": negative})
         await _register_asset(scene_id, "image", urls[0],
                               name=f"{d.get('purpose') or '图片'}·{d.get('title') or d.get('name') or ''}",
                               meta={"source_object_id": oid})
@@ -320,15 +413,11 @@ async def _act_generate_node_video(scene_id: str, obj_ids: list[str], params: di
         p = str(params.get("prompt") or d.get("prompt") or d.get("desc") or "").strip()
         if not p:
             continue
-        # 参考图：参数优先，其次连到本节点的 image 资产（素材库同一来源）
-        refs = [str(x) for x in (params.get("reference_images") or []) if x]
-        if not refs:
-            for e in await service.list_edges(scene_id):
-                if e.get("target_id") != oid:
-                    continue
-                src = await service.get_object(e.get("source_id") or "")
-                if src and src["object_type"] == "image" and src["data"].get("url"):
-                    refs.append(str(src["data"]["url"]))
+        # 参考图：参数优先，其次连到本节点的 image 资产 + 场景内商品图（素材库同一来源）
+        refs = await _collect_refs(scene_id, oid, params)
+        ref_urls = [u for u, _ in refs]
+        if ref_urls:
+            p = _refs_into_prompt(p, refs)
         # 风格/运镜/清晰度/音效拼进提示词
         style = str(params.get("style") or d.get("style") or "").strip()
         motion = str(params.get("camera_motion") or d.get("camera_motion") or "固定镜头").strip()
@@ -346,15 +435,23 @@ async def _act_generate_node_video(scene_id: str, obj_ids: list[str], params: di
             extra.append(f"【音效】{'、'.join(str(x) for x in d['sfx_desc'] if x)}")
         if extra:
             p = f"{p}\n" + "\n".join(extra)
+        # 负面提示词 + 音频开关（V2.10）
+        negative = str(params.get("negative") or d.get("negative_prompt") or "").strip()
+        native: dict[str, Any] = {}
+        if negative:
+            native["negative_prompt"] = negative
+        if params.get("generate_audio") is not None or d.get("generate_audio") is not None:
+            native["generate_audio"] = bool(params.get("generate_audio", d.get("generate_audio")))
         from app.renderers.generate import render_media
         res = await render_media(
             "video",
             {
                 "prompt": p,
+                "negative": negative,
                 "duration": int(params.get("duration") or d.get("duration") or 5),
                 "ratio": str(params.get("ratio") or d.get("aspect_ratio") or "16:9"),
-                **({"reference_images": refs} if refs else {}),
-                **({"native": {"camera_movement": motion}} if motion and motion != "固定镜头" else {}),
+                **({"reference_images": ref_urls} if ref_urls else {}),
+                **({"native": {**native, "camera_movement": motion}} if motion and motion != "固定镜头" else ({"native": native} if native else {})),
             },
             render_mode="cloud",
             provider_id=prov["id"],

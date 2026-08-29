@@ -9,7 +9,7 @@ import { useRef, useState } from 'react'
 import {
   MousePointer2, Type, ShoppingBag, ImageIcon, Film, Music, BookOpen,
   Clapperboard, ClipboardList, Undo2, Redo2, Link2, Upload, FolderOpen, Loader2, X,
-  LayoutGrid,
+  LayoutGrid, Square,
 } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
 import { uploadImage } from '../api'
@@ -25,6 +25,7 @@ const ICONS: Record<string, React.ReactNode> = {
   audio: <Music size={16} />,
   director: <Clapperboard size={16} />,
   storyboard: <ClipboardList size={16} />,
+  group: <Square size={16} />,
 }
 
 /** 上传资源类型 → 场景对象类型 */

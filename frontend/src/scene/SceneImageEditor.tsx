@@ -315,6 +315,7 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
           params: {
             prompt: genPrompt.trim(),
             size: calcImageSize(resolution, ratio),
+            negative: String(payload.negative_prompt ?? '').trim(),
             ...(mode === 'comfyui' && checkpoint ? { checkpoint } : {}),
             ...(mode === 'cloud' && refs.length ? { reference_images: refs } : {}),
           },
@@ -460,6 +461,18 @@ export default function SceneImageEditor({ id, locked }: { id: string; locked: b
           disabled={locked}
           placeholder="在此校对/修改出图提示词…"
           onChange={(e) => patchObject(id, { prompt: e.target.value })}
+        />
+      </div>
+
+      {/* 负面提示词（不希望出现的元素） */}
+      <div className="space-y-1">
+        <span className="text-[11px] text-ink-3">负面提示词（不希望出现的元素，可选）</span>
+        <input
+          className={inputCls}
+          value={String(payload.negative_prompt ?? '')}
+          disabled={locked}
+          placeholder="如：低清晰度、水印、字幕、变形、多余手指…"
+          onChange={(e) => patchObject(id, { negative_prompt: e.target.value })}
         />
       </div>
 

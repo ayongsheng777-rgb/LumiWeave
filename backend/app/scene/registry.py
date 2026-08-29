@@ -43,8 +43,9 @@ OBJECT_LIBRARY: Dict[str, Dict[str, Any]] = {
     "text": {"label": "文本", "color": "#64748b", "icon": "T",
              "default_data": {"text": ""}, "fields": {"text": "文本"}},
     "image": {"label": "图片", "color": "#0ea5e9", "icon": "🖼",
-              "default_data": {"prompt": "", "url": "", "purpose": "人物", "model": ""},
-              "fields": {"prompt": "提示词", "url": "图片地址", "purpose": "用途", "model": "模型"}},
+              "default_data": {"prompt": "", "url": "", "purpose": "人物", "model": "", "negative_prompt": ""},
+              "fields": {"prompt": "提示词", "url": "图片地址", "purpose": "用途", "model": "模型",
+                         "negative_prompt": "负面提示词"}},
     "video": {"label": "视频", "color": "#8b5cf6", "icon": "▶",
               "default_data": {
                   "prompt": "", "url": "", "duration": 10, "model": "",
@@ -52,11 +53,13 @@ OBJECT_LIBRARY: Dict[str, Dict[str, Any]] = {
                   "aspect_ratio": "16:9", "camera_motion": "固定镜头",
                   "resolution": "1080p", "style": "",
                   "dialogue_script": "", "sfx_desc": "", "subtitle_enabled": False,
+                  "negative_prompt": "", "generate_audio": True,
               },
               "fields": {"prompt": "提示词", "url": "视频地址", "duration": "时长", "model": "模型",
                          "shot_no": "分镜序号", "desc": "分镜内容", "aspect_ratio": "画面比例",
                          "camera_motion": "运镜", "resolution": "清晰度", "style": "风格",
-                         "dialogue_script": "对白/画内画外音", "sfx_desc": "特效音效", "subtitle_enabled": "生成字幕"}},
+                         "dialogue_script": "对白/画内画外音", "sfx_desc": "特效音效", "subtitle_enabled": "生成字幕",
+                         "negative_prompt": "负面提示词", "generate_audio": "生成配音"}},
     "audio": {"label": "音频", "color": "#f59e0b", "icon": "♪",
               "default_data": {
                   "text": "", "audio_type": "配音", "url": "",
@@ -105,6 +108,11 @@ OBJECT_LIBRARY: Dict[str, Dict[str, Any]] = {
     "product": {"label": "商品", "color": "#ef4444", "icon": "🛍",
                 "default_data": {"name": "", "product_url": "", "sku": "", "main_image": "", "info": ""},
                 "fields": {"name": "商品名称", "product_url": "商品链接", "sku": "SKU 码", "main_image": "主图地址", "info": "商品信息"}},
+
+    # ── 分组框（画布视觉组织，对齐灵境画布分组；不参与生成链路）────────
+    "group": {"label": "分组框", "color": "#94a3b8", "icon": "▭",
+              "default_data": {"title": "分组", "background": "#f1f5f9"},
+              "fields": {"title": "分组名", "background": "背景色"}},
 }
 
 # 通用字段选项（供前端渲染下拉，不进数据库）
@@ -118,8 +126,8 @@ FIELD_OPTIONS: Dict[str, Dict[str, list[str]]] = {
 # 三大场景（节点统一为 7 类）
 # ─────────────────────────────────────────────────────────────────────────────
 
-COMMON_OBJECT_TYPES = ["text", "image", "video", "audio", "story", "product"]
-COMMON_TOOLBAR = ["select", "text", "product", "story", "image", "video", "audio", "ai", "timeline", "zoom"]
+COMMON_OBJECT_TYPES = ["text", "image", "video", "audio", "story", "product", "group"]
+COMMON_TOOLBAR = ["select", "text", "product", "story", "image", "video", "audio", "group", "ai", "timeline", "zoom"]
 
 registry.register(SceneDefinition(
     id="ecommerce-material",

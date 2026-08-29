@@ -257,6 +257,7 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
       if (dialogue.length) extra.push(`【对白】${dialogue.filter(Boolean).join('；')}`)
       if (sfx.length) extra.push(`【音效】${sfx.filter(Boolean).join('、')}`)
       const prompt = extra.length ? `${basePrompt}\n${extra.join('\n')}` : basePrompt
+      const negative = String(payload.negative_prompt ?? '').trim()
       const res = await renderMedia({
         kind: 'video',
         render_mode: 'cloud',
@@ -265,6 +266,8 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
           prompt,
           ratio: aspectRatio,
           duration: Number(payload.duration) || 5,
+          negative,
+          generate_audio: payload.generate_audio !== false,
           native,
           ...(refs.length ? { reference_images: refs } : {}),
         },
@@ -398,6 +401,18 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
           disabled={locked}
           placeholder="选择分镜自动带入或手写视频提示词…"
           onChange={(e) => patchObject(id, { prompt: e.target.value })}
+        />
+      </div>
+
+      {/* 负面提示词（不希望出现的元素，对齐灵境负面提示词节点） */}
+      <div className="space-y-1">
+        <span className="text-[11px] text-ink-3">负面提示词（不希望出现的元素，可选）</span>
+        <input
+          className={inputCls}
+          value={String(payload.negative_prompt ?? '')}
+          disabled={locked}
+          placeholder="如：低清晰度、水印、字幕、变形、多余手指…"
+          onChange={(e) => patchObject(id, { negative_prompt: e.target.value })}
         />
       </div>
 

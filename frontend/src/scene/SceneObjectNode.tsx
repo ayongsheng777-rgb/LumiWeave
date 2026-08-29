@@ -207,6 +207,37 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
     (objectType === 'storyboard' ? `${readable(payload.scene) || '?'}-${readable(payload.shot) || '?'}` : '') ||
     meta.label
 
+  // ── 分组框：纯视觉组织块（半透明色块 + 标题，不参与生成、无连线把手）──
+  if (objectType === 'group') {
+    return (
+      <div
+        className="group relative h-full w-full select-none rounded-2xl border-2 border-dashed"
+        style={{
+          background: String(payload.background || '#f1f5f9') + '33',
+          borderColor: String(payload.background || '#94a3b8') + '99',
+          height: '100%',
+        }}
+        onContextMenu={onContextMenu}
+        onDoubleClick={() => openNodeModal(id)}
+        title="分组框（双击编辑名称/颜色，拖拽移动，把节点拖进来归组）"
+      >
+        <div
+          className="nodrag absolute left-2 top-1.5 z-10 rounded px-2 py-0.5 text-xs font-medium text-ink"
+          style={{ background: 'var(--lw-panel-2)' }}
+        >
+          {readable(payload.title) || '分组'}
+        </div>
+        <button
+          className="nodrag absolute right-1.5 top-1.5 z-10 rounded p-0.5 text-ink-3 opacity-0 transition group-hover:opacity-100 hover:text-red-400"
+          title="删除分组"
+          onClick={() => void deleteObjects([id])}
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+    )
+  }
+
   return (
     <>
       <NodeResizer
