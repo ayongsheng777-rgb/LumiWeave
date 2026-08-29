@@ -220,7 +220,8 @@ interface SceneState {
   /** 新节点默认位置：从左上往右横向排列（每行 6 个自动换行） */
   nextObjectPos: () => { x: number; y: number }
 
-  addObject: (objectType: string, position: { x: number; y: number }) => Promise<void>
+  /** 创建对象；成功返回新对象 id，失败返回 null（调用方据此回填 url 等数据） */
+  addObject: (objectType: string, position: { x: number; y: number }) => Promise<string | null>
   patchObject: (id: string, patch: Record<string, unknown>) => void
   resizeObject: (id: string, w: number, h: number) => void
   persistGeometry: (id: string) => void
@@ -435,7 +436,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
 
   addObject: async (objectType, position) => {
     const sceneId = get().currentSceneId
-    if (!sceneId) return
+    if (!sceneId) return null
     recordHistory(get, set)
     const meta = get().metaOf(objectType)
     const res = await sceneObjectCreate(sceneId, {
@@ -446,10 +447,11 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       height: 220,
       data: meta.default_data || {},
     })
-    if (!res.ok) return
+    if (!res.ok) return null
     const obj = res.data?.object as SceneObjectDTO | undefined
-    if (!obj) return
+    if (!obj) return null
     set((s) => ({ objects: [...s.objects, toNode(obj)], selectedIds: [obj.id] }))
+    return obj.id
   },
 
   /** 编辑对象字段：本地立即生效 + 防抖落库 */

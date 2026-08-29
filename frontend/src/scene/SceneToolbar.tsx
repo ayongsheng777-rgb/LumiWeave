@@ -65,8 +65,9 @@ export default function SceneToolbar() {
   }
 
   const addWithUrl = async (type: string, url: string) => {
-    await addObject(type, useSceneStore.getState().nextObjectPos())
-    const nid = useSceneStore.getState().selectedIds[0]
+    // 🔴 不读 selectedIds：新节点不带 selected 标记，React Flow 的 onSelectionChange
+    // 会在 addObject 之后立刻把 selectedIds 清空，导致 url 挂不上（画布空白节点）
+    const nid = await addObject(type, useSceneStore.getState().nextObjectPos())
     if (nid) patchObject(nid, { url })
   }
 
