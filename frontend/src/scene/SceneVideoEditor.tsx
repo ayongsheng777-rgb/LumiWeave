@@ -339,7 +339,7 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
   const inputCls = 'nodrag nowheel w-full resize-y rounded-md border border-edge bg-input px-2 py-1.5 text-sm leading-relaxed text-ink outline-none focus:border-brand-500'
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto nowheel">
+    <div className="flex flex-col gap-2 nowheel">
       {/* 视频预览 + 操作（图片 URL 按图片展示，不渲染无效播放器） */}
       {videoUrl && (
         <div className="relative overflow-hidden rounded-lg border border-edge bg-black/30">

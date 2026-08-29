@@ -69,7 +69,7 @@ export default function SceneTextWriter({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col space-y-1.5">
+    <div className="flex flex-col space-y-1.5">
       {/* 内容区：默认收起 3 行摘要（降低画布视觉疲劳），点摘要/按钮展开全文编辑 */}
       {collapsed && isLong ? (
         <button

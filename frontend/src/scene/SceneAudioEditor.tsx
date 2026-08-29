@@ -202,7 +202,7 @@ export default function SceneAudioEditor({ id, locked }: { id: string; locked: b
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto nowheel">
+    <div className="flex flex-col gap-2 nowheel">
       {/* 音频类型 */}
       <label className="block">
         <span className="mb-1 block text-[11px] text-ink-3">音频类型</span>

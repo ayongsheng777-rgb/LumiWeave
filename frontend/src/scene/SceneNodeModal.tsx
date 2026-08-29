@@ -64,8 +64,6 @@ export default function SceneNodeModal() {
   const boxRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
-  // 文本自适应（界面重构）：打开时按内容自动算初始高度（min 320 / 上限 80vh），仍可手动拖调
-  const [autoH, setAutoH] = useState<number | undefined>(undefined)
 
   const obj = objects.find((o) => o.id === modalNodeId)
   const payload = ((obj?.data as Payload)?.payload || {}) as Payload
@@ -83,25 +81,14 @@ export default function SceneNodeModal() {
     return () => window.removeEventListener('keydown', onKey)
   }, [modalNodeId, closeNodeModal])
 
-  // 打开时定位 + 按内容自动撑高
+  // 打开时定位（高度自适应交给 CSS：height auto + maxHeight 封顶，内容超高时内容区内部滚动）
   useEffect(() => {
     if (modalNodeId) {
       setPos({
         left: Math.max(16, Math.round(window.innerWidth / 2 - 300)),
         top: Math.max(16, Math.round(window.innerHeight * 0.06)),
       })
-      // 等一帧内容渲染后测量：内容高 > 当前高 → 撑到内容高（上限 80vh）
-      const timer = window.setTimeout(() => {
-        const el = contentRef.current
-        if (el) {
-          const contentH = el.scrollHeight
-          const maxH = Math.round(window.innerHeight * 0.8)
-          setAutoH(Math.min(Math.max(contentH + 8, 320), maxH))
-        }
-      }, 120)
-      return () => window.clearTimeout(timer)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modalNodeId])
 
   useDrag(boxRef, !!modalNodeId)
@@ -134,7 +121,8 @@ export default function SceneNodeModal() {
           width: '640px',
           minWidth: 420,
           minHeight: 320,
-          height: autoH,
+          // V2.9g：高度自适应——不写死 height，内容多少长多高；超高时被 maxHeight 封顶，
+          // 由内容区（flex-1 overflow-y-auto）内部滚动，彻底解决底部按钮被裁切
           maxHeight: 'calc(100vh - 48px)',
           maxWidth: 'calc(100vw - 48px)',
           // V2.9f：可拖右下角调整大小（CSS resize），内容超高时内部滚动

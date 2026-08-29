@@ -271,7 +271,7 @@ function SceneStoryEditor({ id, payload, locked }: { id: string; payload: Payloa
     setValue(combined)
   }, [combined])
   return (
-    <div className="flex h-full min-h-[120px] flex-col gap-2">
+    <div className="flex min-h-[120px] flex-col gap-2">
       {/* 工具栏：视图切换 + 生成视觉规划板（仅电商物料场景） */}
       {canBoard && (
         <div className="flex items-center gap-1.5">
@@ -511,7 +511,7 @@ function SceneShotDialogEditor({ id, payload, locked }: { id: string; payload: P
     </label>
   )
   return (
-    <div className="flex h-full min-h-[160px] flex-col gap-2">
+    <div className="flex min-h-[160px] flex-col gap-2">
       <textarea
         className="nodrag nowheel w-full flex-1 resize-y rounded-md border border-edge bg-input p-2 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand-500"
         style={{ minHeight: 80 }}
@@ -704,7 +704,7 @@ function SceneStoryboardEditor({ id, payload, locked }: { id: string; payload: P
   const displayShots = preview ?? shots
 
   return (
-    <div className="flex h-full min-h-[160px] flex-col gap-2">
+    <div className="flex min-h-[160px] flex-col gap-2">
       <div className="flex items-center justify-between">
         <div className="flex items-baseline gap-2">
           <span className="text-sm font-bold text-brand-300">分镜脚本</span>
@@ -883,8 +883,8 @@ export default function SceneNodeEditPanel({ id }: { id: string }) {
   }, [linkedStoryParsed])
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto nowheel">
-      {/* 专用编辑器 */}
+    <div className="flex flex-col gap-2 nowheel">
+      {/* 专用编辑器（高度自适应：随内容自然长高，超高由弹窗外壳统一滚动） */}
       {objectType === 'story' ? (
         <SceneStoryEditor id={id} payload={payload} locked={locked} />
       ) : objectType === 'storyboard' ? (
