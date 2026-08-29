@@ -118,7 +118,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
   const matchLabel = computeMatchLabel(objects, edges, id)
   const imageUrl = pick(payload, IMAGE_KEYS)
   const videoUrl = pick(payload, VIDEO_KEYS)
-  const audioUrl = String(payload.url ?? '')
+  const audioUrl = objectType === 'audio' ? String(payload.url ?? '') : ''
   const summary = summaryOf(objectType, payload)
   const [expanded, setExpanded] = useState(false)
   const [genBusy, setGenBusy] = useState(false)
