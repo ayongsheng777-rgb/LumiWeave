@@ -82,7 +82,7 @@ export default function SceneToolbar() {
   const onLocalFile = async (file: File) => {
     if (!file || busy) return
     setBusy(true)
-    const res = await uploadImage(file)
+    const res = await uploadImage(file, currentSceneId || undefined)
     setBusy(false)
     if (res.ok) {
       const url = String((res.data as { url?: string } | undefined)?.url ?? '')

@@ -245,10 +245,12 @@ export async function renderMedia(payload: {
   return request('POST', '/renderers/media/generate', payload)
 }
 
-// 图片上传（V2.3 图片一等公民）：multipart 直传，返回 {id, url}
-export async function uploadImage(file: File) {
+// 素材上传（图片/视频/音频）：multipart 直传，返回 {id, url, type}
+// 传 sceneId 时素材归入该场景素材库（场景内「素材/从资产选择」可见）
+export async function uploadImage(file: File, sceneId?: string) {
   const form = new FormData()
   form.append('file', file)
+  if (sceneId) form.append('scene_id', sceneId)
   const token = getToken()
   const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`

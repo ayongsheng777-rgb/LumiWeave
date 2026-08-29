@@ -29,13 +29,14 @@ async def add_asset(
     url: str,
     metadata: dict[str, Any] | None = None,
     name: str = "",
+    scene_id: str = "",
 ) -> str:
     aid = new_asset_id()
     await db.execute(
-        """INSERT INTO assets (id, task_id, type, url, metadata, name)
-           VALUES ($1,$2,$3,$4,$5::jsonb,$6)""",
+        """INSERT INTO assets (id, task_id, type, url, metadata, name, scene_id)
+           VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7)""",
         aid, task_id, asset_type, url,
-        json.dumps(metadata or {}, ensure_ascii=False), name,
+        json.dumps(metadata or {}, ensure_ascii=False), name, scene_id,
     )
     return aid
 

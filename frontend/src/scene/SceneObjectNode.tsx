@@ -23,7 +23,8 @@ const NUMBERED_KINDS = new Set(['人物', '道具', '配音', 'BGM', '音效', '
 
 /** 图片类字段候选 */
 const IMAGE_KEYS = ['url', 'image', 'image_url', 'cover', 'thumbnail', 'main_image']
-const VIDEO_KEYS = ['video', 'video_url']
+/** 视频类字段候选（含 url：本地上传/素材入库只写 url 字段） */
+const VIDEO_KEYS = ['video', 'video_url', 'url']
 
 function pick(payload: Payload, keys: string[]): string {
   for (const k of keys) {

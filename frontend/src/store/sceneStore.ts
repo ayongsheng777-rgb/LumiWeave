@@ -794,8 +794,9 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     const sceneId = get().currentSceneId
     if (!sceneId || !asset.url) return
     recordHistory(get, set)
+    const objType = asset.type === 'video' ? 'video' : asset.type === 'audio' ? 'audio' : 'image'
     const res = await sceneObjectCreate(sceneId, {
-      type: 'image',
+      type: objType,
       x: 60 + Math.floor(Math.random() * 200),
       y: 60 + Math.floor(Math.random() * 200),
       width: 280,

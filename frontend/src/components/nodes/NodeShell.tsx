@@ -1,6 +1,6 @@
 import { Handle, Position, NodeResizer } from '@xyflow/react'
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Lock, LockOpen, Trash2, Settings2, ChevronUp, ChevronDown, Loader2 } from 'lucide-react'
 import { useNodeAdapter } from '../../store/nodeAdapter'
 import StatusBadge from './StatusBadge'
@@ -50,6 +50,14 @@ export function NodeShell({
   // 三级形态：expanded(配置全展开) / collapsed(极简标题卡片) / result-only(仅结果)
   // 卡片化默认（商业画布方案）：未生成 → 极简标题卡；已生成 → 只看结果；参数走右侧抽屉
   const [viewMode, setViewMode] = useState<NodeViewMode>(status === 'completed' ? 'result-only' : 'collapsed')
+
+  // 上传/生成在节点挂载后才完成（如图片上传节点）：status 变 completed 且有媒体结果时
+  // 自动从折叠态切到结果态，否则图片永远不出来（useState 初始值只在挂载时算一次）
+  useEffect(() => {
+    if (status === 'completed' && resultView) {
+      setViewMode((m) => (m === 'collapsed' ? 'result-only' : m))
+    }
+  }, [status, resultView])
 
   // 展开配置：同时松开外壳固定高度（此前缩放过的节点高度被钉死，表单会塞进看不见的滚动区）
   const expandConfig = () => {

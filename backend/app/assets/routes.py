@@ -5,7 +5,7 @@ import re
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, Request, UploadFile
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from app import db
@@ -15,8 +15,11 @@ from app.services import video_service
 
 router = APIRouter()
 
-ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20MB
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+VIDEO_EXTS = {".mp4", ".webm", ".mov", ".m4v"}
+AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
+ALLOWED_EXTS = IMAGE_EXTS | VIDEO_EXTS | AUDIO_EXTS
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200MB（视频放宽，图片远小于此）
 
 
 async def _assets_dir() -> Path:
@@ -83,13 +86,19 @@ async def set_assets_dir(request: Request):
 
 
 @router.post("/upload")
-async def upload_asset(file: UploadFile = File(...)):
+async def upload_asset(file: UploadFile = File(...), scene_id: str = Form("")):
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTS:
-        return JSONResponse(status_code=400, content={"error": f"不支持的图片格式：{ext or '未知'}"})
+        return JSONResponse(status_code=400, content={"error": f"不支持的文件格式：{ext or '未知'}"})
+    if ext in VIDEO_EXTS:
+        asset_type = "video"
+    elif ext in AUDIO_EXTS:
+        asset_type = "audio"
+    else:
+        asset_type = "image"
     data = await file.read()
     if len(data) > MAX_UPLOAD_BYTES:
-        return JSONResponse(status_code=400, content={"error": "图片超过 20MB 上限"})
+        return JSONResponse(status_code=400, content={"error": "文件超过 200MB 上限"})
     if not data:
         return JSONResponse(status_code=400, content={"error": "空文件"})
 
@@ -101,12 +110,13 @@ async def upload_asset(file: UploadFile = File(...)):
     url = f"/uploads/{fname}"
     aid = await service.add_asset(
         task_id="",
-        asset_type="image",
+        asset_type=asset_type,
         url=url,
         metadata={"source": "upload", "filename": file.filename or "", "size": len(data)},
         name=Path(file.filename or "").stem,
+        scene_id=str(scene_id or ""),
     )
-    return {"id": aid, "url": url, "file_path": str(upload_dir / fname)}
+    return {"id": aid, "url": url, "type": asset_type, "file_path": str(upload_dir / fname)}
 
 
 @router.post("/video/extract-frame")

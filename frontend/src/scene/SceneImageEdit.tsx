@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, RotateCcw, RotateCw, Download, Loader2 } from 'lucide-react'
 import { uploadImage } from '../api'
+import { useSceneStore } from '../store/sceneStore'
 
 type AnyObj = Record<string, unknown>
 
@@ -24,6 +25,7 @@ export default function SceneImageEdit({
   const [crop, setCrop] = useState<'free' | '1:1' | '4:3' | '16:9'>('free')
   const [img, setImg] = useState<HTMLImageElement | null>(null)
   const [busy, setBusy] = useState(false)
+  const currentSceneId = useSceneStore((s) => s.currentSceneId)
 
   useEffect(() => {
     const im = new Image()
@@ -75,7 +77,7 @@ export default function SceneImageEdit({
       const blob = await new Promise<Blob | null>((r) => cv.toBlob(r, 'image/png'))
       if (!blob) return
       const file = new File([blob], 'edit.png', { type: 'image/png' })
-      const res = await uploadImage(file)
+      const res = await uploadImage(file, currentSceneId || undefined)
       const url = String((res.data as AnyObj)?.url ?? '')
       if (res.ok && url) onSaved(url)
     } finally {

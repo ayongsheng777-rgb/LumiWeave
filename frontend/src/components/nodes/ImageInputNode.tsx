@@ -57,7 +57,7 @@ export function ImageInputNode({ id, data, selected }: NodeProps) {
         disabled={uploading}
       >
         {uploading ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />}
-        {uploading ? '上传中…' : url ? '重新选择图片' : '选择本地图片（≤20MB）'}
+        {uploading ? '上传中…' : url ? '重新选择图片' : '选择本地图片（≤200MB）'}
       </button>
       {name && <div className="truncate rounded bg-soft px-2 py-1 text-[10px] text-ink-3">{name}</div>}
       {String(d.error ?? '') && (

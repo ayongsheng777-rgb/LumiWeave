@@ -44,7 +44,11 @@ function buildWorkflowAdapter(): NodeAdapter {
     update,
     toggleLock,
     remove,
-    getStatus: (id) => status[id] || 'idle',
+    getStatus: (id) =>
+      status[id] ||
+      (String(
+        (nodes.find((n) => n.id === id)?.data as Record<string, unknown> | undefined)?.status ?? 'idle',
+      ) as NodeStatus),
     getOutput: (id) => outputs[id],
     getLocked: (id) => (nodes.find((n) => n.id === id)?.data as Record<string, unknown> | undefined)?.locked === true,
     getNodes: () => nodes,
