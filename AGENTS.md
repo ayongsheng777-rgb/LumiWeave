@@ -584,6 +584,15 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 🔴 **大坑（别再犯）**：**本沙箱里 `git rm` 会误删整个目录树**（本次 `git rm -q app/scene/actions.py` 把 backend/app 整目录删了，靠 `git restore` + `git checkout HEAD --` 恢复）。删文件一律用 `mv` 挪走，让 git 自然记录删除，禁用 `git rm`。
 
+## 一·三十、测试补网 + 前端节点定义单一事实源（2026-08-29）
+
+**① actions 包测试补网**：`backend/tests/test_scene_actions.py`（16 用例，纯逻辑不花云端钱）——_parse_script 全格式（人物子行/同行、道具多行+场景行不混入+括号保护、分镜元数据/关键画面/对白、说话人归人物）、_cn_num/_parse_cn_num、_shot_bgm、_cosine、_label、_run_action 未知动作友好报错。**全量 pytest 24/24 绿**（test_core 8 + scene_actions 16）。
+- 🔴 补网立刻抓到一个真 bug：`_parse_cn_num("二十")` 原实现 `a*10+b` = 2×10+10 = **30**；已修（b==10 → a*10；并补 3 字组合"二十五"→25）。分镜数超 10 的场景此前会解析错镜号。
+
+**② 前端节点定义单一事实源**：新增 `frontend/src/store/nodeLibrary.ts`（16 个节点定义：defaultData 取 workflowStore 超集版含 status，label/size 取 canvasStore 版）——`workflowStore.NODE_DEFAULTS` 与 `canvasStore.OBJECT_LIBRARY` 两份手写拷贝合并，两处改为 import + re-export（外部引用路径不变）。**以后加节点只改 nodeLibrary.ts 一个文件**。tsc 0 错、镜像已重建上线。
+
+**③ 验收**：backend/frontend 镜像重建；pytest 24/24；tsc+vite build 过；前端 bundle hash `index-p4-mTMHh.js`。
+
 ## 三、启动 / 重启 SOP
 
 ```bash

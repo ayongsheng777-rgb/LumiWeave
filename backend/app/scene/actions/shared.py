@@ -140,12 +140,16 @@ def _parse_cn_num(s: str) -> int:
     cn = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
     if t in cn:
         return cn[t]
-    # 简单组合：十一~十九、二十~九十九（够用）
+    # 简单组合：十一~十九、二十~九十、二十一~九十九（够用）
     if len(t) == 2 and t[0] in cn and t[1] in cn:
         a, b = cn[t[0]], cn[t[1]]
         if a == 10:
-            return 10 + b
+            return 10 + b  # 十一~十九
+        if b == 10:
+            return a * 10  # 二十/三十…/九十（此前误算成 a*10+10，"二十"→30）
         return a * 10 + b
+    if len(t) == 3 and t[0] in cn and t[1] == "十" and t[2] in cn:
+        return cn[t[0]] * 10 + cn[t[2]]  # 二十一~九十九
     return 0
 
 
