@@ -9,6 +9,7 @@ import { useRef, useState } from 'react'
 import {
   MousePointer2, Type, ShoppingBag, ImageIcon, Film, Music, BookOpen,
   Clapperboard, ClipboardList, Undo2, Redo2, Link2, Upload, FolderOpen, Loader2, X,
+  LayoutGrid,
 } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
 import { uploadImage } from '../api'
@@ -41,14 +42,27 @@ export default function SceneToolbar() {
   const redo = useSceneStore((s) => s.redo)
   const canUndo = useSceneStore((s) => s.canUndo)
   const canRedo = useSceneStore((s) => s.canRedo)
+  const autoLayout = useSceneStore((s) => s.autoLayout)
+  const storeBusy = useSceneStore((s) => s.busy)
 
   const [menu, setMenu] = useState<'net' | 'local' | 'asset' | null>(null)
   const [netUrl, setNetUrl] = useState('')
   const [netType, setNetType] = useState<(typeof NET_TYPES)[number]>('image')
   const [busy, setBusy] = useState(false)
+  const [layoutBusy, setLayoutBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   if (!currentSceneId || !typeDef) return null
+
+  const onAutoLayout = async () => {
+    if (layoutBusy) return
+    setLayoutBusy(true)
+    try {
+      await autoLayout()
+    } finally {
+      setLayoutBusy(false)
+    }
+  }
 
   const addWithUrl = async (type: string, url: string) => {
     await addObject(type, useSceneStore.getState().nextObjectPos())
@@ -129,6 +143,18 @@ export default function SceneToolbar() {
           title="重做 (Ctrl+Shift+Z)"
         >
           <Redo2 size={15} />
+        </button>
+      </div>
+
+      {/* 一键排列（三场景通用）：血缘分层 + 同类成列，顺带补齐缺失连线 */}
+      <div className="mt-1 flex flex-col items-center gap-1 border-t border-edge pt-1.5">
+        <button
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 transition hover:bg-hover hover:text-brand-400 disabled:opacity-40"
+          onClick={() => void onAutoLayout()}
+          disabled={layoutBusy || !!storeBusy}
+          title="一键排列：按血缘自动分层排整齐，并补齐缺失的连线（可 Ctrl+Z 撤销）"
+        >
+          {layoutBusy ? <Loader2 size={15} className="animate-spin" /> : <LayoutGrid size={15} />}
         </button>
       </div>
 

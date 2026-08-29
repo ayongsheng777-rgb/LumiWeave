@@ -10,6 +10,7 @@
  * 约定：ReactFlow 节点统一 type='sceneObject'，真实业务类型放 data.objectType。
  */
 import { create } from 'zustand'
+import { sceneAutoLayout, missingLineageEdges } from '../scene/autoLayout'
 import {
   applyNodeChanges,
   applyEdgeChanges,
@@ -87,6 +88,7 @@ export const ACTION_LABELS: Record<string, string> = {
   generate_node_image: '节点生成图片',
   generate_node_video: '节点生成视频',
   storyboard_import_ai: 'AI 导入分镜',
+  auto_layout: '一键排列',
 }
 
 export interface RunLogEntry {
@@ -224,6 +226,8 @@ interface SceneState {
   persistGeometry: (id: string) => void
   deleteObjects: (ids: string[]) => Promise<void>
   toggleLock: (id: string) => void
+  /** 一键排列：补齐血缘连线 + 分层同类成列布局（三场景通用） */
+  autoLayout: () => Promise<void>
 
   onNodesChange: (changes: NodeChange[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
@@ -524,6 +528,52 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       }),
     }))
     if (sceneId) void sceneObjectUpdate(sceneId, id, { locked })
+  },
+
+  // ── 一键排列（2026-08-30）：先补血缘连线，再分层同类成列布局，最后批量落库 ──
+  autoLayout: async () => {
+    const sceneId = get().currentSceneId
+    if (!sceneId || !get().objects.length) return
+    recordHistory(get, set)
+    // 1) 补齐缺失的血缘连线（源节点须在画布上；单个失败不阻塞整体）
+    const missing = missingLineageEdges(get().objects, get().edges)
+    const newEdges: Edge[] = []
+    for (const m of missing) {
+      try {
+        const res = await sceneEdgeCreate(sceneId, { source: m.source, target: m.target })
+        const id = (res.data?.edge?.id as string) || `tmp_${m.source}_${m.target}`
+        newEdges.push({
+          id, source: m.source, target: m.target, type: 'smoothstep', animated: false,
+          style: { stroke: 'var(--brand)', strokeWidth: 2 },
+        })
+      } catch {
+        /* noop */
+      }
+    }
+    if (newEdges.length) set((s) => ({ edges: [...s.edges, ...newEdges] }))
+    // 2) 计算新坐标并应用
+    const pos = sceneAutoLayout(get().objects, get().edges)
+    set((s) => ({
+      objects: s.objects.map((n) => {
+        const p = pos.get(n.id)
+        return p ? { ...n, position: p } : n
+      }),
+    }))
+    // 3) 批量落库（位置持久化，刷新不丢）
+    await Promise.all(
+      get().objects.map((n) =>
+        sceneObjectUpdate(sceneId, n.id, {
+          x: Math.round(n.position.x),
+          y: Math.round(n.position.y),
+        }).catch(() => undefined),
+      ),
+    )
+    get().pushLog({
+      ts: Date.now(),
+      action: 'auto_layout',
+      ok: true,
+      message: `已排列 ${pos.size} 个节点${newEdges.length ? `，补血缘连线 ${newEdges.length} 条` : ''}`,
+    })
   },
 
   // ── ReactFlow 事件 ───────────────────────────────────────────────────

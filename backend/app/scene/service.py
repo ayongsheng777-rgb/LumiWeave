@@ -118,6 +118,21 @@ async def create_object(scene_id: str, obj_type: str, *,
         oid, scene_id, obj_type, x, y, width, height, rotation, z_index,
         json.dumps(data or {}, ensure_ascii=False),
     )
+    # 血缘自动连线（2026-08-30，三场景通用）：派生物料带 source_object_id 时
+    # 自动建 源→新节点 的 lineage 边（源须同场景存在；同向边不重复建）。
+    src = str((data or {}).get("source_object_id") or "").strip()
+    if src and src != oid:
+        try:
+            exists = await db.fetchrow(
+                "SELECT 1 FROM scene_objects WHERE id=$1 AND scene_id=$2", src, scene_id)
+            if exists:
+                dup = await db.fetchrow(
+                    "SELECT 1 FROM scene_edges WHERE scene_id=$1 AND source_id=$2 AND target_id=$3",
+                    scene_id, src, oid)
+                if not dup:
+                    await create_edge(scene_id, src, oid, edge_type="lineage")
+        except Exception:  # noqa: BLE001  连线失败不阻塞对象创建
+            pass
     return oid
 
 
