@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from contextlib import asynccontextmanager
 
@@ -51,7 +52,13 @@ async def lifespan(app: FastAPI):
     await load_capabilities_from_db()
     start_scheduler()
     start_local_worker()  # 异构算力：本地 ComfyUI 队列常驻消费者
+    # Redis 任务队列消费者（2026-08-29：异步动作/批量/导演台入队后由它执行，backend 重启不丢任务）
+    from app.services.task_queue import worker_loop
+    _stop_queue = asyncio.Event()
+    _queue_worker_task = asyncio.create_task(worker_loop(_stop_queue))
     yield
+    _stop_queue.set()
+    _queue_worker_task.cancel()
     stop_scheduler()
     await stop_local_worker()
     await db.close_pool()

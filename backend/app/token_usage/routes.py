@@ -74,7 +74,12 @@ async def token_delete_pricing(pricing_id: int):
 
 @router.get("/project-usage")
 async def project_usage(days: int = 30):
-    """项目用量（V2）：聚合 AI 调用 / 图片 / 视频 / 任务 / Token / 成本。"""
+    """项目用量（V2）：聚合 AI 调用 / 图片 / 视频 / 任务 / Token / 成本。60s Redis 缓存。"""
+    from app.services.cache import cache_get, cache_set
+    cache_key = f"lw:usage:project:{days}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
     ai = await db.fetchrow(
         """SELECT COUNT(*) AS calls,
                   COALESCE(SUM(CASE WHEN success THEN 0 ELSE 1 END),0) AS fails,
@@ -99,7 +104,7 @@ async def project_usage(days: int = 30):
     for r in await pricing.summary(days):
         token_cost += Decimal(str(r.get("cost_yuan") or 0))
 
-    return {
+    result = {
         "days": days,
         "ai_calls": int((ai["calls"] if ai else 0) or 0),
         "ai_fails": int((ai["fails"] if ai else 0) or 0),
@@ -112,3 +117,5 @@ async def project_usage(days: int = 30):
             token_cost + Decimal(str((tasks_row["task_cost"] if tasks_row else 0) or 0))
         ),
     }
+    await cache_set(cache_key, result, ttl=60)
+    return result

@@ -81,4 +81,11 @@ async def update_task(task_id: str, *, status: str | None = None, progress: int 
         return await get_task(task_id)
     args.append(task_id)
     await db.execute(f"UPDATE director_task SET {', '.join(sets)} WHERE id=${len(args)}", *args)
+    # 2026-08-29：状态迁移同步写 task_events（执行历史可回放；静默失败不影响主流程）
+    if status is not None:
+        try:
+            from app.task_service import add_event
+            await add_event(task_id, status, {"progress": progress, "step": current_step or ""})
+        except Exception:  # noqa: BLE001
+            pass
     return await get_task(task_id)

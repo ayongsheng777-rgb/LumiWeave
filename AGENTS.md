@@ -593,6 +593,24 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 **③ 验收**：backend/frontend 镜像重建；pytest 24/24；tsc+vite build 过；前端 bundle hash `index-p4-mTMHh.js`。
 
+## 一·三十一、Redis 接通真用途 + 事件留痕（2026-08-29）
+
+按阿勇拍板把死依赖 Redis 接通为两件真用途：
+
+**① 读缓存**：`app/services/cache.py`（连接池懒加载 + 探活，**Redis 不可用自动降级，绝不成为单点**）；`/api/token-usage/project-usage` 加 60s 缓存（键 `lw:usage:project:{days}`）。
+
+**② 可靠任务队列**：`app/services/task_queue.py`——异步任务从 `asyncio.create_task`（进程内存，backend 重启即丢）改为 **Redis List（LPUSH/BRPOP）+ 常驻 worker**（lifespan 启动/停止），**backend 重启不丢任务**。接入三处：
+- `execute_action` async_mode → `enqueue("action", ...)`
+- `batch_generate` → `enqueue("batch", ...)`
+- `director_start` → `enqueue("director", ...)`（导演台任务此前重启必丢，现在可靠）
+- 消费失败重试 ≤3 次，超限进死信队列 `lw:task_queue:dead`；**Redis 不可用时降级进程内执行**（功能不丢）
+
+**③ 事件/结果留痕接通**（task_events/task_results 此前长期 0 行）：`_run_action_task`/`_run_batch_async` 写 queued→running→completed/failed 事件 + 结束写 task_results 快照；`director/service.update_task` 状态迁移自动写事件（导演台全生命周期可回放）。
+
+**验证**：`tmp/verify_redis_queue.py` 容器内 **10/10 全绿**（缓存命中一致、动作/导演台入队→worker 消费→状态与事件/结果落库、队列消费干净）；pytest 24/24；镜像已重建。
+
+**约定**：①worker 只部署一份（多实例会并发消费同一队列，幂等动作可接受，非幂等的后续可加租约）；②`task_queue._run_local` 是降级路径（Redis 挂时当前进程直接执行，与旧行为等价）；③队列任务 payload 全 JSON 化，别塞不可序列化对象。
+
 ## 三、启动 / 重启 SOP
 
 ```bash
