@@ -1116,10 +1116,10 @@ async def _act_generate_story_from_text(scene_id: str, obj_ids: list[str], param
         '  "story_summary": "故事梗概(150字内)",\n'
         '  "emotion_curve": [{"phase": "阶段名", "emotion": "情绪(如苍凉/震撼/坚定)"}],\n'
         '  "characters": [{"name": "人物名", "appearance": "外貌", "personality": "性格", "description": "角色定位"}],\n'
-        '  "scenes": [{"name": "场景名", "location": "地点", "duration": 15, "goal": "场景目标", "mood": "情绪基调", '
+        '  "scenes": [{"name": "场景氛围标题(如 霓虹追踪)", "location": "实际拍摄地点(必须是具体可拍摄的地点名，如 步行街/小巷；禁止用氛围词)", "duration": 15, "goal": "场景目标", "mood": "情绪基调", '
         '"bgm": "背景音乐(按场景与情绪描述音乐类型/节奏/风格)", "body": "画面正文(2-4句场景描述)", '
         '"key_frames": ["关键画面1", "关键画面2"], "dialogue": ["[旁白] \\"台词\\" 或 [角色名] \\"台词\\""]}],\n'
-        '  "props": [{"name": "道具名", "description": "作用描述"}],\n'
+        '  "props": [{"name": "道具名(必须是可被拿起/使用的实体物品，如 奶茶/手机/钱包/雨伞；禁止把装饰性细节或材质状态如 口红印吸管/捏瘪的奶茶杯 当道具；无道具给空数组)", "description": "作用描述"}],\n'
         '  "rhythm": "整体节奏与风格说明(节奏/转场/BGM/色调/镜头语言)",\n'
         '  "info_points": [{"point": "核心信息点", "scene": "对应场景名"}]\n'
         "}\n"
@@ -1278,9 +1278,10 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
     write_is_storyboard = False
     duration = 0
     shot_count = 0
+    asset_hint = ""
 
     def _read_story(obj: dict) -> None:
-        nonlocal story_ctx, duration, shot_count
+        nonlocal story_ctx, duration, shot_count, asset_hint
         d = obj["data"]
         story_ctx = (str(d.get("script") or "") or str(d.get("story") or "")
                      or str(d.get("summary") or "") or str(d.get("text") or "")).strip()
@@ -1292,6 +1293,39 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
             shot_count = int(float(d.get("shotCount") or 0))
         except Exception:  # noqa: BLE001
             shot_count = 0
+        # V2.9g：构建「全局资产表」——人物/实际地点/道具清单，约束分镜的实体字段
+        #   （LLM 常把 scene 填成镜头氛围词、把文学细节当道具，用资产表根治）
+        def _names(v: Any) -> list[str]:
+            out: list[str] = []
+            for item in (v or []):
+                if isinstance(item, dict):
+                    nm = str(item.get("name") or "").strip()
+                    if nm:
+                        out.append(nm)
+                elif isinstance(item, str):
+                    nm = item.strip()
+                    if nm:
+                        out.append(nm)
+            return out
+
+        chars = _names(d.get("characters"))
+        # 地点：scenes[].location 优先（真实拍摄地点），name 仅作氛围名不用于地点
+        locs: list[str] = []
+        for item in (d.get("scenes") or []):
+            if isinstance(item, dict):
+                loc = str(item.get("location") or "").strip()
+                if loc and loc != "-" and loc not in locs:
+                    locs.append(loc)
+        props = _names(d.get("props"))
+        parts = []
+        if chars:
+            parts.append(f"人物：{'、'.join(chars)}")
+        if locs:
+            parts.append(f"地点：{'、'.join(locs)}")
+        if props:
+            parts.append(f"道具：{'、'.join(props)}")
+        if parts:
+            asset_hint = "【故事已确定的资产清单（必须严格遵守）】\n" + "\n".join(parts)
 
     for oid in (obj_ids or []):
         obj = await service.get_object(oid)
@@ -1327,6 +1361,9 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
     extra = str(params.get("prompt") or "").strip()
     if extra:
         story_ctx += f"\n\n【创作要求】{extra}"
+    # V2.9g：全局资产表注入（人物/地点/道具强约束，杜绝氛围词当场景、细节当道具）
+    if asset_hint:
+        story_ctx += f"\n\n{asset_hint}\n"
     # 技能库 + 知识库内容注入（V2.9n：分镜生成同样支持技能/知识库增强画面描述）
     qctx = await _story_quality_context(story_ctx, params)
     if qctx:
@@ -1355,12 +1392,12 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
         '{\n'
         '  "shots": [\n'
         '    {\n'
-        '      "shot_no": 1, "scene": "所属场景名", "location": "地点", "duration": 5,\n'
+        '      "shot_no": 1, "scene": "实际拍摄地点名(从资产清单的地点里选，如 步行街/小巷；禁止用镜头氛围词如 霓虹追踪/闪电得手)", "location": "与scene相同的实际地点", "duration": 5,\n'
         '      "shot_size": "景别(远景/全景/中景/近景/特写)", "lens": "焦距(如 24mm/50mm/85mm)",\n'
         '      "camera_angle": "机位角度(平视/俯拍/仰拍/过肩)", "camera_motion": "运镜(固定/推/拉/摇/移/跟/环绕)",\n'
         '      "composition": "构图(居中/三分法/对称/引导线)", "lighting": "光线(自然光/硬光/逆光/夜景)",\n'
-        '      "color": "色调(冷调/暖调/高对比)", "character": "画面人物", "character_action": "人物动作",\n'
-        '      "props": ["该镜头出现的道具名(无则空数组)"],\n'
+        '      "color": "色调(冷调/暖调/高对比)", "character": "画面人物名(从资产清单的人物里选；多角色用顿号分隔)", "character_action": "人物动作",\n'
+        '      "props": ["该镜头出现的道具名(必须是资产清单里的物理物品，如 奶茶；禁止把装饰性细节如 口红印/捏瘪的杯子 当道具，无则空数组)"],\n'
         '      "emotion": "情绪(紧张/温馨/孤独)", "dialogue": "对白(无则空)",\n'
         '      "voice_over": "旁白(无则空)", "sound_effect": "音效描述(如:玻璃碎裂声+低沉混响;无则空)",\n'
         '      "camera_control_description": "镜头控制描述(把机位/运镜/构图/光影合成一句可执行的拍摄指令)",\n'
@@ -1372,6 +1409,8 @@ async def _act_generate_storyboard(scene_id: str, obj_ids: list[str], params: di
         f"1. 分镜个数必须严格等于 {shot_count} 个，一个不多一个不少；\n"
         f"2. 每个分镜时长约 {per_sec} 秒，所有分镜 duration 之和必须等于 {duration} 秒；\n"
         "3. 镜头衔接有叙事逻辑、覆盖完整故事线；props 用数组、无道具给空数组；全部中文。"
+        "4. 【实体一致性硬要求】scene/location 必须是资产清单里的实际地点名（禁氛围词）；"
+        "character 必须是资产清单里的人物名；props 只能是资产清单里的物理物品（禁细节描写）。"
     )
     # 全字段分镜输出很长（每镜 13 字段 × 多镜头），默认 2000 tokens 会被截断导致解析失败 → 用 6000
     r2 = await _chat_full(sys, story_ctx, json_mode=True, temperature=0.5, max_tokens=6000,

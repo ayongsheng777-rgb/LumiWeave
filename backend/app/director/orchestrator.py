@@ -157,20 +157,36 @@ async def _gen_asset_prompts(ctx: str, char_names: list[str], scene_names: list[
 
 
 def _extract_assets(shots: list[dict]) -> tuple[list[str], list[str], list[str]]:
-    """从分镜表提取全局人物/场景/道具名（去重保序）。"""
+    """从分镜表提取全局人物/场景/道具名（去重保序）。
+
+    V2.9g 修复（阿勇反馈"导演台拉出的资产不符合"）：
+      1) 场景名优先取 location（真实地点，如"步行街/小巷"）；scene 字段常被
+         LLM 填成镜头氛围标题（如"霓虹追踪"），仅作兜底
+      2) character 可能是逗号分隔多角色（"少妇,小偷"）→ 拆分
+      3) props 兼容数组与字符串（"奶茶" / "奶茶、吸管"）两种格式
+    """
     chars: list[str] = []
     scenes: list[str] = []
     props: list[str] = []
     for s in shots:
-        c = str(s.get("character") or "").strip()
-        if c and c not in chars:
-            chars.append(c)
-        sc = str(s.get("scene") or "").strip()
-        if sc and sc not in scenes:
+        if not isinstance(s, dict):
+            continue
+        # 人物：逗号/顿号分隔拆分
+        for c in re.split(r"[、,，;；]", str(s.get("character") or "")):
+            c = c.strip()
+            if c and c != "-" and c not in chars:
+                chars.append(c)
+        # 场景：优先 location（真实地点），scene（氛围词）兜底
+        sc = str(s.get("location") or "").strip() or str(s.get("scene") or "").strip()
+        if sc and sc != "-" and sc not in scenes:
             scenes.append(sc)
-        for p in (s.get("props") or []):
+        # 道具：兼容数组 / 逗号分隔字符串
+        pv = s.get("props") or []
+        if isinstance(pv, str):
+            pv = re.split(r"[、,，;；]", pv)
+        for p in pv:
             name = str(p).strip()
-            if name and name not in props:
+            if name and name != "-" and name not in props:
                 props.append(name)
     return chars, scenes, props
 
@@ -207,11 +223,12 @@ async def build_film_skeleton(scene_id: str, story_id: str, shots: list[dict],
                                         data={"title": "分镜脚本", "shots": shots})
     if story_oid and sb_oid:
         try:
-            await ss.create_edge(scene_id, story_oid, sb_oid, "default", {"kind": "storyboard"})
+            if not await _edge_exists(scene_id, story_oid, sb_oid):
+                await ss.create_edge(scene_id, story_oid, sb_oid, "default", {"kind": "storyboard"})
         except Exception:  # noqa: BLE001
             pass
 
-    # 2) image 资产节点（去重提取 + LLM 提示词）
+    # 2) image 资产节点（去重提取 + LLM 提示词；V2.9g 幂等：同 purpose+title 复用，不重复建）
     char_names, scene_names, prop_names = _extract_assets(shots)
     prompts = (assets or {}) or await _gen_asset_prompts(
         str(story_obj["data"].get("script") or "")[:2500] if story_obj else "",
@@ -220,47 +237,76 @@ async def build_film_skeleton(scene_id: str, story_id: str, shots: list[dict],
     pchars = prompts.get("characters") or {}
     pscenes = prompts.get("scenes") or {}
     pprops = prompts.get("props") or {}
+
+    def _find_img(purpose: str, title: str) -> str | None:
+        for o in existing:
+            if o["object_type"] != "image":
+                continue
+            d = o.get("data") or {}
+            if d.get("purpose") == purpose and d.get("title") == title:
+                return o["id"]
+        return None
+
+    async def _mk_img(purpose: str, name: str, prompt: str, idx: int) -> str:
+        hit = _find_img(purpose, name)
+        if hit:
+            # 已存在：更新提示词（可能模型/描述有变化），复用 id 不重复建
+            o = next(x for x in existing if x["id"] == hit)
+            await ss.update_object(hit, data={**o["data"], "title": name, "name": name,
+                                              "prompt": prompt, "purpose": purpose})
+            return hit
+        nid = await ss.create_object(scene_id, "image",
+                                     x=80 + (idx % 5) * 340, y=300, width=280, height=280,
+                                     data={"title": name, "selected": name, "name": name,
+                                           "purpose": purpose, "prompt": prompt, "url": "",
+                                           "model": "", "size": "1024x1024"})
+        existing.append({"id": nid, "object_type": "image",
+                         "data": {"title": name, "purpose": purpose}})
+        return nid
+
     image_map: dict[str, dict[str, str]] = {"人物": {}, "场景": {}, "道具": {}}
     image_ids: list[str] = []
     idx = 0
     for name in char_names:
         prompt = pchars.get(name) or f"电影感人物定妆图，{name}，符合故事基调，cinematic lighting"
-        nid = await ss.create_object(scene_id, "image",
-                                     x=80 + (idx % 5) * 340, y=300, width=280, height=280,
-                                     data={"title": name, "selected": name, "name": name,
-                                           "purpose": "人物", "prompt": prompt, "url": "",
-                                           "model": "", "size": "1024x1024"})
+        nid = await _mk_img("人物", name, prompt, idx)
         image_map["人物"][name] = nid
         image_ids.append(nid)
         idx += 1
     for name in scene_names:
         prompt = pscenes.get(name) or f"电影感场景概念图，{name}，符合故事氛围，cinematic atmosphere"
-        nid = await ss.create_object(scene_id, "image",
-                                     x=80 + (idx % 5) * 340, y=300, width=280, height=280,
-                                     data={"title": name, "selected": name, "name": name,
-                                           "purpose": "场景", "prompt": prompt, "url": "",
-                                           "model": "", "size": "1024x1024"})
+        nid = await _mk_img("场景", name, prompt, idx)
         image_map["场景"][name] = nid
         image_ids.append(nid)
         idx += 1
     for name in prop_names:
         prompt = pprops.get(name) or f"电影感道具特写图，{name}，细节丰富，cinematic lighting"
-        nid = await ss.create_object(scene_id, "image",
-                                     x=80 + (idx % 5) * 340, y=300, width=280, height=280,
-                                     data={"title": name, "selected": name, "name": name,
-                                           "purpose": "道具", "prompt": prompt, "url": "",
-                                           "model": "", "size": "1024x1024"})
+        nid = await _mk_img("道具", name, prompt, idx)
         image_map["道具"][name] = nid
         image_ids.append(nid)
         idx += 1
-    # storyboard → image 资产连线
+    # storyboard → image 资产连线（查重）
     for nid in image_ids:
         try:
-            await ss.create_edge(scene_id, sb_oid, nid, "default", {"kind": "asset"})
+            if not await _edge_exists(scene_id, sb_oid, nid):
+                await ss.create_edge(scene_id, sb_oid, nid, "default", {"kind": "asset"})
         except Exception:  # noqa: BLE001
             pass
 
-    # 3) video 分镜节点（每镜一个）
+    # 3) video 分镜节点（每镜一个；V2.9g 幂等：同 shot_no 复用更新，不重复建）
+    def _find_video(shot_no) -> str | None:
+        for o in existing:
+            if o["object_type"] != "video":
+                continue
+            d = o.get("data") or {}
+            try:
+                if int(d.get("shot_no") or -1) == int(shot_no):
+                    return o["id"]
+            except (TypeError, ValueError):
+                if str(d.get("shot_no")) == str(shot_no):
+                    return o["id"]
+        return None
+
     video_ids: list[str] = []
     for i, s in enumerate(shots):
         if not isinstance(s, dict):
@@ -281,13 +327,20 @@ async def build_film_skeleton(scene_id: str, story_id: str, shots: list[dict],
             "sfx_desc": [str(sfx)] if sfx else [],
             "subtitle_enabled": False,
         }
-        vid = await ss.create_object(scene_id, "video",
-                                     x=80 + (i % 5) * 340, y=720, width=320, height=280,
-                                     data=vdata)
+        vid = _find_video(vdata["shot_no"])
+        if vid:
+            o = next(x for x in existing if x["id"] == vid)
+            await ss.update_object(vid, data={**o["data"], **vdata})
+        else:
+            vid = await ss.create_object(scene_id, "video",
+                                         x=80 + (i % 5) * 340, y=720, width=320, height=280,
+                                         data=vdata)
+            existing.append({"id": vid, "object_type": "video", "data": vdata})
         video_ids.append(vid)
-        # storyboard → video 连线
+        # storyboard → video 连线（查重）
         try:
-            await ss.create_edge(scene_id, sb_oid, vid, "default", {"kind": "shot_video"})
+            if not await _edge_exists(scene_id, sb_oid, vid):
+                await ss.create_edge(scene_id, sb_oid, vid, "default", {"kind": "shot_video"})
         except Exception:  # noqa: BLE001
             pass
         # video → 该镜头用到的资产图（素材库同源：SceneVideoEditor 读 e.target===id 的 image）
@@ -296,8 +349,9 @@ async def build_film_skeleton(scene_id: str, story_id: str, shots: list[dict],
             for purpose, by_name in image_map.items():
                 if name in by_name:
                     try:
-                        await ss.create_edge(scene_id, by_name[name], vid, "default",
-                                             {"kind": "asset_ref", "purpose": purpose})
+                        if not await _edge_exists(scene_id, by_name[name], vid):
+                            await ss.create_edge(scene_id, by_name[name], vid, "default",
+                                                 {"kind": "asset_ref", "purpose": purpose})
                     except Exception:  # noqa: BLE001
                         pass
 
@@ -318,6 +372,12 @@ def _shot_asset_names(shot: dict) -> list[str]:
         if name and name not in out:
             out.append(name)
     return out
+
+
+async def _edge_exists(scene_id: str, source: str, target: str) -> bool:
+    """场景内是否已存在 source→target 连线（幂等防重）。"""
+    rows = await ss.list_edges(scene_id)
+    return any(str(e.get("source_id")) == source and str(e.get("target_id")) == target for e in rows)
 
 
 async def _step_skeleton(task_id: str, scene_id: str, story_id: str,
@@ -346,20 +406,70 @@ async def _step_skeleton(task_id: str, scene_id: str, story_id: str,
 
 async def run_director(task_id: str, scene_id: str, story_id: str = "",
                        opts: dict | None = None) -> None:
-    """异步执行导演编排（骨架搭建模式，独立任务，不阻塞请求）。"""
+    """异步执行导演编排（骨架搭建模式，独立任务，不阻塞请求）。
+
+    V2.9g 智能起点（阿勇定稿）：从画布已有内容开始，内容最完整的优先——
+      1) 分镜脚本节点已有 shots → 直接复用，不重新生成分镜（尊重用户已确认的分镜）
+      2) 只有故事 → AI 生成分镜
+      3) 只有文本 → 先 AI 生成故事，再生成分镜
+      4) 都没有内容 → 明确报错，提示先填内容
+    """
     opts = opts or {}
     try:
         await ds.update_task(task_id, status="ANALYZING", current_step="启动导演编排",
                              append_log={"step": "start", "message": "导演台启动…"})
-        # 1) 分析故事 + 时长/分镜数
-        info = await _step_analyze(task_id, scene_id, story_id, opts)
-        # 2) 分镜（严格 N 镜 13 列）
-        sb = await _step_storyboard(task_id, scene_id, info["story_id"],
-                                    info["duration"], info["shot_count"])
-        # 3) 骨架搭建（storyboard + 资产图 + 分镜视频节点 + 连线）
-        skel = await _step_skeleton(task_id, scene_id, info["story_id"],
-                                    sb["shots"], info["ctx"], opts)
-        # 4) 完成 → 待人工审核
+        existing = await ss.list_objects(scene_id)
+        sb_obj = next((o for o in existing if o["object_type"] == "storyboard"), None)
+        sb_shots = [s for s in ((sb_obj.get("data") or {}).get("shots") or []) if isinstance(s, dict)] if sb_obj else []
+        story_obj = next((o for o in existing if o["object_type"] == "story"), None)
+        text_obj = next((o for o in existing if o["object_type"] == "text"), None)
+
+        def _story_ctx(o: dict | None) -> str:
+            d = (o or {}).get("data") or {}
+            return (str(d.get("script") or "") or str(d.get("story") or "")
+                    or str(d.get("summary") or "") or str(d.get("text") or "")).strip()
+
+        story_oid = (story_obj["id"] if story_obj else "") or story_id
+        story_ctx = _story_ctx(story_obj)
+        shots: list[dict] = []
+
+        if sb_shots:
+            # ── 起点 1：已有分镜脚本 → 直接复用（不重新生成）──
+            shots = sb_shots
+            await ds.update_task(task_id, status="SHOT_GENERATING", progress=45,
+                                 current_step=f"复用现有分镜（{len(shots)}）",
+                                 append_log={"step": "shots",
+                                             "message": f"检测到分镜脚本节点（{len(shots)} 镜），直接使用现有分镜，不重新生成"})
+        else:
+            # ── 起点 3：只有文本 → 先 AI 生成故事 ──
+            if not story_ctx:
+                text_ctx = str((text_obj.get("data") or {}).get("text") or "").strip() if text_obj else ""
+                if not text_ctx:
+                    raise RuntimeError(
+                        "场景里没有可用的内容——请先添加【文本】节点并写入故事/文案，"
+                        "或生成【故事】/【分镜脚本】后再点一键排片")
+                await ds.update_task(task_id, current_step="从文本生成故事",
+                                     append_log={"step": "analyze", "message": "检测到文本节点，先 AI 生成故事方案…"})
+                from app.scene.actions import _act_generate_story_from_text
+                r = await _act_generate_story_from_text(scene_id, [text_obj["id"]], {
+                    "duration": opts.get("duration") or 0,
+                    "shotCount": opts.get("shot_count") or 0,
+                    "style": opts.get("style") or "",
+                })
+                if not r.get("ok"):
+                    raise RuntimeError(r.get("error") or "故事生成失败")
+                existing = await ss.list_objects(scene_id)
+                story_obj = next((o for o in existing if o["object_type"] == "story"), None)
+                story_oid = story_obj["id"] if story_obj else ""
+                story_ctx = _story_ctx(story_obj)
+            # ── 起点 2：故事 → AI 生成分镜 ──
+            info = await _step_analyze(task_id, scene_id, story_oid, opts)
+            sb = await _step_storyboard(task_id, scene_id, info["story_id"],
+                                        info["duration"], info["shot_count"])
+            shots = sb["shots"]
+        # ── 骨架搭建（storyboard + 资产图 + 分镜视频节点 + 连线）──
+        skel = await _step_skeleton(task_id, scene_id, story_oid, shots, story_ctx, opts)
+        # 完成 → 待人工审核
         await ds.update_task(task_id, status="REVIEWING", progress=100,
                              current_step="待人工审核",
                              append_log={"step": "done",
