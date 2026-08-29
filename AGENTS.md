@@ -565,6 +565,25 @@ MCP HTTP 模式端口 8901，Bearer token 认证复用 `mcp_clients` 表。
 
 
 
+## 一·二十九、scene/actions.py 拆分为 actions/ 包（2026-08-29）
+
+2166 行单文件按域拆成 6 个子模块（AST 保真搬运，函数实现零改动；拆分脚本 `D:/tmp/split_actions.py` 可复跑）：
+
+| 文件 | 行数 | 职责 |
+|---|---|---|
+| `actions/shared.py` | 466 | Provider 路由 / LLM 封装（_chat_full/_llm_json/_llm_text）/ 剧本解析（_parse_script）/ RAG / 任务留痕 |
+| `actions/media.py` | 344 | 图片 / 视频 / 镜头 / 节点级生成（generate_node_image/video）/ 拉片解析 |
+| `actions/story.py` | 879 | 剧本生成（SCRIPT_FORMAT）/ 故事生成 / 全字段分镜 / AI 智能引入 |
+| `actions/marketing.py` | 196 | 商品分析 / 营销策略 / 视觉规划板 / 详情页 / 批量 SKU |
+| `actions/audio.py` | 145 | BGM 提示词 / 配音稿 / 字幕 / ffmpeg 成片 |
+| `actions/dispatch.py` | 241 | 动作分发（execute_action）/ 异步执行 / 导演台 / Skill 桥接 |
+
+**兼容性设计**：`actions/__init__.py` 原样 re-export 全部 32 个对外名字，导演台（orchestrator/routes）、MCP 三工具、scene/routes 共 6 处外部 import **一行未改**。依赖方向 shared ← 各域 ← dispatch，无循环。旧 `actions.py` 已删（mv 到 `D:/tmp/lw_actions_py_removed`）。
+
+**验证**：`tmp/verify_actions_split.py` 容器内 **13/13 全绿**（re-export 完整/子模块独立 import/道具解析修复保留/未知动作与各域无数据场景全部友好报错/tasks 留痕/导演台与 MCP import 兼容）；pytest 8/8；MCP HTTP initialize + tools/list 200。
+
+🔴 **大坑（别再犯）**：**本沙箱里 `git rm` 会误删整个目录树**（本次 `git rm -q app/scene/actions.py` 把 backend/app 整目录删了，靠 `git restore` + `git checkout HEAD --` 恢复）。删文件一律用 `mv` 挪走，让 git 自然记录删除，禁用 `git rm`。
+
 ## 三、启动 / 重启 SOP
 
 ```bash
@@ -614,7 +633,7 @@ backend/
 │   ├── workflow/        工作流执行核心（engine/routes，MCP 改造时从 agent/ 迁来）
 │   ├── mcp/             MCP Server（21 工具，stdio + streamable-http 双模式）
 │   ├── services/        服务层（供 MCP 与 REST 共用）
-│   ├── scene/           【V2.5】场景引擎（registry/service/routes/actions/schemas）
+│   ├── scene/           【V2.5】场景引擎（registry/service/routes/schemas + actions/ 包）
 │   ├── skills/          Skill Core（manifest/loader/manager/runtime/permissions/routes）
 │   ├── renderers/       ComfyUI（registry/comfyui/routes）
 │   ├── prompt_learning/ RAG（embedder/store/source/extractor/retriever/routes）
