@@ -7,7 +7,7 @@ ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ENV HTTP_PROXY=${HTTP_PROXY} \
     HTTPS_PROXY=${HTTPS_PROXY} \
-    NO_PROXY=registry.npmmirror.com,localhost,127.0.0.1
+    NO_PROXY=registry.npmmirror.com,cdn.npmmirror.com,localhost,127.0.0.1
 
 # 国内镜像源（package-lock.json 的 resolved 已指向 npmmirror，此处保持一致）
 RUN npm config set registry https://registry.npmmirror.com

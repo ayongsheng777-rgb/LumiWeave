@@ -31,7 +31,7 @@ function sceneActionsFor(objectType: string, typeDef?: SceneTypeDef | null): str
   if (objectType !== 'product') return []
   const acts = typeDef?.actions || []
   return acts.filter((a) =>
-    ['analyze_product', 'generate_strategy', 'generate_main_image', 'generate_scene_image', 'generate_poster', 'generate_detail_page', 'batch_generate'].includes(a),
+    ['analyze_product', 'generate_strategy', 'refine_product_image', 'generate_main_image', 'generate_scene_image', 'generate_selling_point_image', 'generate_poster', 'generate_detail_page', 'generate_ad_video', 'batch_generate'].includes(a),
   )
 }
 

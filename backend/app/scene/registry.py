@@ -129,8 +129,10 @@ registry.register(SceneDefinition(
     object_types=COMMON_OBJECT_TYPES,
     actions=[
         "analyze_product", "generate_strategy", "generate_visual_board",
-        "generate_main_image", "generate_scene_image",
-        "generate_poster", "generate_detail_page", "batch_generate",
+        "refine_product_image", "generate_main_image", "generate_scene_image",
+        "generate_selling_point_image", "generate_poster", "generate_detail_page",
+        "generate_ad_video", "generate_voiceover", "generate_music",
+        "compose_final", "batch_generate",
     ],
     toolbar=COMMON_TOOLBAR,
     inspector=COMMON_OBJECT_TYPES,

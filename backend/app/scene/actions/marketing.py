@@ -1,13 +1,21 @@
-"""场景动作·电商营销（商品分析 / 营销策略 / 视觉规划板 / 详情页 / 批量SKU）。
+"""场景动作·电商营销（商品分析 / 营销策略 / 视觉规划板 / 详情页 / 批量SKU /
+精修白底图 / 卖点图 / 广告视频）。
 
 从 actions.py 拆分而来（2026-08-29），函数实现原样未动。
+2026-08-29 晚：对齐灵境「电商商品营销物料」画布——补精修白底图（全链路参考源）、
+卖点图、参考生成广告视频；修复拆分时丢失的 _rag_retrieve 导入（详情页动作因此报错）。
 """
 from __future__ import annotations
 
 from app.scene import service
 
 from app.scene.actions.media import _gen_image
-from app.scene.actions.shared import _llm_json, _siliconflow_profile
+from app.scene.actions.shared import (
+    _llm_json,
+    _rag_retrieve,
+    _register_asset,
+    _siliconflow_profile,
+)
 
 
 # ── 结构化商品广告片制作板（Visual Production Board）System Prompt ──
@@ -194,3 +202,133 @@ async def _act_batch_sku(scene_id: str, obj_ids: list[str], params: dict) -> dic
             })
         results.append({"product": d.get("name", ""), "skus": sku_urls})
     return {"ok": bool(results), "results": results, "message": f"批量生成 {len(results)} 个商品"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 对齐灵境画布（2026-08-29）：精修白底图 / 卖点图 / 参考生成广告视频
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _act_refine_product_image(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """精修白底图（对齐灵境「电商大师-精修白底图」，全链路物料源头）。
+
+    以商品主图（main_image）为参考做图生图精修，产出干净白底商品图；
+    _gen_image 按 kind 自动回写 product.refined_image —— 后续主图/场景图/卖点图/
+    海报/广告视频统一以它为参考图（_gen_image 参考优先级：refined_image → main_image）。
+    """
+    targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] == "product"]
+    if not targets:
+        return {"ok": False, "error": "请先创建商品(product)节点"}
+    made: list[str] = []
+    for oid in targets:
+        obj = await service.get_object(oid)
+        if not obj:
+            continue
+        d = obj["data"]
+        main = str(d.get("main_image") or "").strip()
+        if not main:
+            return {"ok": False, "error": "请先在商品节点填写主图地址（main_image），精修以它为参考"}
+        p = str(params.get("prompt") or "").strip() or (
+            f"电商白底精修图，商品：{d.get('name','')}，保持商品外观/材质/颜色完全一致，"
+            "纯净白色背景，专业摄影棚布光，产品精修质感，高清细节，去除杂物")
+        r = await _gen_image(scene_id, [oid],
+                             {**params, "prompt": p, "reference_images": [main],
+                              "size": params.get("size", "1024x1024")}, "refined")
+        if not r.get("ok"):
+            return r
+        made.extend(r.get("created") or [])
+    return {"ok": bool(made), "created": made,
+            "message": f"已精修 {len(made)} 张白底图（已设为后续物料的统一参考源）"}
+
+
+async def _act_generate_selling_point_image(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """卖点图（对齐灵境「电商大师-卖点图」）：按商品卖点逐条生成卖点展示图。
+
+    依赖 selling_points（可先跑「识别商品」自动提炼）；每条卖点一张图，
+    参考商品图保持外观一致；上限 6 条防止刷量。
+    """
+    targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] == "product"]
+    made: list[str] = []
+    for oid in targets:
+        obj = await service.get_object(oid)
+        if not obj:
+            continue
+        d = obj["data"]
+        points = d.get("selling_points") or []
+        if isinstance(points, str):
+            points = [points]
+        points = [str(x) for x in points if str(x).strip()][:6]
+        if not points:
+            return {"ok": False, "error": "商品还没有卖点，请先执行「识别商品 / 提炼卖点」"}
+        for point in points:
+            p = (f"电商卖点展示图，商品：{d.get('name','')}，核心卖点：{point}，"
+                 "将卖点可视化呈现在画面上（预留简短中文文案区域），商业海报构图，高级质感")
+            r = await _gen_image(scene_id, [oid],
+                                 {**params, "prompt": p, "size": params.get("size", "1024x1024")},
+                                 "selling")
+            if r.get("ok"):
+                made.extend(r.get("created") or [])
+    return {"ok": bool(made), "created": made, "message": f"生成 {len(made)} 张卖点图"}
+
+
+async def _act_generate_ad_video(scene_id: str, obj_ids: list[str], params: dict) -> dict:
+    """参考生成广告视频（对齐灵境「参考生成广告视频」）。
+
+    参考图 = 商品精修图 → 主图（首帧，保持商品外观一致）；
+    提示词融合卖点 + 营销策略文案基调，产出广告视频节点并回写 product.ad_video。
+    2026-08-29 晚：改走视频 Provider 链逐个尝试（首选失败自动换备用）——
+    首选硅基流动 Wan2.2 无 I2V 模型会报 "Model does not exist"，需能落到 MiniMax H3。
+    """
+    from app.providers.cloud_gen import cloud_video_generate
+    from app.providers.service import route
+    chain = await route("video")
+    if not chain:
+        return {"ok": False, "error": "未配置可用视频 Provider（请在「接口配置」添加云端视频）"}
+    targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] == "product"]
+    created: list[str] = []
+    for oid in targets:
+        obj = await service.get_object(oid)
+        if not obj:
+            continue
+        d = obj["data"]
+        sp = "，".join(d.get("selling_points", []) or [])
+        strategy = d.get("strategy")
+        tone = str(strategy.get("copy_tone") or "") if isinstance(strategy, dict) else ""
+        p = str(params.get("prompt") or "").strip() or (
+            f"电商广告视频，商品：{d.get('name','')}，核心卖点：{sp}，"
+            f"镜头围绕商品特写与真实使用场景，商业广告质感，节奏明快"
+            f"{('，文案基调：' + tone) if tone else ''}")
+        ref = str(d.get("refined_image") or d.get("main_image") or "").strip()
+        res: dict = {"ok": False, "error": "无可用视频 Provider"}
+        errs: list[str] = []
+        used_name = ""
+        for prov in chain:
+            try:
+                res = await cloud_video_generate(prov["id"], p, image_url=ref,
+                                                 duration=int(params.get("duration") or 6),
+                                                 ratio=str(params.get("ratio") or "16:9"))
+            except Exception as exc:  # noqa: BLE001
+                errs.append(f"{prov.get('name') or prov['id']}: {exc}")
+                continue
+            if res.get("ok"):
+                used_name = str(prov.get("name") or prov["id"])
+                break
+            errs.append(f"{prov.get('name') or prov['id']}: {res.get('error', '生成失败')}")
+        if not res.get("ok"):
+            return {"ok": False, "error": "广告视频生成失败（已试完全部视频 Provider）：" + "；".join(errs)[:300],
+                    "logs": res.get("logs")}
+        urls = [i.get("url") for i in res.get("videos", []) if isinstance(i, dict) and i.get("url")]
+        base_x, base_y = float(obj.get("x") or 0), float(obj.get("y") or 0)
+        for idx, u in enumerate(urls):
+            nid = await service.create_object(scene_id, "video",
+                                              x=base_x + 340, y=base_y + 620 + idx * 320,
+                                              width=320, height=260,
+                                              data={"prompt": p, "url": u, "model": used_name,
+                                                    "source_object_id": oid, "kind": "ad"})
+            created.append(nid)
+            await _register_asset(scene_id, "video", u, name="商品·广告视频",
+                                  meta={"kind": "ad", "source_object_id": oid})
+        if urls:
+            latest = await service.get_object(oid)
+            if latest:
+                await service.update_object(oid, data={**latest["data"], "ad_video": urls[0]})
+    return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 个广告视频"}

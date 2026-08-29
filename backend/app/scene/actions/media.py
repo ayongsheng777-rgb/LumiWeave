@@ -17,6 +17,14 @@ from app.scene.actions.shared import (
 )
 
 
+# 场景图变体词库（场景图 1 拖 N，对齐灵境画布「场景图→场景1~9」批量派生）
+_SCENE_VARIANTS = [
+    "厨房料理台场景", "客厅茶几场景", "办公室桌面场景", "户外露营场景",
+    "卧室床头场景", "书房工作台场景", "餐厅餐桌场景", "阳台下午茶场景",
+    "健身房场景", "浴室洗漱台场景", "咖啡厅场景", "节日送礼场景",
+]
+
+
 async def _gen_image(scene_id: str, obj_ids: list[str], params: dict, kind: str) -> dict:
     prov = await _image_provider()
     if not prov:
@@ -24,37 +32,70 @@ async def _gen_image(scene_id: str, obj_ids: list[str], params: dict, kind: str)
     targets = obj_ids or [o["id"] for o in await service.list_objects(scene_id) if o["object_type"] in ("product", "shot", "storyboard", "scene")]
     created = []
     prompt = params.get("prompt", "")
+    # 参考生图（对齐灵境画布：电商物料以商品原图为参考做图生图，保持商品外观一致）。
+    # 显式 params.reference_images 优先；商品节点自动取 refined_image（精修图）→ main_image（主图）。
+    param_refs = [str(x) for x in (params.get("reference_images") or []) if x]
+    # 场景图 1 拖 N（仅商品节点 + kind=scene 生效；count 上限 12）
+    count = 1
+    if kind == "scene":
+        try:
+            count = max(1, min(12, int(params.get("count") or 1)))
+        except (TypeError, ValueError):
+            count = 1
     for oid in targets:
         obj = await service.get_object(oid)
         if not obj:
             continue
         d = obj["data"]
+        refs = list(param_refs)
+        if not refs and obj["object_type"] == "product":
+            ref = str(d.get("refined_image") or d.get("main_image") or "").strip()
+            if ref:
+                refs = [ref]
         # 自动拼提示词：用户给的优先，否则从对象数据生成
-        p = prompt or d.get("prompt") or _auto_prompt(kind, obj["object_type"], d)
-        if not p:
+        base_prompt = prompt or d.get("prompt") or _auto_prompt(kind, obj["object_type"], d)
+        if not base_prompt:
             continue
         from app.providers.cloud_gen import cloud_image_generate
-        res = await cloud_image_generate(prov["id"], p, size=params.get("size", "1024x1024"))
-        if not res.get("ok"):
-            return {"ok": False, "error": res.get("error", "出图失败"), "logs": res.get("logs")}
-        urls = [i["url"] for i in res.get("images", []) if i.get("url")]
-        # 创建图片对象并回写引用。x/y 是表列（不在 data 里），从 obj 顶层取。
-        base_x, base_y = float(obj.get("x") or 0), float(obj.get("y") or 0)
-        for idx, u in enumerate(urls):
-            nid = await service.create_object(scene_id, "image",
-                                              x=base_x + 340, y=base_y + idx * 300,
-                                              width=280, height=280,
-                                              data={"prompt": p, "url": u, "model": prov.get("name"), "source_object_id": oid})
-            created.append(nid)
-            await _register_asset(scene_id, "image", u, name=f"{_label(obj['object_type'])}·{kind}", meta={"kind": kind, "source_object_id": oid})
-        # 回写原对象
-        await service.update_object(oid, data={**d, f"{kind}_image": urls[0] if urls else d.get(f"{kind}_image")})
+        rounds = count if (kind == "scene" and obj["object_type"] == "product") else 1
+        first_url = ""
+        for round_i in range(rounds):
+            p = base_prompt
+            if rounds > 1:
+                p = f"{base_prompt}，{_SCENE_VARIANTS[round_i % len(_SCENE_VARIANTS)]}"
+            res = await cloud_image_generate(prov["id"], p, size=params.get("size", "1024x1024"),
+                                             reference_images=refs or None)
+            if not res.get("ok"):
+                return {"ok": False, "error": res.get("error", "出图失败"), "logs": res.get("logs")}
+            urls = [i["url"] for i in res.get("images", []) if i.get("url")]
+            # 创建图片对象并回写引用。x/y 是表列（不在 data 里），从 obj 顶层取。
+            base_x, base_y = float(obj.get("x") or 0), float(obj.get("y") or 0)
+            for u in urls:
+                nid = await service.create_object(scene_id, "image",
+                                                  x=base_x + 340, y=base_y + len(created) * 300,
+                                                  width=280, height=280,
+                                                  data={"prompt": p, "url": u, "model": prov.get("name"), "source_object_id": oid})
+                created.append(nid)
+                await _register_asset(scene_id, "image", u, name=f"{_label(obj['object_type'])}·{kind}", meta={"kind": kind, "source_object_id": oid})
+            if not first_url and urls:
+                first_url = urls[0]
+        # 回写原对象（首图；重读最新 data 避免多轮覆盖）
+        if first_url:
+            latest = await service.get_object(oid)
+            if latest:
+                await service.update_object(oid, data={**latest["data"], f"{kind}_image": first_url})
     return {"ok": bool(created), "created": created, "message": f"生成 {len(created)} 张图"}
 
 
 def _auto_prompt(kind: str, obj_type: str, d: dict) -> str:
     if obj_type == "product":
         sp = "，".join(d.get("selling_points", []) or [])
+        if kind == "refined":
+            return (f"电商白底精修图，商品：{d.get('name','')}，保持商品外观/材质/颜色完全一致，"
+                    "纯净白色背景，专业摄影棚布光，产品精修质感，高清细节")
+        if kind == "selling":
+            return (f"电商卖点展示图，商品：{d.get('name','')}，突出卖点：{sp}，"
+                    "卖点可视化呈现，商业海报构图，高级质感")
         base = f"电商{ '主图' if kind=='main' else '场景图' }，商品：{d.get('name','')}，卖点：{sp}"
         return base + "，商业摄影，高级质感，干净背景" if kind == "main" else base + "，生活化使用场景，自然光"
     if obj_type == "shot":

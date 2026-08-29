@@ -21,9 +21,12 @@ from app.scene.actions.audio import (
 from app.scene.actions.marketing import (
     _act_analyze_product,
     _act_batch_sku,
+    _act_generate_ad_video,
     _act_generate_detail_page,
+    _act_generate_selling_point_image,
     _act_generate_strategy,
     _act_generate_visual_board,
+    _act_refine_product_image,
 )
 from app.scene.actions.media import (
     _act_analyze_shot,
@@ -196,6 +199,12 @@ async def _run_action(scene_id: str, action: str, object_ids: list[str] | None =
             return {"ok": True, "async": True, "task_id": tid, "message": "批量生成已进入任务队列（后台执行）"}
         if action == "generate_detail_page":
             return await _act_generate_detail_page(scene_id, obj_ids, params)
+        if action == "refine_product_image":
+            return await _act_refine_product_image(scene_id, obj_ids, params)
+        if action == "generate_selling_point_image":
+            return await _act_generate_selling_point_image(scene_id, obj_ids, params)
+        if action == "generate_ad_video":
+            return await _act_generate_ad_video(scene_id, obj_ids, params)
         if action == "generate_shots":
             return await _act_generate_shots(scene_id, obj_ids, params)
         if action == "generate_images":
