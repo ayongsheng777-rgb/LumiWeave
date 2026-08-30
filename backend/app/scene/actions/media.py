@@ -273,7 +273,8 @@ async def _act_generate_video(scene_id: str, obj_ids: list[str], params: dict) -
                                          duration=int(params.get("duration") or d.get("duration") or 5),
                                          ratio=str(params.get("ratio") or d.get("aspect_ratio") or "16:9"),
                                          negative=negative,
-                                         native=native or None)
+                                         native=native or None,
+                                         resolution=reso)
         if not res.get("ok"):
             return {"ok": False, "error": res.get("error", "生视频失败"), "logs": res.get("logs")}
         urls = [i.get("url") for i in res.get("videos", []) if i.get("url")]
@@ -450,6 +451,7 @@ async def _act_generate_node_video(scene_id: str, obj_ids: list[str], params: di
                 "negative": negative,
                 "duration": int(params.get("duration") or d.get("duration") or 5),
                 "ratio": str(params.get("ratio") or d.get("aspect_ratio") or "16:9"),
+                "resolution": reso,
                 **({"reference_images": ref_urls} if ref_urls else {}),
                 **({"native": {**native, "camera_movement": motion}} if motion and motion != "固定镜头" else ({"native": native} if native else {})),
             },

@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+import base64
+import os
 import time
 import uuid
 from typing import Any, Optional
@@ -18,6 +20,52 @@ from typing import Any, Optional
 import httpx
 
 from app.renderers.registry import BaseRenderer, RendererConfig
+
+
+def _mime_of(url: str) -> str:
+    """按 URL/文件扩展名推断图片 MIME（默认 png）。"""
+    low = url.lower().split("?")[0]
+    if ".jpg" in low or ".jpeg" in low:
+        return "image/jpeg"
+    if ".webp" in low:
+        return "image/webp"
+    return "image/png"
+
+
+async def _to_data_uri(url: str, data_dir: str | None = None) -> str:
+    """把图片 URL 转成 base64 data URI，供 MiniMax H3 直接内联（绕开公网 URL 约束）。
+
+    处理三类输入：
+      - data: 开头 → 原样返回
+      - http(s):// → 下载后内联（临时链接过期/内网不可达都能规避，本地兜底最稳）
+      - 相对路径（/uploads/...）→ 读本地文件内联
+    转换失败返回原 URL（让上层按原样重试，不阻断）。
+    """
+    url = str(url or "").strip()
+    if not url:
+        return url
+    if url.startswith("data:"):
+        return url
+    raw: bytes | None = None
+    try:
+        if url.startswith("http://") or url.startswith("https://"):
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    raw = resp.content
+        elif data_dir and url.startswith("/"):
+            p = os.path.join(data_dir, url.lstrip("/"))
+            if os.path.exists(p):
+                with open(p, "rb") as f:
+                    raw = f.read()
+    except Exception:  # noqa: BLE001
+        raw = None
+    if not raw:
+        return url
+    # MiniMax 单图上限 20MB；超限不内联（回退原 URL，避免请求体过大）
+    if len(raw) > 20 * 1024 * 1024:
+        return url
+    return f"data:{_mime_of(url)};base64,{base64.b64encode(raw).decode()}"
 
 
 def detect_provider(endpoint: str, client_id: str = "") -> str:
@@ -82,6 +130,15 @@ class VideoApiConnector(BaseRenderer):
         path, payload = self._build_submit(p)
         if not path:
             return {"ok": False, "error": f"未支持的视频服务商: {self.provider}"}
+        # MiniMax：参考图/首帧图转 base64 内联（绕开公网 URL 约束 + 临时链接过期）
+        if self.provider in ("minimax", "minimax_h3") and isinstance(payload.get("content"), list):
+            from app.config import DATA_DIR
+            for item in payload["content"]:
+                if not isinstance(item, dict) or item.get("type") != "image_url":
+                    continue
+                iu = item.get("image_url")
+                if isinstance(iu, dict) and iu.get("url"):
+                    iu["url"] = await _to_data_uri(str(iu["url"]), str(DATA_DIR))
         # 模型专属字段（native：camera_control/camera_movement/height 等）直接合并
         native = p.get("native")
         if isinstance(native, dict):
@@ -182,6 +239,9 @@ class VideoApiConnector(BaseRenderer):
             #   text / image_url(first_frame|last_frame|reference_image) / video_url(reference_video)
             # 异步：POST 返回 task_id，GET /v2/query/video_generation/{task_id} 轮询
             resolution = str(p.get("resolution") or "2K")
+            # MiniMax H3 仅接受 768P / 2K 两档，其余统一映射（≤720→768P，>720→2K）
+            from app.providers.cloud_gen import normalize_h3_resolution
+            resolution = normalize_h3_resolution(resolution)
             last_frame = str(p.get("last_frame_url") or p.get("last_frame") or "")
             content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
 

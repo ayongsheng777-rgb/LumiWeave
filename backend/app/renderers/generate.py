@@ -123,6 +123,7 @@ async def render_media(
                 image_url=first,
                 duration=int(params.get("duration") or 10),
                 ratio=ratio, negative=negative, model=model, native=native, profile=profile,
+                resolution=str(params.get("resolution") or ""),
             )
         res["logs"] = logs + (res.get("logs") or [])
         return res

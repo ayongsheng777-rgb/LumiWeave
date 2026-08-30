@@ -99,11 +99,17 @@ async def route(
     cost: float = 1.0,
     limit: int = 3,
 ) -> list[dict[str, Any]]:
-    """按评分排序返回可用 Provider 链（首选→备用→第三）。"""
+    """按评分排序返回可用 Provider 链（首选→备用→第三）。
+
+    排除「实测失败」（health.last_test='fail'）的 provider，避免智能路由选中
+    已明确不可用的服务商（如无 Wan2.2 视频权限的硅基流动）。若全部失败才兜底
+    返回原候选（保证上层仍有东西可用，报错信息更明确）。
+    """
     rows = await db.fetch(
         "SELECT * FROM providers WHERE type=$1 AND status='enabled'", task_type
     )
     scored: list[tuple[float, dict[str, Any]]] = []
+    failed: list[dict[str, Any]] = []
     for r in rows:
         d = _row_to_provider(r)
         health = d.get("health") or {}
@@ -112,9 +118,16 @@ async def route(
         c = _cost_score(float(d.get("cost_rate", 0) or 0))
         score = q * quality + s * speed + c * cost
         d["_score"] = round(score, 4)
+        if str(health.get("last_test") or "").lower() == "fail":
+            failed.append(d)
+            continue
         scored.append((score, d))
     scored.sort(key=lambda x: x[0], reverse=True)
-    return [d for _, d in scored[:limit]]
+    candidates = [d for _, d in scored[:limit]]
+    # 全部失败时兜底：保留原候选（按原序），避免返回空链导致「未配置」误报
+    if not candidates and failed:
+        return failed[:limit]
+    return candidates
 
 
 async def best_provider(task_type: str, **kw: Any) -> dict[str, Any] | None:

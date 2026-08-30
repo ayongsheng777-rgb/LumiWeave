@@ -267,6 +267,7 @@ export default function SceneVideoEditor({ id, locked }: { id: string; locked: b
           ratio: aspectRatio,
           duration: Number(payload.duration) || 5,
           negative,
+          resolution,
           generate_audio: payload.generate_audio !== false,
           native,
           ...(refs.length ? { reference_images: refs } : {}),

@@ -10,7 +10,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import os
 import re
 import time
 from typing import Any
@@ -19,6 +21,36 @@ import httpx
 
 from app import db
 from app.token_usage.db import fire_and_forget
+
+
+async def _to_data_uri(url: str, data_dir: str | None = None) -> str:
+    """图片 URL → base64 data URI（MiniMax H3 内联，绕开公网 URL 约束 + 临时链接过期）。
+
+    与 app.renderers.video_api._to_data_uri 等价；此处独立实现避免
+    renderers ↔ providers 的循环 import。
+    """
+    url = str(url or "").strip()
+    if not url or url.startswith("data:"):
+        return url
+    raw: bytes | None = None
+    try:
+        if url.startswith("http://") or url.startswith("https://"):
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    raw = resp.content
+        elif data_dir and url.startswith("/"):
+            p = os.path.join(data_dir, url.lstrip("/"))
+            if os.path.exists(p):
+                with open(p, "rb") as f:
+                    raw = f.read()
+    except Exception:  # noqa: BLE001
+        raw = None
+    if not raw or len(raw) > 20 * 1024 * 1024:
+        return url
+    low = url.lower().split("?")[0]
+    mime = "image/jpeg" if (".jpg" in low or ".jpeg" in low) else ("image/webp" if ".webp" in low else "image/png")
+    return f"data:{mime};base64,{base64.b64encode(raw).decode()}"
 
 # V2.9f 渲染计费估算（¥，仅统计展示；官方价调整后改这里）
 RENDER_COST = {
@@ -29,6 +61,28 @@ RENDER_COST = {
 
 _SIZE_MAP = {"16:9": "1280x720", "9:16": "720x1280", "1:1": "960x960",
              "4:3": "1024x768", "3:4": "768x1024"}
+
+
+def normalize_h3_resolution(value: str) -> str:
+    """把前端任意清晰度档位归一化到 MiniMax H3 支持的两档（768P / 2K）。
+
+    规则（阿勇拍板）：短边 ≤ 720 的档位（480P/720p）→ 768P；> 720 的（1080p/2K/4K）→ 2K。
+    MiniMax H3 只认 768P / 2K 两档，其余档位一律报「not enabled for this group」。
+    """
+    v = str(value or "").strip().lower()
+    if not v:
+        return "768P"
+    # 已经是合法档位则原样（兼容 768p/768P、2k/2K）
+    if v in ("768p", "768", "2k"):
+        return "768P" if v != "2k" else "2K"
+    # 4K 单独处理（避免正则把「4」当短边）
+    if "4k" in v or v == "4":
+        return "2K"
+    m = re.search(r"(\d+)", v)
+    if not m:
+        return "768P"
+    short_side = int(m.group(1))
+    return "2K" if short_side > 720 else "768P"
 
 
 def _ts() -> int:
@@ -189,6 +243,7 @@ async def _minimax_h3_generate(
     ratio: str,
     model: str,
     logs: list[dict[str, Any]],
+    resolution: str = "",
 ) -> dict[str, Any]:
     """MiniMax H3 视频生成（V2.9d）：/v2/video_generation 异步任务 → 轮询 → 成片 URL。
 
@@ -202,12 +257,15 @@ async def _minimax_h3_generate(
     headers = _headers(key)
     content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     if image_url:
-        content.append({"type": "image_url", "image_url": {"url": image_url}, "role": "first_frame"})
+        # 首帧图转 base64 内联（绕开公网 URL 约束 + 临时链接过期）
+        from app.config import DATA_DIR
+        _iu = await _to_data_uri(image_url, str(DATA_DIR))
+        content.append({"type": "image_url", "image_url": {"url": _iu}, "role": "first_frame"})
     payload: dict[str, Any] = {
         "model": model,
         "content": content,
         "duration": max(4, min(15, int(duration or 5))),
-        "resolution": "2K",
+        "resolution": normalize_h3_resolution(resolution),
     }
     # 文生视频 ratio 必填且不能为 adaptive；图生视频由输入图决定（恒 adaptive）
     if not image_url:
@@ -280,6 +338,7 @@ async def cloud_video_generate(
     model: str = "",
     native: dict[str, Any] | None = None,
     profile: dict[str, Any] | None = None,
+    resolution: str = "",
 ) -> dict[str, Any]:
     """云端文生视频（异步：提交→轮询→取结果）。
     native 为模型专属字段（如 height/camera_control/camera_movement），直接合并进请求体。
@@ -311,7 +370,7 @@ async def cloud_video_generate(
     if "minimax" in (str(provider_id) + " " + endpoint).lower():
         return await _minimax_h3_generate(
             endpoint, key, prov_name, prompt, image_url, duration, ratio,
-            model or "MiniMax-H3", logs,
+            model or "MiniMax-H3", logs, resolution=resolution,
         )
     # 图生视频（有首帧图）走 I2V 模型，否则走 T2V
     if image_url:
