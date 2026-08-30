@@ -7,10 +7,15 @@ from typing import Any
 
 from app import db
 
+# 🔴 必须与前端 src/canvas/objectNodes.tsx 的 objectNodeTypes 对齐，
+# 否则 create_object 会把未知类型静默降级成 'text'，导致画布节点渲染异常。
 OBJECT_TYPES = {
     "text", "image", "video", "audio", "file", "prompt", "ai_result",
     "frame", "group", "workflow", "agent", "skill", "note", "reference",
     "input", "analyze", "asset", "output", "llm", "render",
+    # 影视 / 工作流节点转换后在画布端真实渲染的类型
+    "story", "character", "scene", "prop", "storyboard",
+    "subtitle", "layout", "export", "image_input",
 }
 
 

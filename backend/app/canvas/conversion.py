@@ -12,32 +12,38 @@ from __future__ import annotations
 from typing import Any
 
 # 工作流节点 type → 画布对象 type
+# 🔴 必须对齐前端 src/canvas/objectNodes.tsx 的 objectNodeTypes 注册表，
+# 否则转换后的对象在画布上渲染成空节点（如旧映射的 'input'/'asset' 在画布端无对应组件）。
 WF_TO_CANVAS: dict[str, str] = {
-    'story': 'input',
-    'character': 'asset',
-    'scene': 'asset',
-    'prop': 'asset',
+    'story': 'story',
+    'character': 'character',
+    'scene': 'scene',
+    'prop': 'prop',
     'storyboard': 'storyboard',
     'image': 'image',
     'video': 'video',
-    'audio': 'asset',
-    'subtitle': 'text',
-    'layout': 'text',
-    'export': 'text',
+    'audio': 'audio',
+    'subtitle': 'subtitle',
+    'layout': 'layout',
+    'export': 'export',
     'prompt': 'prompt',
-    'asset': 'asset',
-    # 兼容旧通用节点
-    'input': 'input', 'analyze': 'analyze', 'skill': 'skill',
-    'output': 'output', 'llm': 'llm', 'render': 'render',
+    'skill': 'skill',
+    # 兼容旧通用节点：朝画布端真实渲染组件靠拢
+    'asset': 'character',
+    'input': 'text', 'analyze': 'text', 'output': 'text', 'llm': 'text',
+    'render': 'image',
     'text': 'text', 'note': 'note',
 }
 
 # 画布对象 type → 工作流节点 type（无 _wf_type 元数据时的兜底映射）
+# 与 WF_TO_CANVAS 形成对偶；还原时优先用 metadata._wf_type，本表仅作兜底。
 CANVAS_TO_WF: dict[str, str] = {
-    'input': 'story', 'asset': 'character', 'image': 'image', 'video': 'video',
-    'prompt': 'prompt', 'analyze': 'analyze', 'skill': 'skill', 'output': 'output',
-    'text': 'text', 'note': 'note', 'llm': 'llm', 'render': 'render',
-    'storyboard': 'storyboard',
+    'story': 'story', 'character': 'character', 'scene': 'scene', 'prop': 'prop',
+    'storyboard': 'storyboard', 'image': 'image', 'video': 'video', 'audio': 'audio',
+    'subtitle': 'subtitle', 'layout': 'layout', 'export': 'export', 'prompt': 'prompt',
+    'skill': 'skill', 'input': 'story', 'asset': 'character',
+    'analyze': 'analyze', 'output': 'output', 'text': 'text', 'note': 'note',
+    'llm': 'llm', 'render': 'render',
 }
 
 _FILM_ASSET_LABEL = {'character': '角色', 'scene': '场景', 'prop': '道具'}

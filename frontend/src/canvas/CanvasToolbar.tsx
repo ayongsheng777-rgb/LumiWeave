@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { aiBuildWorkflow, canvasApplyLayout, canvasSaveGraph, canvasToWorkflow, runWorkflow } from '../api'
 import { useCanvasStore } from '../store/canvasStore'
+import { useWorkflowStore } from '../store/workflowStore'
+import { useUiStore } from '../store/uiStore'
 import { canvasToWorkflow as toWfGraph } from './workflowAdapter'
 import { dagLayout } from './layout'
 import { Play, Save, Undo2, Redo2, Trash2, Wand2, Workflow, LayoutGrid } from 'lucide-react'
@@ -58,9 +60,17 @@ export default function CanvasToolbar() {
     setConverting(true)
     const res = await canvasToWorkflow(projectId, '画布工作流')
     setConverting(false)
-    if (res.ok) {
+    if (res.ok && (res.data as { workflow_id?: string })?.workflow_id) {
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
+      // 🔴 转换成功：把生成的工作流拉回工作流 store 并切回工作流模式
+      try {
+        const wid = String((res.data as { workflow_id: string }).workflow_id)
+        await useWorkflowStore.getState().loadWorkflow(wid)
+        useUiStore.getState().setMode('workflow')
+      } catch {
+        /* ignore */
+      }
     }
   }
 

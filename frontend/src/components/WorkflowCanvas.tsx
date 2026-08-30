@@ -12,10 +12,12 @@ import '@xyflow/react/dist/style.css'
 import type { Connection } from '@xyflow/react'
 import { Undo2, Redo2 } from 'lucide-react'
 import { defaultDataFor, useWorkflowStore } from '../store/workflowStore'
-import { canvasFromWorkflow } from '../api'
+import { canvasFromWorkflow, canvasGetGraph } from '../api'
 import { nodeTypes } from './nodes'
 import { maybeChainVideoFrame } from './videoChain'
 import { getNodeDef } from '../canvas/nodeRegistry'
+import { useUiStore } from '../store/uiStore'
+import { useCanvasStore } from '../store/canvasStore'
 
 const DND_KEY = 'application/lumiweave-node'
 
@@ -24,6 +26,8 @@ type AnyObj = Record<string, unknown>
 function WorkflowCanvasInner() {
   const { nodes, edges, running, runError, onNodesChange, onEdgesChange, addNode, clearAll, setRunError, save, saveStatus, undo, redo, workflowId, projectId, applyAutoLayout } =
     useWorkflowStore()
+  const setMode = useUiStore((s) => s.setMode)
+  const loadCanvas = useCanvasStore((s) => s.load)
   const canUndo = useWorkflowStore((s) => s.undoStack.length > 0)
   const canRedo = useWorkflowStore((s) => s.redoStack.length > 0)
   const { screenToFlowPosition } = useReactFlow()
@@ -65,10 +69,41 @@ function WorkflowCanvasInner() {
     }
     const res = await canvasFromWorkflow(wid, projectId)
     setConverting(false)
-    if (res.ok) {
-      setRunError(null)
-    } else {
+    if (!res.ok) {
       setRunError('转成画布失败，请重试')
+      return
+    }
+    // 🔴 转换成功：把后端生成的画布对象拉回前端、加载进画布 store，并切到无限画布，
+    // 否则用户仍停在工作流画布、看不到任何变化（用户反馈「转不成画布」的根因）。
+    try {
+      const g = await canvasGetGraph(projectId)
+      const objs = ((g.data as { nodes?: Record<string, unknown>[] })?.nodes) || []
+      const eds = ((g.data as { edges?: Record<string, unknown>[] })?.edges) || []
+      const rfNodes = objs.map((o) => {
+        const pos = (o.position as { x?: number; y?: number }) || {}
+        const size = (o.size as { width?: number; height?: number }) || {}
+        const safePos = typeof pos.x === 'number' && typeof pos.y === 'number' ? { x: pos.x, y: pos.y } : { x: 0, y: 0 }
+        return {
+          id: String(o.id),
+          type: String(o.type),
+          position: safePos,
+          data: { ...((o.content as Record<string, unknown>) || {}), status: 'idle' },
+          style: size.width || size.height ? { width: size.width, height: size.height } : undefined,
+        }
+      })
+      const rfEdges = eds.map((e) => ({
+        id: String(e.id || `${e.source}->${e.target}`),
+        source: String(e.source),
+        target: String(e.target),
+        sourceHandle: (e.source_handle as string) ?? null,
+        targetHandle: (e.target_handle as string) ?? null,
+        type: 'workflow',
+      }))
+      loadCanvas(rfNodes, rfEdges)
+      setMode('infinite')
+      setRunError(null)
+    } catch {
+      setRunError('画布已生成，但预览加载失败，请手动切到「无限画布」查看')
     }
   }
 

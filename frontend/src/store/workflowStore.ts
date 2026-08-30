@@ -9,7 +9,7 @@ import {
   type Node,
   type NodeChange,
 } from '@xyflow/react'
-import { runWorkflow, workflowList, workflowLoad, workflowSave } from '../api'
+import { runWorkflow, workflowLoad, workflowSave, workflowDelete } from '../api'
 import { dagLayout } from '../canvas/layout'
 import { NODE_DEFAULTS } from './nodeLibrary'
 
@@ -210,9 +210,24 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       }
     }),
 
-  clearAll: () => {
+  clearAll: async () => {
     get().snapshot()
+    const { workflowId } = get()
     set({ nodes: [], edges: [], nodeStatus: {}, nodeOutputs: {}, workflowId: '' })
+    // 🔴 持久化清空：删除后端工作流 + 清除本地指针，
+    // 否则刷新后 loadLastWorkflow 又会从 PG 把旧工作流读回来（用户反馈的「清空后刷新又复活」）。
+    try {
+      localStorage.removeItem('lumiweave_last_wf')
+    } catch {
+      /* ignore */
+    }
+    if (workflowId) {
+      try {
+        await workflowDelete(workflowId)
+      } catch {
+        /* ignore */
+      }
+    }
   },
 
   applyAutoLayout: () => set((s) => ({ nodes: dagLayout(s.nodes, s.edges) })),
@@ -323,16 +338,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   loadLastWorkflow: async () => {
     // 刷新后恢复上次打开的工作流（真正的数据在 PG，localStorage 只记「上次打开哪个」）。
-    // 兜底：没记过「上次」时，自动加载项目里最新一条工作流（否则画布永远空白）。
+    // 🔴 不再「没记过就自动加载列表第一条」：清空过的工作流已删除且清除指针，
+    // 若再自动加载别的旧工作流会让用户以为清空没生效。无指针就保持空白。
     try {
       const last = localStorage.getItem('lumiweave_last_wf')
       if (last) {
         await get().loadWorkflow(last)
-        return
       }
-      const res = await workflowList(get().projectId)
-      const list = (res.data?.workflows as { id: string }[]) || []
-      if (list.length > 0) await get().loadWorkflow(list[0].id)
     } catch {
       /* ignore */
     }
