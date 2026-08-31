@@ -35,11 +35,15 @@ export default function SettingsModal() {
   const [tab, setTab] = useState<Tab>(directTab || 'model')
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-sm p-6 animate-fade-in" onClick={close}>
+    // §69 拍板：设置弹窗只能点 X / Esc 关闭，点黑罩不关（防误触丢配置）
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-sm p-6 animate-fade-in"
+      style={{ pointerEvents: 'none' }}
+    >
       <div
         // 亮色毛玻璃主壳：半透明白 + 高斯模糊 + 精细阴影（V2.4 规范）
         className="flex h-[80vh] w-[min(94vw,64rem)] flex-col overflow-hidden rounded-3xl border border-[var(--lw-glass-edge)] bg-[var(--lw-glass-bg)] backdrop-blur-2xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.15)]"
-        onClick={(e) => e.stopPropagation()}
+        style={{ pointerEvents: 'auto' }}
       >
         {/* 头部：细微底边替代生硬 border */}
         <div className="flex shrink-0 items-center justify-between border-b border-black/5 px-6 py-4 bg-white/40">
