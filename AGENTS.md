@@ -798,3 +798,17 @@ docker compose exec -T postgres psql -U lumiweave -d lumiweave \
 - 后端带 TOTP 登录全验：登录/GET/PUT/重启持久化全绿（`tmp/lw_verify_v3_endpoints.py` 等）
 - 前端冒烟 `tmp/lw_canvas_check_v3_3010.js` 全绿。**新四坑**：①点素材图会连带开灯箱，且 Escape 关灯箱会连带清掉 React Flow 选中态→点灯箱背板角落关（选中保留）②AI 助手面板会盖住顶栏齿轮→DOM `b.click()` 绕过命中检测（force click 无效，事件仍发给覆盖层）③设置弹窗里定位「画布」页签要用弹窗作用域+exact，否则会点中主界面画布页签 ④媒体形态节点没有标题栏 span（标题是 -top-7 浮动标签）
 - 回滚点镜像：`lumiweave-frontend:pre-v3-20260831`、`lumiweave-backend:pre-v3-20260831`
+
+## 一·三十四、composer 上级 AI 分析（「AI 完善」按钮，2026-08-31，f6ffa88）
+
+**需求**：提示词前加一级 AI——分析用户初始需求，结合技能库与内容库，产出最终提示词/反向提示词/种子。阿勇拍板：①手动「AI 完善」按钮触发 ②种子留空随机（不让 AI 编）③输出语言 AI 按目标模型自判 ④技能库按语义挑 1~2 个注入（不全量）。
+
+### 实现
+- **后端** `prompt_optimizer.craft_prompt` + `POST /api/ai/prompt-craft`：初始需求 → `_skill_matches` 语义挑 top-2 技能 + `_kb_matches` top-3 内容 → 注入 system 让文本模型（prompt 场景档位）输出 JSON `{prompt, negative}`（chat_json，cache_ttl=0 防串答案）；system 明确「Qwen 系中文友好用中文、国际模型英文更稳用英文，正反向同语种」；JSON 解析失败兜底退回旧 optimize 单件+通用反向词。种子不生成
+- **前端** composer 提示词标签行加「AI 完善」小按钮（Wand2）：空需求禁用；点击 → 带当前选中模型名调接口 → 填回 prompt + negative（自动展开高级区让用户看见反向词）→ 下方小字显示「已结合：xx技能、xx知识 等 N 条」；种子框不动
+- 与旧 `/prompt-optimize`（单件优化）并存不冲突；智能动作模板路径也不受影响（AI 完善在模板基础上可再加工）
+
+### 验证（真实调模型）
+- Qwen 目标 → 中文两件套 ✓；MiniMax 目标 → 英文两件套 ✓（语言自判生效）
+- UI 端到端 `tmp/lw_craft_ui_check.js`：空需求禁用✓ 点击后提示词 160 字填回✓ 反向词+高级区自动展开✓ 参考来源提示✓ 0 页面错误
+- 回滚点：`lumiweave-frontend/backend:pre-craft-20260831`
