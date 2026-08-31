@@ -38,6 +38,8 @@ export interface PvNodeShellProps {
   hoverActions?: ReactNode
   /** media 变体：媒体区右下角角标（如时长/分辨率 13.7s · 1920×1080） */
   mediaBadge?: ReactNode
+  /** media 变体：选中时浮在卡片上方的媒体操作工具栏（智能生成/拆分/裁剪/截帧等） */
+  topBar?: ReactNode
   /** 自定义输入连接点（如图生视频的首帧/尾帧双点），给了就不画默认输入点 */
   customTargetHandles?: ReactNode
 }
@@ -64,6 +66,7 @@ export function PvNodeShell({
   labelBadge,
   hoverActions,
   mediaBadge,
+  topBar,
   customTargetHandles,
 }: PvNodeShellProps) {
   const removeNode = usePvStore((s) => s.removeNode)
@@ -77,6 +80,9 @@ export function PvNodeShell({
   if (variant === 'media') {
     return (
       <div className="group/media relative h-full w-full">
+        {/* 选中时的媒体操作工具栏（对标 PixVerse 悬浮工具栏，浮在标签上方） */}
+        {selected && topBar && <div className="absolute -top-[4.2rem] left-0 z-20">{topBar}</div>}
+
         {/* 浮动标签：类型 chip + 徽标（对标 PixVerse 节点上方的小字） */}
         <div className="absolute -top-7 left-0 flex items-center gap-1.5 whitespace-nowrap">
           <span

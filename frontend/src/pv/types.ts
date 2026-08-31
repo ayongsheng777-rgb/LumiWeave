@@ -60,11 +60,7 @@ export interface PvGenParams {
   /** 720p / 1080p */
   quality?: string
   seed?: number
-  /** 视频：同时生成配音（参考站 audio:1，仅云端模型支持时生效） */
-  audio?: boolean
-  /** 视频：多镜头分镜（参考站 multi_shot:1） */
-  multi_shot?: boolean
-  /** 一次生成几份产物（参考站 create_count） */
+  /** 一次生成几份产物（参考站 create_count；云端真实多份，ComfyUI 本地按 1 份） */
   create_count?: number
 }
 
@@ -107,8 +103,10 @@ export interface PvNodeData extends Record<string, unknown> {
   // ── generate 节点 ───────────────────────────────────────
   /** 模型标识（后端模型库里的 model 字段） */
   model?: string
-  /** 模型档位 id（直连 profile 时用） */
+  /** 模型档位 id（直连 profile 时用；'comfyui' = 本地 ComfyUI 渲染器） */
   profile_id?: string
+  /** 生成路由：cloud=云端模型库直连（默认）；comfyui=本地 ComfyUI */
+  render_mode?: 'cloud' | 'comfyui'
   params?: PvGenParams
   /** prompt 里 @imageN 与上游节点的映射 */
   mentions?: PvMention[]

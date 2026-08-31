@@ -252,3 +252,49 @@ async def list_platform_models(profile_id: str = ""):
     from app.ai.auto_best import _list_models
     models = await _list_models(profile)
     return {"profile_id": profile.get("id"), "count": len(models), "models": models}
+
+
+# ==================== 场景模型候选池 + 画布智能动作（V3.1 通用画布） ====================
+
+
+@router.get("/scene-pools")
+async def get_scene_pools():
+    """读场景候选池（image/video 各自的候选模型列表 + 默认项）。"""
+    from app.ai import pools
+    if not pools.SCENE_POOLS:
+        await pools.load_scene_pools()
+    return {"pools": pools.SCENE_POOLS}
+
+
+@router.put("/scene-pools")
+async def put_scene_pools(request: Request):
+    """整体写场景候选池（前端编辑后全量提交）。"""
+    from app.ai import pools
+    data = await request.json() or {}
+    normalized = pools._normalize_pools(data.get("pools") if isinstance(data, dict) else data)
+    pools.SCENE_POOLS.clear()
+    pools.SCENE_POOLS.update(normalized)
+    await pools.save_scene_pools()
+    return {"ok": True, "pools": pools.SCENE_POOLS}
+
+
+@router.get("/pv-actions")
+async def get_pv_actions():
+    """读画布智能动作列表（含默认集；用户在设置里改过则返回改后版本）。"""
+    from app.ai import pools
+    if not pools.PV_ACTIONS:
+        await pools.load_pv_actions()
+    return {"actions": pools.PV_ACTIONS}
+
+
+@router.put("/pv-actions")
+async def put_pv_actions(request: Request):
+    """整体写画布智能动作（提示词模板/默认模型/启用开关，全量提交）。"""
+    from app.ai import pools
+    data = await request.json() or {}
+    actions = data.get("actions") if isinstance(data, dict) else data
+    normalized = pools._normalize_actions(actions)
+    pools.PV_ACTIONS.clear()
+    pools.PV_ACTIONS.extend(normalized)
+    await pools.save_pv_actions()
+    return {"ok": True, "actions": pools.PV_ACTIONS}

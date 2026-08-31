@@ -9,6 +9,7 @@ import { usePvStore } from '../store'
 import { uploadImage } from '../../api'
 import type { PvNodeData } from '../types'
 import { PvNodeShell } from './PvNodeShell'
+import { PvMediaToolbar } from '../PvMediaToolbar'
 import { emitLog } from '../../components/LogPanel'
 import { useUiStore } from '../../store/uiStore'
 
@@ -158,6 +159,11 @@ export function AssetNode({ id, data, selected }: NodeProps) {
           <span className="absolute bottom-2 right-2 z-10 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-sm">
             {badgeText}
           </span>
+        ) : undefined
+      }
+      topBar={
+        hasMedia ? (
+          <PvMediaToolbar nodeId={id} onUpload={() => fileRef.current?.click()} />
         ) : undefined
       }
     >

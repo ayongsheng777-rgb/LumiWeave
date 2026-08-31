@@ -31,6 +31,8 @@ import { nodeColor } from './registry'
 import type { PvNodeData, PvNodeTemplate } from './types'
 import { PvNodePalette } from './PvNodePalette'
 import { PvBottomBar } from './PvBottomBar'
+import { PvComposer } from './PvComposer'
+import { PvCropDialog } from './PvCropDialog'
 
 export const DND_KEY = 'application/lumiweave-pv-node'
 
@@ -269,6 +271,10 @@ function PvCanvasInner() {
 
       {/* ── 底部：缩放条 ───────────────────────────────────────── */}
       <PvBottomBar />
+
+      {/* ── 弹出层：提示词 composer（改完再生成）+ 裁剪对话框 ────── */}
+      <PvComposer />
+      <PvCropDialog />
 
       {/* ── 空态引导 ───────────────────────────────────────────── */}
       {nodes.length === 0 && (

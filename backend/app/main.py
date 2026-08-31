@@ -43,6 +43,10 @@ async def lifespan(app: FastAPI):
     await db.get_pool()
     await load_overrides()
     await load_custom_models()
+    # 场景模型候选池 + 画布智能动作（V3.1 通用画布，app_kv 持久化）
+    from app.ai.pools import load_pv_actions, load_scene_pools
+    await load_scene_pools()
+    await load_pv_actions()
     # 启动加载：Skill / Renderer（MCP 改造后无 Agent）
     await init_skills()
     await init_renderers()

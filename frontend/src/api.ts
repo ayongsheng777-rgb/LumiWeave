@@ -95,6 +95,26 @@ export async function autoBestScene(profileId: string, scene: string) {
   return request('POST', '/ai/auto-best-scene', { profile_id: profileId, scene })
 }
 
+// ==================== 场景模型候选池 + 画布智能动作（V3.1 通用画布） ====================
+
+/** 场景候选池：image/video 各自的候选模型列表 + 默认项（候选含云端 profile 与 ComfyUI checkpoint） */
+export async function getScenePools() {
+  return request('GET', '/ai/scene-pools')
+}
+
+export async function saveScenePools(pools: Record<string, unknown>) {
+  return request('PUT', '/ai/scene-pools', { pools })
+}
+
+/** 画布智能动作（节点悬浮工具栏「智能生成」菜单：提示词模板/默认模型/启用开关） */
+export async function getPvActions() {
+  return request('GET', '/ai/pv-actions')
+}
+
+export async function savePvActions(actions: Record<string, unknown>[]) {
+  return request('PUT', '/ai/pv-actions', { actions })
+}
+
 export async function aiChat(payload: {
   system: string
   user: string

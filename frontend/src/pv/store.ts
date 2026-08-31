@@ -441,7 +441,7 @@ export const usePvStore = create<PvState>((set, get) => ({
       const isAudio = meta.output === 'audio'
       const res = await renderMedia({
         kind: isAudio ? 'audio' : isVideo ? 'video' : 'image',
-        render_mode: 'cloud',
+        render_mode: data.render_mode || 'cloud',
         model: data.model || undefined,
         profile_id: data.profile_id || undefined,
         params: {
@@ -457,9 +457,7 @@ export const usePvStore = create<PvState>((set, get) => ({
           // 首尾帧专线（后端 video_api 按 first_frame/last_frame 角色装配，MiniMax H3 原生支持）
           image_url: inputs.firstFrame || undefined,
           last_frame_url: inputs.lastFrame || undefined,
-          // 参考站同款参数：配音 / 多镜头 / 批量数量（不支持的模型由后端忽略）
-          audio: isVideo && params.audio ? 1 : undefined,
-          multi_shot: isVideo && params.multi_shot ? 1 : undefined,
+          // 批量数量（参考站 create_count）：云端真实多份，ComfyUI 本地按 1 份
           create_count: params.create_count && params.create_count > 1 ? params.create_count : undefined,
         },
       })

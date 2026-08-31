@@ -61,9 +61,14 @@ async def render_media(
     logs: list[dict[str, Any]] = []
     refs = _refs(params)
     image_url = str(params.get("image_url") or "")
+    last_frame_url = str(params.get("last_frame_url") or "")
+    create_count = max(1, min(4, int(params.get("create_count") or 1)))
 
     # ── 多参考生视频：多张参考图走 video-api 渲染器（MiniMax） ──────
     if kind == "video" and len(refs) > 1:
+        if last_frame_url:
+            # MiniMax H3：首尾帧角色与参考角色互斥，多参考模式下尾帧无法生效
+            logs.append({"step": "refs", "message": "多参考模式下尾帧被忽略（首尾帧与参考角色互斥）"})
         return await _render_via_video_api(params, logs)
 
     # ── 云端 API ────────────────────────────────────────────────
@@ -114,6 +119,7 @@ async def render_media(
             res = await cloud_image_generate(
                 actual_provider_id, prompt, negative=negative, size=size, steps=steps,
                 model=model, reference_images=refs, native=native, profile=profile,
+                batch_size=create_count,
             )
         else:
             from app.providers.cloud_gen import cloud_video_generate
@@ -124,6 +130,8 @@ async def render_media(
                 duration=int(params.get("duration") or 10),
                 ratio=ratio, negative=negative, model=model, native=native, profile=profile,
                 resolution=str(params.get("resolution") or ""),
+                last_frame_url=last_frame_url,
+                create_count=create_count,
             )
         res["logs"] = logs + (res.get("logs") or [])
         return res
@@ -148,6 +156,10 @@ async def render_media(
             "logs": logs,
         }
     logs.append({"step": "renderer", "message": f"渲染器：{r.cfg.name}（{r.cfg.id}）", "renderer_id": r.cfg.id, "endpoint": r.cfg.endpoint})
+    if create_count > 1:
+        logs.append({"step": "route", "message": f"ComfyUI 本地生成按 1 份执行（多份计数 ×{create_count} 仅云端模型支持）"})
+    if last_frame_url:
+        logs.append({"step": "route", "message": "ComfyUI 本地生成暂不支持尾帧（last_frame），已忽略（仅云端 MiniMax H3 支持）"})
 
     from app.renderers.workflow_builder import build_workflow
     mode = "text2video" if kind == "video" else "text2image"

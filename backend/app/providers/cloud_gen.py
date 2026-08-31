@@ -139,11 +139,32 @@ async def cloud_image_generate(
     reference_images: list[str] | None = None,
     native: dict[str, Any] | None = None,
     profile: dict[str, Any] | None = None,
+    batch_size: int = 1,
 ) -> dict[str, Any]:
     """云端出图（同步）。带 reference_images 时走图生图/多图参考合成（Qwen-Image-Edit）。
     native 为模型专属字段（如 image_size/guidance_scale），直接合并进请求体。
     profile 传「模型库」配置（base_url/api_key/model）时直连，不再查 providers 表。
+    batch_size>1：文生图走接口原生批量；图生图（Edit 类）无批量参数 → 顺序逐张生成后合并。
     返回 {ok, images:[{url,filename}], logs, error}。"""
+    batch_size = max(1, min(4, int(batch_size or 1)))
+    refs_in = [r for r in (reference_images or []) if r and str(r).strip()]
+    if batch_size > 1 and refs_in:
+        # 图生图（Edit 类接口）不支持批量 → 顺序逐张生成，合并结果（真实多张，非占位）
+        merged_images: list[dict[str, Any]] = []
+        merged_logs: list[dict[str, Any]] = [{"step": "route", "message": f"多份生成：共 {batch_size} 份，顺序执行"}]
+        for i in range(batch_size):
+            r = await cloud_image_generate(
+                provider_id, prompt, negative=negative, size=size, steps=steps,
+                model=model, reference_images=refs_in, native=native, profile=profile, batch_size=1,
+            )
+            merged_logs.append({"step": "batch", "message": f"第 {i + 1}/{batch_size} 份：{'成功' if r.get('ok') else '失败'}"})
+            merged_logs.extend(r.get("logs") or [])
+            if r.get("ok"):
+                merged_images.extend(r.get("images") or [])
+            else:
+                return {"ok": False, "error": f"第 {i + 1} 份生成失败：{r.get('error')}", "images": merged_images, "logs": merged_logs}
+        return {"ok": True, "images": merged_images, "logs": merged_logs}
+
     logs: list[dict[str, Any]] = []
     p = await _get_provider(provider_id)  # profile 直连时可为 None，仅用于模型兜底
     if profile:
@@ -190,7 +211,7 @@ async def cloud_image_generate(
         logs.append({"step": "model", "message": f"模型：{model_name}", "model": model_name})
         payload = {
             "model": model_name, "prompt": prompt,
-            "image_size": size, "batch_size": 1,
+            "image_size": size, "batch_size": batch_size,
         }
         if steps:
             payload["num_inference_steps"] = steps
@@ -244,11 +265,13 @@ async def _minimax_h3_generate(
     model: str,
     logs: list[dict[str, Any]],
     resolution: str = "",
+    last_frame_url: str = "",
 ) -> dict[str, Any]:
     """MiniMax H3 视频生成（V2.9d）：/v2/video_generation 异步任务 → 轮询 → 成片 URL。
 
     H3 是多模态视频模型（文生/图生/首尾帧/参考），content[] 结构：
       [{"type":"text","text":...}, {"type":"image_url","image_url":{"url":...},"role":"first_frame"}]
+    尾帧（last_frame）与首帧同结构、role=last_frame；🔴 首尾帧与参考角色互斥（多参考走 video-api 渲染器，不到这里）。
     接口：POST {base}/v2/video_generation → task_id；GET {base}/v2/query/video_generation/{task_id} 轮询。
     """
     base = (endpoint or "").rstrip("/")
@@ -256,19 +279,24 @@ async def _minimax_h3_generate(
         base = base[: -len("/v1")]
     headers = _headers(key)
     content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+    if image_url or last_frame_url:
+        from app.config import DATA_DIR
     if image_url:
         # 首帧图转 base64 内联（绕开公网 URL 约束 + 临时链接过期）
-        from app.config import DATA_DIR
         _iu = await _to_data_uri(image_url, str(DATA_DIR))
         content.append({"type": "image_url", "image_url": {"url": _iu}, "role": "first_frame"})
+    if last_frame_url:
+        _lu = await _to_data_uri(last_frame_url, str(DATA_DIR))
+        content.append({"type": "image_url", "image_url": {"url": _lu}, "role": "last_frame"})
+        logs.append({"step": "refs", "message": "已接入尾帧（last_frame）"})
     payload: dict[str, Any] = {
         "model": model,
         "content": content,
         "duration": max(4, min(15, int(duration or 5))),
         "resolution": normalize_h3_resolution(resolution),
     }
-    # 文生视频 ratio 必填且不能为 adaptive；图生视频由输入图决定（恒 adaptive）
-    if not image_url:
+    # 文生视频 ratio 必填且不能为 adaptive；图生/首尾帧视频由输入图决定（恒 adaptive）
+    if not image_url and not last_frame_url:
         payload["ratio"] = ratio or "16:9"
     logs.append({"step": "provider", "message": f"MiniMax H3 视频 · {prov_name}（{model}）", "provider_id": "minimax", "endpoint": base})
     logs.append({"step": "submit", "message": f"提交到 {base}/v2/video_generation", "prompt": prompt[:200]})
@@ -339,11 +367,34 @@ async def cloud_video_generate(
     native: dict[str, Any] | None = None,
     profile: dict[str, Any] | None = None,
     resolution: str = "",
+    last_frame_url: str = "",
+    create_count: int = 1,
 ) -> dict[str, Any]:
     """云端文生视频（异步：提交→轮询→取结果）。
     native 为模型专属字段（如 height/camera_control/camera_movement），直接合并进请求体。
     profile 传「模型库」配置（base_url/api_key/model）时直连，不再查 providers 表。
+    last_frame_url 尾帧目前仅 MiniMax H3 支持（其它 provider 忽略并记日志）。
+    create_count>1 时顺序生成多份并合并结果（云端视频无批量参数，只能逐份生成）。
     返回 {ok, videos, logs, error}。"""
+    # 多份生成：云端视频接口均无批量参数 → 顺序逐份生成后合并（真实多份，非占位）
+    create_count = max(1, min(4, int(create_count or 1)))
+    if create_count > 1:
+        merged_videos: list[dict[str, Any]] = []
+        merged_logs: list[dict[str, Any]] = [{"step": "route", "message": f"多份生成：共 {create_count} 份，顺序执行"}]
+        for i in range(create_count):
+            r = await cloud_video_generate(
+                provider_id, prompt, image_url=image_url, duration=duration, ratio=ratio,
+                negative=negative, model=model, native=native, profile=profile,
+                resolution=resolution, last_frame_url=last_frame_url, create_count=1,
+            )
+            merged_logs.append({"step": "batch", "message": f"第 {i + 1}/{create_count} 份：{'成功' if r.get('ok') else '失败'}"})
+            merged_logs.extend(r.get("logs") or [])
+            if r.get("ok"):
+                merged_videos.extend(r.get("videos") or [])
+            else:
+                return {"ok": False, "error": f"第 {i + 1} 份生成失败：{r.get('error')}", "videos": merged_videos, "logs": merged_logs}
+        return {"ok": True, "videos": merged_videos, "logs": merged_logs}
+
     logs: list[dict[str, Any]] = []
     p = await _get_provider(provider_id)
     if profile:
@@ -371,7 +422,10 @@ async def cloud_video_generate(
         return await _minimax_h3_generate(
             endpoint, key, prov_name, prompt, image_url, duration, ratio,
             model or "MiniMax-H3", logs, resolution=resolution,
+            last_frame_url=last_frame_url,
         )
+    if last_frame_url:
+        logs.append({"step": "refs", "message": "当前 provider 不支持尾帧（last_frame），已忽略（仅 MiniMax H3 支持）"})
     # 图生视频（有首帧图）走 I2V 模型，否则走 T2V
     if image_url:
         model_name = model or "Wan-AI/Wan2.2-I2V-A14B"

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Cpu, Coins, Wrench, Image, BookOpen, FolderOpen, Shield, Network } from 'lucide-react'
+import { X, Cpu, Coins, Wrench, Image, BookOpen, FolderOpen, Shield, Network, Layers } from 'lucide-react'
 import { useUiStore } from '../store/uiStore'
 import ModelPanel from './ModelPanel'
 import TokenPanel from './TokenPanel'
@@ -8,13 +8,15 @@ import RendererPanel from './RendererPanel'
 import KnowledgePanel from './KnowledgePanel'
 import AssetPanel from './AssetPanel'
 import OtpPanel from './OtpPanel'
+import CanvasModelPanel from './CanvasModelPanel'
 import MCPStatus from './mcp/MCPStatus'
 import ToolPanel from './mcp/ToolPanel'
 
-type Tab = 'model' | 'token' | 'skills' | 'renderers' | 'kb' | 'assets' | 'security' | 'mcp'
+type Tab = 'model' | 'canvas' | 'token' | 'skills' | 'renderers' | 'kb' | 'assets' | 'security' | 'mcp'
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'model', label: '模型', icon: <Cpu size={15} /> },
+  { key: 'canvas', label: '画布', icon: <Layers size={15} /> },
   { key: 'renderers', label: '出图', icon: <Image size={15} /> },
   { key: 'skills', label: '技能库', icon: <Wrench size={15} /> },
   { key: 'kb', label: '知识库', icon: <BookOpen size={15} /> },
@@ -69,6 +71,7 @@ export default function SettingsModal() {
           {/* 右侧内容区 */}
           <div className="min-w-0 flex-1 overflow-y-auto p-6 bg-transparent">
             {tab === 'model' && <ModelPanel />}
+            {tab === 'canvas' && <CanvasModelPanel />}
             {tab === 'token' && <TokenPanel />}
             {tab === 'skills' && <SkillPanel />}
             {tab === 'renderers' && <RendererPanel />}
