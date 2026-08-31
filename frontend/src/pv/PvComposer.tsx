@@ -5,12 +5,13 @@
 // 确认后才真正跑节点 —— 改完再生成，不浪费积分。
 // =====================================================================
 import { useMemo, useState } from 'react'
-import { Loader2, Sparkles, X } from 'lucide-react'
+import { Loader2, Sparkles, Wand2, X } from 'lucide-react'
 import { usePvStore } from './store'
 import { usePvDialogs } from './dialogStore'
 import { useNodeInputs } from './useNodeInputs'
 import { useScenePools, type ScenePools } from './pools'
 import { useProfiles, type Profile } from './useProfiles'
+import { promptCraft } from '../api'
 import type { ContentType, PvNodeData } from './types'
 import { ASPECT_RATIOS, CREATE_COUNT_OPTIONS, DURATION_OPTIONS, QUALITY_OPTIONS } from './types'
 import { GEN_TYPE_META } from './registry'
@@ -88,6 +89,9 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [sel, setSel] = useState(() => (d ? selOfNode(d, pools) : ''))
   const [busy, setBusy] = useState(false)
+  const [crafting, setCrafting] = useState(false)
+  const [craftNote, setCraftNote] = useState('')
+  const [craftErr, setCraftErr] = useState('')
 
   // 候选池异步拉到后，若节点还没选过模型则默认选中池默认项
   const effectiveSel = useMemo(() => {
@@ -97,6 +101,54 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
   }, [sel, pool.default])
 
   if (!node || !d || !params) return null
+
+  /** 当前选中模型的名字（给上级 AI 判断输出语言用：Qwen 系中文友好，国际模型英文稳） */
+  const craftModelName = (() => {
+    const parsed = parseSel(effectiveSel)
+    if (parsed?.kind === 'pool') {
+      const c =
+        pool.candidates.find((x) => x.id === parsed.candidateId) ??
+        pools.video.candidates.find((x) => x.id === parsed.candidateId)
+      return c?.model || ''
+    }
+    if (parsed?.kind === 'profile') {
+      const p = profiles.find((x) => x.id === parsed.profileId)
+      return p ? modelOf(p, d.content_type) : ''
+    }
+    return ''
+  })()
+
+  /** 「AI 完善」：上级 AI 分析初始需求（结合技能库+内容库）→ 填回提示词+反向提示词。种子不动（留空=随机） */
+  const onCraft = async () => {
+    const reqText = prompt.trim()
+    if (!reqText || crafting) return
+    setCrafting(true)
+    setCraftErr('')
+    setCraftNote('')
+    try {
+      const res = await promptCraft({ requirement: reqText, kind: isVideo ? 'video' : 'image', model: craftModelName })
+      const data = res.data as Record<string, unknown> | undefined
+      if (res.ok && data?.ok && typeof data.prompt === 'string' && data.prompt) {
+        setPrompt(data.prompt)
+        if (typeof data.negative === 'string' && data.negative) {
+          setNegative(data.negative)
+          setShowAdvanced(true) // 反向词在高级区，展开让用户看见
+        }
+        const matched = (data.matched as { title: string; source: string }[] | undefined) || []
+        setCraftNote(
+          matched.length > 0
+            ? `已结合：${matched.slice(0, 2).map((m) => m.title).join('、')}${matched.length > 2 ? ` 等 ${matched.length} 条` : ''}`
+            : '技能库/内容库无匹配，AI 按专业知识生成',
+        )
+      } else {
+        setCraftErr(String(data?.error || 'AI 完善失败，请稍后再试'))
+      }
+    } catch (err) {
+      setCraftErr(String(err))
+    } finally {
+      setCrafting(false)
+    }
+  }
 
   const onSubmit = async () => {
     const parsed = parseSel(effectiveSel)
@@ -203,7 +255,19 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
           <label className="block">
             <span className="mb-1 flex items-center justify-between text-[11px] text-ink-2">
               <span>提示词{inputs.chips.length > 0 && '（用 @image1 @video1 指代上方素材）'}</span>
-              <span className="text-[10px] text-ink-3">{prompt.length} 字</span>
+              <span className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="nodrag flex items-center gap-1 rounded-md border border-brand-500/40 bg-brand-500/10 px-1.5 py-0.5 text-[10px] text-brand-400 transition hover:bg-brand-500/20 disabled:opacity-50"
+                  title="上级 AI 分析你的初始需求，结合技能库与内容库，自动生成最终提示词+反向提示词（种子留空随机）"
+                  onClick={() => void onCraft()}
+                  disabled={crafting || !prompt.trim()}
+                >
+                  {crafting ? <Loader2 size={11} className="animate-spin" /> : <Wand2 size={11} />}
+                  {crafting ? '分析中…' : 'AI 完善'}
+                </button>
+                <span className="text-[10px] text-ink-3">{prompt.length} 字</span>
+              </span>
             </span>
             <textarea
               className={`${inputCls} min-h-[110px] resize-y`}
@@ -212,6 +276,11 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
               onChange={(e) => setPrompt(e.target.value)}
               autoFocus
             />
+            {(craftNote || craftErr) && (
+              <span className={`mt-1 block text-[10px] ${craftErr ? 'text-red-400' : 'text-teal-400'}`}>
+                {craftErr || `✓ ${craftNote}（可继续手动修改，种子留空=随机）`}
+              </span>
+            )}
           </label>
 
           {/* ── 高级参数 ───────────────────────────────────── */}

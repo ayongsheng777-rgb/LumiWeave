@@ -4,6 +4,10 @@
 命中则以其为参考优化；无匹配再让 AI 自行理解生成。
 
 返回 {ok, optimized, source: 'kb'|'skill'|'ai', matched:[...], logs}。
+
+另提供 craft_prompt（需求：composer 上级 AI 分析）：
+分析用户初始需求，结合技能库+内容库，一次产出 最终提示词 + 反向提示词 两件套
+（种子按阿勇拍板留空随机，不让 AI 编；输出语言由 AI 按目标模型特性自判）。
 """
 from __future__ import annotations
 
@@ -143,5 +147,89 @@ async def optimize_prompt(
         "logs": [
             {"step": "search", "message": f"知识库命中 {len(kb_hits)} 条、技能库命中 {len(skill_hits)} 条"},
             {"step": "optimize", "message": f"优化来源：{source}（kb=知识库 / skill=技能库 / ai=AI 自行理解）"},
+        ],
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 上级 AI 分析（composer「AI 完善」按钮用）
+# ─────────────────────────────────────────────────────────────────────────────
+
+_CRAFT_SYSTEM = """你是顶级的 AI {kind_label}提示词架构师。用户会给你一句初始需求（可能很口语、很简略）。
+你的任务：结合给你的专业参考资料（来自用户的提示词技能库与内容库，可能为空），产出两件套：
+
+1. prompt：最终生成提示词。把初始需求扩写成高质量{kind_label}提示词，补充主体细节、构图、镜头/运镜、光照、氛围、风格、画质词等要素。
+2. negative：反向提示词。列出这类{kind_label}常见要规避的问题（如畸形、多余肢体、模糊、低画质、水印、文字、过曝等），用逗号分隔。
+
+规则：
+- 输出语言由你根据目标模型特性自行判断：目标模型对中文友好（如 Qwen 系、国产模型）就用中文；否则用英文（多数国际模型英文效果更稳）。反向提示词与正向提示词用同一种语言。
+- 不要改变用户初始需求的核心意图，只丰富不跑偏。
+- 若提供了参考资料，严格参考其中的专业写法与范式。
+- 只输出 JSON：{{"prompt": "...", "negative": "..."}}，不要任何解释或 markdown 代码块。
+{model_hint}"""
+
+
+async def craft_prompt(
+    requirement: str,
+    *,
+    kind: str = "image",
+    model: str = "",
+) -> dict[str, Any]:
+    """上级 AI 分析：初始需求 →（技能库+内容库检索）→ 最终提示词 + 反向提示词。
+
+    种子按拍板不在此生成（前端留空=随机）。
+    返回 {ok, prompt, negative, source, matched, logs}。
+    """
+    requirement = (requirement or "").strip()
+    if not requirement:
+        return {"ok": False, "error": "初始需求为空"}
+
+    kind_label = {"video": "视频", "character": "角色图", "image": "图片"}.get(kind, "图片")
+    model_hint = f"目标模型：{model}。" if model else "目标模型未知，默认按英文输出更稳。"
+
+    # 1) 语义检索：技能库挑最相关 1~2 个 + 内容库 top-3（4A：按需求语义挑，不全量注入）
+    kb_hits = await _kb_matches(requirement)
+    skill_hits = _skill_matches(requirement)
+    refs = kb_hits + skill_hits
+    refs.sort(key=lambda x: -x["score"])
+
+    from app.ai import client
+
+    reference_text = ""
+    if refs:
+        reference_text = "\n\n参考资料：\n" + "\n\n".join(
+            f"【{r['source']}】{r['title']}\n{r['content'][:800]}" for r in refs[:2]
+        )
+
+    system = _CRAFT_SYSTEM.format(kind_label=kind_label, model_hint=model_hint)
+    user = f"用户初始需求：\n{requirement}{reference_text}"
+
+    parsed = await client.chat_json(system, user, scenario="prompt_craft", temperature=0.5, max_tokens=1200, cache_ttl=0)
+
+    if not parsed or not str(parsed.get("prompt") or "").strip():
+        # 兜底：退回旧 optimize 单件 + 通用反向词
+        fallback = await optimize_prompt(requirement, kind=kind, model=model)
+        if not fallback.get("ok"):
+            return {"ok": False, "error": fallback.get("error") or "AI 调用失败", "matched": fallback.get("matched", [])}
+        generic_neg = "low quality, blurry, deformed, watermark, text, oversaturated" if kind != "video" \
+            else "low quality, flicker, deformed motion, watermark, text"
+        return {
+            "ok": True,
+            "prompt": fallback["optimized"],
+            "negative": generic_neg,
+            "source": fallback.get("source", "ai"),
+            "matched": fallback.get("matched", []),
+            "logs": (fallback.get("logs") or []) + [{"step": "fallback", "message": "JSON 解析失败，退回单件优化+通用反向词"}],
+        }
+
+    return {
+        "ok": True,
+        "prompt": str(parsed.get("prompt") or "").strip(),
+        "negative": str(parsed.get("negative") or "").strip(),
+        "source": ("kb" if refs and refs[0]["source"] == "kb" else refs[0]["source"]) if refs else "ai",
+        "matched": [{"title": r["title"], "source": r["source"], "score": r["score"]} for r in refs],
+        "logs": [
+            {"step": "search", "message": f"内容库命中 {len(kb_hits)} 条、技能库命中 {len(skill_hits)} 条"},
+            {"step": "craft", "message": "已生成 提示词 + 反向提示词（种子留空=随机）"},
         ],
     }

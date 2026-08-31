@@ -289,6 +289,11 @@ export async function promptOptimize(payload: { prompt: string; kind?: string; m
   return request('POST', '/ai/prompt-optimize', payload)
 }
 
+// 上级 AI 分析（composer「AI 完善」）：初始需求 → 提示词+反向提示词（种子留空随机）
+export async function promptCraft(payload: { requirement: string; kind?: string; model?: string }) {
+  return request('POST', '/ai/prompt-craft', payload)
+}
+
 export async function rendererCancel(rendererId: string, promptId: string) {
   return request('POST', `/renderers/${rendererId}/cancel`, { prompt_id: promptId })
 }

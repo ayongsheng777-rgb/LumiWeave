@@ -72,6 +72,22 @@ async def ai_prompt_optimize(request: Request):
     return await optimize_prompt(prompt, kind=kind, model=model)
 
 
+@router.post("/prompt-craft")
+async def ai_prompt_craft(request: Request):
+    """上级 AI 分析（composer「AI 完善」）：初始需求 →（技能库+内容库）→ 提示词+反向提示词。
+
+    种子按拍板留空随机，不由 AI 生成；输出语言由 AI 按目标模型特性自判。
+    """
+    data = await request.json() or {}
+    requirement = str(data.get("requirement") or data.get("prompt") or "")
+    kind = str(data.get("kind") or "image")
+    model = str(data.get("model") or "")
+    if not requirement:
+        return JSONResponse(status_code=400, content={"error": "requirement 必填"})
+    from app.ai.prompt_optimizer import craft_prompt
+    return await craft_prompt(requirement, kind=kind, model=model)
+
+
 @router.get("/stats")
 async def ai_stats():
     return dict(client.stats)
