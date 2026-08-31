@@ -26,6 +26,20 @@ export interface PvNodeShellProps {
   footer?: ReactNode
   /** 有输出时才允许从右侧拉线 */
   connectable?: boolean
+  /**
+   * 卡片形态：
+   * - card（默认）：标题栏 + 预览 + 表单的重卡片（生成/文本节点用）
+   * - media      ：媒体优先，标题做成浮动标签，操作按钮悬浮才出现（素材节点用，对标 PixVerse）
+   */
+  variant?: 'card' | 'media'
+  /** media 变体：浮动标签右侧的小徽标（如「上传素材」「引用素材」） */
+  labelBadge?: ReactNode
+  /** media 变体：媒体区右上角悬浮操作按钮 */
+  hoverActions?: ReactNode
+  /** media 变体：媒体区右下角角标（如时长/分辨率 13.7s · 1920×1080） */
+  mediaBadge?: ReactNode
+  /** 自定义输入连接点（如图生视频的首帧/尾帧双点），给了就不画默认输入点 */
+  customTargetHandles?: ReactNode
 }
 
 const STATUS_TEXT: Record<NodeStatus, string> = {
@@ -46,6 +60,11 @@ export function PvNodeShell({
   children,
   footer,
   connectable = true,
+  variant = 'card',
+  labelBadge,
+  hoverActions,
+  mediaBadge,
+  customTargetHandles,
 }: PvNodeShellProps) {
   const removeNode = usePvStore((s) => s.removeNode)
   const status = (data.status || 'idle') as NodeStatus
@@ -54,20 +73,113 @@ export function PvNodeShell({
 
   const busy = status === 'running'
 
+  // ── 媒体优先形态（素材节点）：标题浮动在卡片上方，媒体铺满卡片 ──
+  if (variant === 'media') {
+    return (
+      <div className="group/media relative h-full w-full">
+        {/* 浮动标签：类型 chip + 徽标（对标 PixVerse 节点上方的小字） */}
+        <div className="absolute -top-7 left-0 flex items-center gap-1.5 whitespace-nowrap">
+          <span
+            className="flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] text-ink-2"
+            style={{ borderColor: 'var(--lw-edge)', background: 'var(--lw-node-bg)' }}
+          >
+            {icon && <span style={{ color }}>{icon}</span>}
+            {data.title || '未命名'}
+          </span>
+          {labelBadge}
+        </div>
+
+        {customTargetHandles ??
+          (connectable && (
+            <Handle
+              type="target"
+              position={Position.Left}
+              className="!z-10 !h-3.5 !w-3.5 !border-2 !bg-white"
+              style={{ borderColor: color, background: color }}
+              isConnectableStart={false}
+            />
+          ))}
+
+        <div
+          className="pv-node relative h-full w-full overflow-hidden animate-fade-in"
+          style={{
+            background: 'var(--lw-node-bg)',
+            borderRadius: 'var(--lw-node-rounded, 14px)',
+            boxShadow: selected
+              ? `0 0 0 2px ${color}, 0 12px 36px rgba(0,0,0,0.28)`
+              : 'var(--lw-node-shadow)',
+            border: `1px solid ${selected ? color : 'var(--lw-node-border)'}`,
+          }}
+        >
+          {selected && (
+            <NodeResizer minWidth={160} minHeight={100} color={color} lineStyle={{ borderWidth: 1.5 }} />
+          )}
+
+          {/* 媒体区（由素材节点自己渲染：图/视频/音频/上传按钮） */}
+          {children}
+
+          {/* 右下角角标：时长/分辨率 */}
+          {mediaBadge}
+
+          {/* 悬浮操作：替换 / 删除，鼠标移上来才出现 */}
+          <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition group-hover/media:opacity-100">
+            {hoverActions}
+            <button
+              className="nodrag flex h-6 w-6 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm transition hover:bg-red-500/80"
+              title="删除节点"
+              onClick={() => removeNode(id)}
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+
+          {/* 运行态蒙层 */}
+          {busy && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/45 backdrop-blur-[1px]">
+              <span className="flex items-center gap-1.5 text-[11px] text-white">
+                <Loader2 size={13} className="animate-spin" />
+                {STATUS_TEXT[status] || '处理中'}
+              </span>
+            </div>
+          )}
+          {status === 'failed' && (
+            <div className="absolute inset-x-2 bottom-2 z-10 flex items-center gap-1 rounded-md bg-red-500/85 px-2 py-1 text-[10px] text-white">
+              <AlertCircle size={11} className="shrink-0" />
+              <span className="truncate">{data.error || '失败'}</span>
+            </div>
+          )}
+        </div>
+
+        {/* 输出连接点 */}
+        {connectable && (
+          <Handle
+            type="source"
+            position={Position.Right}
+            className="!z-10 !h-3.5 !w-3.5 !border-2 !bg-white"
+            style={{ borderColor: color, background: color }}
+            isConnectableEnd={false}
+          />
+        )}
+      </div>
+    )
+  }
+
+  // ── 卡片形态（生成/文本节点，原有外观）──
   return (
     // 外层不裁剪：连接点必须露在卡片外面，否则会被下面那层的 overflow-hidden 切掉，
     // 用户只能点到圆角里剩下的那一丁点，连线根本拉不出来。
     <div className="relative h-full w-full">
       {/* 输入连接点：只有生成类节点吃输入 */}
-      {connectable && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          className="!z-10 !h-3.5 !w-3.5 !border-2 !bg-white"
-          style={{ borderColor: color, background: color }}
-          isConnectableStart={false}
-        />
-      )}
+      {customTargetHandles ??
+        (connectable && (
+          <Handle
+            type="target"
+            position={Position.Left}
+            className="!z-10 !h-3.5 !w-3.5 !border-2 !bg-white"
+            style={{ borderColor: color, background: color }}
+            isConnectableStart={false}
+          />
+        ))}
 
       <div
         className="pv-node group relative flex h-full flex-col overflow-hidden animate-fade-in"

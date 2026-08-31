@@ -20,6 +20,21 @@ export type NodeKind = 'asset' | 'generate' | 'text'
 export type AssetAction = 'upload' | 'reference'
 
 /**
+ * 连线语义（PixVerse 的 connectionType）
+ * - manual     ：普通参考输入
+ * - firstFrame ：视频生成的首帧（专用连接点，后端单独传 image_url）
+ * - lastFrame  ：视频生成的尾帧（专用连接点，后端单独传 last_frame_url）
+ */
+export type EdgeConnType = 'manual' | 'firstFrame' | 'lastFrame'
+
+/** 画布视口（跟随 workflows.graph 一起落库，刷新后回到原位） */
+export interface PvViewport {
+  x: number
+  y: number
+  zoom: number
+}
+
+/**
  * 生成方式（决定节点长什么样、要哪些参数、后端怎么调）
  * 这是「万能」的关键：一个生成节点换个 gen_type 就是另一种能力
  */
@@ -45,6 +60,12 @@ export interface PvGenParams {
   /** 720p / 1080p */
   quality?: string
   seed?: number
+  /** 视频：同时生成配音（参考站 audio:1，仅云端模型支持时生效） */
+  audio?: boolean
+  /** 视频：多镜头分镜（参考站 multi_shot:1） */
+  multi_shot?: boolean
+  /** 一次生成几份产物（参考站 create_count） */
+  create_count?: number
 }
 
 /** 提示词里的 @image1 引用了哪个节点的素材 */
@@ -59,6 +80,10 @@ export interface PvInputs {
   images: string[]
   videos: string[]
   audios: string[]
+  /** 首帧连线（firstFrame）指定的图片 */
+  firstFrame?: string
+  /** 尾帧连线（lastFrame）指定的图片 */
+  lastFrame?: string
 }
 
 export interface PvNodeData extends Record<string, unknown> {
@@ -124,3 +149,14 @@ export const DURATION_OPTIONS = [5, 10, 15] as const
 
 /** 清晰度选项 */
 export const QUALITY_OPTIONS = ['720p', '1080p'] as const
+
+/** 一次生成数量选项（参考站 create_count） */
+export const CREATE_COUNT_OPTIONS = [1, 2, 4] as const
+
+/** 自动编号用的中文名（参考站 nodeTitleCounters：图片 1 / 视频 2 …） */
+export const CONTENT_TYPE_LABEL: Record<ContentType, string> = {
+  image: '图片',
+  video: '视频',
+  audio: '音频',
+  text: '文本',
+}

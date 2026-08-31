@@ -19,7 +19,16 @@ import {
 } from '@xyflow/react'
 import { renderMedia, workflowLoad, workflowSave, workflowDelete } from '../api'
 import { dagLayout } from '../canvas/layout'
-import type { ContentType, NodeStatus, PvInputs, PvNodeData, PvNodeTemplate } from './types'
+import type {
+  ContentType,
+  EdgeConnType,
+  NodeStatus,
+  PvInputs,
+  PvNodeData,
+  PvNodeTemplate,
+  PvViewport,
+} from './types'
+import { CONTENT_TYPE_LABEL } from './types'
 import { GEN_TYPE_META } from './registry'
 
 export type { NodeStatus }
@@ -47,11 +56,18 @@ interface PvState {
   redoStack: GraphSnapshot[]
   /** 正在执行的节点 id 集合（用于连线动画） */
   runningIds: string[]
+  /** 画布视口（随 graph 落库，加载时还原） */
+  viewport: PvViewport | null
+  /** 素材节点自动编号计数器（参考站 nodeTitleCounters：图片 1 / 视频 2 …） */
+  titleCounters: Record<string, number>
 
   onNodesChange: (changes: NodeChange[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: (conn: Connection) => void
   addFromTemplate: (tpl: PvNodeTemplate, position: { x: number; y: number }) => string
+  /** 把生成节点的产物物化成「引用素材」节点（参考站 action_type=reference） */
+  addReferenceNode: (sourceId: string) => string | null
+  setViewport: (vp: PvViewport) => void
   updateNodeData: (id: string, data: Partial<PvNodeData>) => void
   setNodeStatus: (id: string, s: NodeStatus, error?: string) => void
   removeNode: (id: string) => void
@@ -82,6 +98,38 @@ function mediaPath(data: PvNodeData | undefined): string {
 
 /** 一排最多摆几个，再多就换行 */
 const SPOT_COLS = 3
+
+/** 连线目标连接点 id → 连线语义 */
+function connTypeOf(conn: Connection): EdgeConnType {
+  if (conn.targetHandle === 'ff') return 'firstFrame'
+  if (conn.targetHandle === 'lf') return 'lastFrame'
+  return 'manual'
+}
+
+/** 取边上的连线语义（兼容旧数据：没有 data 就看 targetHandle） */
+function edgeConnType(e: Edge): EdgeConnType {
+  const ct = (e.data as Record<string, unknown> | undefined)?.connectionType
+  if (ct === 'firstFrame' || ct === 'lastFrame') return ct
+  if (e.targetHandle === 'ff') return 'firstFrame'
+  if (e.targetHandle === 'lf') return 'lastFrame'
+  return 'manual'
+}
+
+/** 从已有标题反推编号下限（加载旧画布时计数器接着走，不重号） */
+function backfillCounters(nodes: Node[]): Record<string, number> {
+  const counters: Record<string, number> = {}
+  for (const n of nodes) {
+    const d = n.data as unknown as PvNodeData | undefined
+    if (!d?.title) continue
+    const m = /^(图片|视频|音频|文本)\s*(\d+)$/.exec(String(d.title).trim())
+    if (m) {
+      const ct = m[1]
+      const num = Number(m[2])
+      counters[ct] = Math.max(counters[ct] ?? 0, num)
+    }
+  }
+  return counters
+}
 
 /**
  * 找一个不压住别人的落点。
@@ -123,6 +171,8 @@ export const usePvStore = create<PvState>((set, get) => ({
   undoStack: [],
   redoStack: [],
   runningIds: [],
+  viewport: null,
+  titleCounters: {},
 
   snapshot: () =>
     set((s) => ({
@@ -160,17 +210,34 @@ export const usePvStore = create<PvState>((set, get) => ({
   onConnect: (conn) =>
     set((s) => {
       get().snapshot()
+      // 连线语义跟着目标连接点走：ff/lf 是图生视频的首尾帧专用点（对标 PixVerse connectionType）
+      const connectionType = connTypeOf(conn)
       // 同色连线：连线样式在画布层按源节点类型着色，这里只保留结构
-      return { edges: addEdge({ ...conn, type: 'smoothstep' }, s.edges) }
+      return {
+        edges: addEdge(
+          { ...conn, type: 'smoothstep', data: { connectionType, source: 'user' } },
+          s.edges,
+        ),
+      }
     }),
 
   addFromTemplate: (tpl, position) => {
     const id = nextId(tpl.content_type)
+    // 素材节点自动编号：图片 1 / 视频 2 …（对标 PixVerse nodeTitleCounters）；
+    // 生成/文本节点保留模板名（「图生图」比「图片 3」更能说明它是干什么的）
+    let title = tpl.label
+    let counters = get().titleCounters
+    if (tpl.kind === 'asset') {
+      const label = CONTENT_TYPE_LABEL[tpl.content_type]
+      const next = (counters[label] ?? 0) + 1
+      counters = { ...counters, [label]: next }
+      title = `${label} ${next}`
+    }
     const data: PvNodeData = {
       kind: tpl.kind,
       content_type: tpl.content_type,
       action: tpl.action,
-      title: tpl.label,
+      title,
       status: 'idle',
       ...tpl.defaultData,
     } as PvNodeData
@@ -183,10 +250,56 @@ export const usePvStore = create<PvState>((set, get) => ({
     }
     set((s) => {
       get().snapshot()
-      return { nodes: [...s.nodes, node] }
+      return { nodes: [...s.nodes, node], titleCounters: counters }
     })
     return id
   },
+
+  addReferenceNode: (sourceId) => {
+    const { nodes, titleCounters } = get()
+    const src = nodes.find((n) => n.id === sourceId)
+    const sd = src?.data as unknown as PvNodeData | undefined
+    if (!sd || !sd.url) return null
+    const label = CONTENT_TYPE_LABEL[sd.content_type]
+    const next = (titleCounters[label] ?? 0) + 1
+    const id = nextId(sd.content_type)
+    const data: PvNodeData = {
+      kind: 'asset',
+      content_type: sd.content_type,
+      action: 'reference',
+      title: `${label} ${next}`,
+      url: sd.url,
+      file_path: sd.file_path,
+      thumbnail_url: sd.thumbnail_url,
+      filename: sd.filename,
+      duration: sd.duration,
+      width: sd.width,
+      height: sd.height,
+      status: 'completed',
+    }
+    const node: Node = {
+      id,
+      type: 'pv_asset',
+      // 落在源节点右下方，不压别的节点
+      position: findFreeSpot(
+        nodes,
+        { x: (src?.position.x ?? 0) + 380, y: (src?.position.y ?? 0) + 60 },
+        { width: 280, height: 220 },
+      ),
+      data: data as unknown as Record<string, unknown>,
+      style: { width: 280 },
+    }
+    set((s) => {
+      get().snapshot()
+      return {
+        nodes: [...s.nodes, node],
+        titleCounters: { ...s.titleCounters, [label]: next },
+      }
+    })
+    return id
+  },
+
+  setViewport: (vp) => set({ viewport: vp }),
 
   updateNodeData: (id, patch) =>
     set((s) => ({
@@ -220,7 +333,15 @@ export const usePvStore = create<PvState>((set, get) => ({
   clearAll: async () => {
     get().snapshot()
     const { workflowId } = get()
-    set({ nodes: [], edges: [], runningIds: [], workflowId: '', runError: null })
+    set({
+      nodes: [],
+      edges: [],
+      runningIds: [],
+      workflowId: '',
+      runError: null,
+      viewport: null,
+      titleCounters: {},
+    })
     try {
       localStorage.removeItem(STORE_KEY)
     } catch {
@@ -257,6 +378,16 @@ export const usePvStore = create<PvState>((set, get) => ({
       const p = mediaPath(data)
       if (!p) continue
       const ct: ContentType = data.content_type
+      const connType = edgeConnType(e)
+      // 首尾帧专线：单独装配，不进普通参考列表（后端按 first_frame/last_frame 角色传参）
+      if (connType === 'firstFrame' && ct === 'image') {
+        inputs.firstFrame = p
+        continue
+      }
+      if (connType === 'lastFrame' && ct === 'image') {
+        inputs.lastFrame = p
+        continue
+      }
       if (ct === 'image') inputs.images.push(p)
       else if (ct === 'video') inputs.videos.push(p)
       else if (ct === 'audio') inputs.audios.push(p)
@@ -290,9 +421,11 @@ export const usePvStore = create<PvState>((set, get) => ({
     // 输入校验：缺素材就别白跑一趟，也别浪费积分
     for (const need of meta.needs) {
       const got =
-        need.type === 'image' ? inputs.images.length
-        : need.type === 'video' ? inputs.videos.length
-        : inputs.audios.length
+        need.type === 'image'
+          ? inputs.images.length + (inputs.firstFrame ? 1 : 0) + (inputs.lastFrame ? 1 : 0)
+          : need.type === 'video'
+            ? inputs.videos.length
+            : inputs.audios.length
       if (got < need.min) {
         const label = need.type === 'image' ? '图片' : need.type === 'video' ? '视频' : '音频'
         setRunError(`「${data.title}」需要至少 ${need.min} 个${label}输入，请从素材节点连线过来`)
@@ -321,6 +454,13 @@ export const usePvStore = create<PvState>((set, get) => ({
           // 参考素材：图生图/图生视频取图片，参考生视频取视频+图片
           reference_images: inputs.images.length ? inputs.images : undefined,
           reference_videos: inputs.videos.length ? inputs.videos : undefined,
+          // 首尾帧专线（后端 video_api 按 first_frame/last_frame 角色装配，MiniMax H3 原生支持）
+          image_url: inputs.firstFrame || undefined,
+          last_frame_url: inputs.lastFrame || undefined,
+          // 参考站同款参数：配音 / 多镜头 / 批量数量（不支持的模型由后端忽略）
+          audio: isVideo && params.audio ? 1 : undefined,
+          multi_shot: isVideo && params.multi_shot ? 1 : undefined,
+          create_count: params.create_count && params.create_count > 1 ? params.create_count : undefined,
         },
       })
       if (!res.ok) {
@@ -411,7 +551,7 @@ export const usePvStore = create<PvState>((set, get) => ({
 
   // ── 持久化：复用 workflows.graph 单 JSONB ─────────────────────────
   save: async () => {
-    const { nodes, edges, projectId, workflowId } = get()
+    const { nodes, edges, projectId, workflowId, viewport, titleCounters } = get()
     if (nodes.length === 0) {
       set({ runError: '画布是空的，没什么可保存的', saveStatus: 'idle' })
       return
@@ -423,11 +563,15 @@ export const usePvStore = create<PvState>((set, get) => ({
         workflow_id: workflowId || undefined,
         name: '',
         graph: {
+          // 视口 + 编号计数器随图落库（对标 PixVerse viewport + nodeTitleCounters）
+          viewport: viewport ?? undefined,
+          titleCounters,
           nodes: nodes.map((n) => ({
             id: n.id,
             type: n.type || 'pv_text',
             data: n.data || {},
             position: n.position ?? { x: 0, y: 0 },
+            style: (n.style ?? undefined) as Record<string, unknown> | undefined,
           })),
           edges: edges.map((e) => ({
             id: e.id,
@@ -435,6 +579,7 @@ export const usePvStore = create<PvState>((set, get) => ({
             target: e.target,
             sourceHandle: e.sourceHandle ?? null,
             targetHandle: e.targetHandle ?? null,
+            data: e.data ?? undefined,
           })),
         },
       })
@@ -462,7 +607,12 @@ export const usePvStore = create<PvState>((set, get) => ({
         set({ runError: '加载画布失败' })
         return
       }
-      const g = res.data.graph as { nodes?: Node[]; edges?: Edge[] }
+      const g = res.data.graph as {
+        nodes?: Node[]
+        edges?: Edge[]
+        viewport?: PvViewport
+        titleCounters?: Record<string, number>
+      }
       let nodes: Node[] = g.nodes || []
       const edges: Edge[] = g.edges || []
       // 兜底：旧数据没存坐标，React Flow 读 position.x 会直接崩，交给布局补齐
@@ -473,7 +623,17 @@ export const usePvStore = create<PvState>((set, get) => ({
       ) {
         nodes = dagLayout(nodes, edges)
       }
-      set({ nodes, edges, workflowId, runError: null, runningIds: [] })
+      // 编号计数器：优先用落库的，没有就从现有标题反推，保证接着编号不重号
+      const titleCounters = g.titleCounters ?? backfillCounters(nodes)
+      set({
+        nodes,
+        edges,
+        workflowId,
+        runError: null,
+        runningIds: [],
+        viewport: g.viewport ?? null,
+        titleCounters,
+      })
       try {
         localStorage.setItem(STORE_KEY, workflowId)
       } catch {

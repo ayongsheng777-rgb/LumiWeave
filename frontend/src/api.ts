@@ -311,14 +311,25 @@ export async function kbDeleteSource(sid: string) {
 // ==================== 画布工作流 ====================
 
 export interface WorkflowGraphPayload {
-  nodes: { id: string; type: string; data: Record<string, unknown> }[]
+  nodes: {
+    id: string
+    type: string
+    data: Record<string, unknown>
+    position?: { x: number; y: number }
+    style?: Record<string, unknown>
+  }[]
   edges: {
     id: string
     source: string
     target: string
     sourceHandle?: string | null
     targetHandle?: string | null
+    data?: Record<string, unknown>
   }[]
+  /** 画布视口（通用画布 V2：随图落库，加载时还原） */
+  viewport?: { x: number; y: number; zoom: number }
+  /** 素材节点自动编号计数器（通用画布 V2） */
+  titleCounters?: Record<string, number>
 }
 
 export async function workflowExecute(graph: WorkflowGraphPayload) {

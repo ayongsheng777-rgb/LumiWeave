@@ -1,8 +1,10 @@
 // =====================================================================
 // PixVerse 风格通用画布 · 主体
 // 一块画布同时是「自由摆放的无限画布」和「按依赖执行的工作流」。
+// V2：左侧窄工具栏（添加/选择/平移/撤销重做/整理/运行/保存/清空）、
+//     首尾帧语义连线（虚线+标签）、视口随图落库、改动自动保存。
 // =====================================================================
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -12,7 +14,17 @@ import {
   type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Undo2, Redo2, Save, LayoutGrid, Trash2, Play } from 'lucide-react'
+import {
+  Undo2,
+  Redo2,
+  Save,
+  LayoutGrid,
+  Trash2,
+  Play,
+  Plus,
+  MousePointer2,
+  Hand,
+} from 'lucide-react'
 import { usePvStore } from './store'
 import { pvNodeTypes } from './nodes'
 import { nodeColor } from './registry'
@@ -21,6 +33,11 @@ import { PvNodePalette } from './PvNodePalette'
 import { PvBottomBar } from './PvBottomBar'
 
 export const DND_KEY = 'application/lumiweave-pv-node'
+
+/** 画布交互模式：选择（框选节点）/ 平移（拖空白处移动画布） */
+type ToolMode = 'select' | 'pan'
+
+const AUTOSAVE_DELAY = 2500
 
 function PvCanvasInner() {
   const nodes = usePvStore((s) => s.nodes)
@@ -41,20 +58,58 @@ function PvCanvasInner() {
   const redo = usePvStore((s) => s.redo)
   const canUndo = usePvStore((s) => s.undoStack.length > 0)
   const canRedo = usePvStore((s) => s.redoStack.length > 0)
+  const workflowId = usePvStore((s) => s.workflowId)
+  const savedViewport = usePvStore((s) => s.viewport)
+  const setViewport = usePvStore((s) => s.setViewport)
 
-  const { screenToFlowPosition } = useReactFlow()
+  const rf = useReactFlow()
+  const { screenToFlowPosition } = rf
   const wrapRef = useRef<HTMLDivElement>(null)
   const [dragOver, setDragOver] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [tool, setTool] = useState<ToolMode>('select')
 
-  // 连线着色：跟着源节点的类型色走，一眼看出数据从哪来
+  // ── 视口还原：加载到旧画布时回到上次的位置，没存过就 fitView ──
+  useEffect(() => {
+    if (savedViewport) {
+      void rf.setViewport(savedViewport)
+    } else if (usePvStore.getState().nodes.length > 0) {
+      void rf.fitView({ maxZoom: 1, padding: 0.25 })
+    }
+    // 只在切换画布（workflowId 变化）时还原，平时拖动视口不触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowId])
+
+  // ── 自动保存：改动停手 2.5s 后落库（对标 PixVerse 的自动保存）──
+  useEffect(() => {
+    if (nodes.length === 0 || running) return
+    const timer = setTimeout(() => {
+      void save()
+    }, AUTOSAVE_DELAY)
+    return () => clearTimeout(timer)
+  }, [nodes, edges, savedViewport, running, save])
+
+  // 连线着色 + 首尾帧语义：跟着源节点的类型色走，首帧绿/尾帧红虚线带标签
   const coloredEdges = useMemo<Edge[]>(() => {
     const byId = new Map(nodes.map((n) => [n.id, n]))
     return edges.map((e) => {
       const src = byId.get(e.source)
       const sd = src?.data as unknown as PvNodeData | undefined
-      const color = nodeColor(sd)
       const active = sd?.status === 'running'
+      const ct = (e.data as Record<string, unknown> | undefined)?.connectionType
+      if (ct === 'firstFrame' || ct === 'lastFrame') {
+        const c = ct === 'firstFrame' ? '#22c55e' : '#fb7185'
+        return {
+          ...e,
+          type: 'smoothstep',
+          style: { stroke: c, strokeWidth: 2, strokeDasharray: '7 5' },
+          label: ct === 'firstFrame' ? '首帧' : '尾帧',
+          labelStyle: { fill: c, fontSize: 10, fontWeight: 600 },
+          labelBgStyle: { fill: 'transparent' },
+          animated: active,
+        }
+      }
+      const color = nodeColor(sd)
       return {
         ...e,
         type: 'smoothstep',
@@ -94,8 +149,10 @@ function PvCanvasInner() {
     [screenToFlowPosition, addFromTemplate],
   )
 
-  const btn =
-    'nodrag flex items-center gap-1.5 rounded-lg border border-edge bg-soft px-2.5 py-1.5 text-xs text-ink-2 transition hover:bg-hover hover:text-ink disabled:opacity-40'
+  const toolBtn = (active: boolean) =>
+    `nodrag flex h-9 w-9 items-center justify-center rounded-lg transition ${
+      active ? 'bg-brand-500 text-white' : 'text-ink-2 hover:bg-hover hover:text-ink'
+    } disabled:opacity-40`
 
   return (
     <div
@@ -123,58 +180,91 @@ function PvCanvasInner() {
         minZoom={0.2}
         maxZoom={2}
         deleteKeyCode={['Backspace', 'Delete']}
-        selectionOnDrag
+        // 工具模式：选择=拖空白框选节点；平移=拖空白移动画布
+        selectionOnDrag={tool === 'select'}
+        panOnDrag={tool === 'pan'}
         multiSelectionKeyCode={['Shift', 'Meta', 'Control']}
+        onMoveEnd={(_, vp) => setViewport(vp)}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.6} color="var(--lw-canvas-dot)" />
       </ReactFlow>
 
-      {/* ── 左上：撤销重做 / 保存 / 布局 ────────────────────────── */}
-      <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-2">
-        <button className={btn} onClick={undo} disabled={!canUndo || running} title="撤销（Ctrl+Z）">
-          <Undo2 size={13} /> 撤销
-        </button>
-        <button className={btn} onClick={redo} disabled={!canRedo || running} title="重做（Ctrl+Shift+Z）">
-          <Redo2 size={13} /> 重做
-        </button>
-        <button className={btn} onClick={() => void save()} disabled={running} title="保存画布">
-          <Save size={13} />
-          {saveStatus === 'saving' ? '保存中…' : saveStatus === 'saved' ? '已保存' : '保存'}
+      {/* ── 左侧窄工具栏（对标 PixVerse）────────────────────────── */}
+      <div
+        className="absolute left-4 top-1/2 z-10 flex -translate-y-1/2 flex-col items-center gap-1 rounded-2xl border px-1.5 py-2 backdrop-blur-xl"
+        style={{
+          borderColor: 'var(--lw-glass-strong-edge)',
+          background: 'var(--lw-glass-strong-bg)',
+          boxShadow: 'var(--lw-node-shadow-hover)',
+        }}
+      >
+        <div className="relative">
+          <button
+            className={toolBtn(paletteOpen)}
+            onClick={() => setPaletteOpen((v) => !v)}
+            title="添加节点"
+          >
+            <Plus size={16} className={paletteOpen ? 'rotate-45 transition' : 'transition'} />
+          </button>
+          {/* 节点库弹层（挂在工具栏右侧） */}
+          <PvNodePalette
+            open={paletteOpen}
+            onToggle={() => setPaletteOpen((v) => !v)}
+            onPick={addAtCenter}
+            hideFab
+            popupClassName="absolute left-12 top-0 z-20"
+          />
+        </div>
+        <button
+          className={toolBtn(tool === 'select')}
+          onClick={() => setTool('select')}
+          title="选择（拖空白框选节点）"
+        >
+          <MousePointer2 size={15} />
         </button>
         <button
-          className={btn}
+          className={toolBtn(tool === 'pan')}
+          onClick={() => setTool('pan')}
+          title="平移（拖空白移动画布）"
+        >
+          <Hand size={15} />
+        </button>
+        <span className="my-0.5 h-px w-6" style={{ background: 'var(--lw-edge)' }} />
+        <button className={toolBtn(false)} onClick={undo} disabled={!canUndo || running} title="撤销（Ctrl+Z）">
+          <Undo2 size={15} />
+        </button>
+        <button className={toolBtn(false)} onClick={redo} disabled={!canRedo || running} title="重做（Ctrl+Shift+Z）">
+          <Redo2 size={15} />
+        </button>
+        <span className="my-0.5 h-px w-6" style={{ background: 'var(--lw-edge)' }} />
+        <button
+          className={toolBtn(false)}
           onClick={applyAutoLayout}
           disabled={running || nodes.length === 0}
           title="按连线自动排列"
         >
-          <LayoutGrid size={13} /> 整理
+          <LayoutGrid size={15} />
         </button>
         <button
-          className={btn}
+          className={toolBtn(false)}
           onClick={() => void runAll()}
           disabled={running || nodes.length === 0}
           title="按依赖顺序跑完所有生成节点"
         >
-          <Play size={13} /> {running ? '运行中…' : '全部运行'}
+          <Play size={15} />
         </button>
         <button
-          className={btn}
-          onClick={() => void clearAll()}
+          className={toolBtn(false)}
+          onClick={() => void save()}
           disabled={running}
-          title="清空画布"
+          title={saveStatus === 'saving' ? '保存中…' : saveStatus === 'saved' ? '已保存（改动会自动保存）' : '保存画布'}
         >
-          <Trash2 size={13} /> 清空
+          <Save size={15} className={saveStatus === 'saved' ? 'text-teal-400' : undefined} />
         </button>
-      </div>
-
-      {/* ── 左下：节点库（对标 PixVerse 的 ➕ 添加节点）───────────── */}
-      <div className="absolute bottom-16 left-4 z-10">
-        <PvNodePalette
-          open={paletteOpen}
-          onToggle={() => setPaletteOpen((v) => !v)}
-          onPick={addAtCenter}
-        />
+        <button className={toolBtn(false)} onClick={() => void clearAll()} disabled={running} title="清空画布">
+          <Trash2 size={15} />
+        </button>
       </div>
 
       {/* ── 底部：缩放条 ───────────────────────────────────────── */}
@@ -189,8 +279,8 @@ function PvCanvasInner() {
           >
             <p className="text-sm font-medium text-ink">画布还是空的</p>
             <p className="mt-2 max-w-[22rem] text-xs leading-relaxed text-ink-3">
-              从左下角「添加节点」拖一个素材节点进来上传图片，再拖一个生成节点、选好模型，
-              把素材连到生成节点上，写提示词就能开跑。
+              点左侧「＋」拖一个素材节点进来上传图片，再加一个生成节点、选好模型，
+              把素材连到生成节点上，写提示词就能开跑。改动会自动保存。
             </p>
           </div>
         </div>

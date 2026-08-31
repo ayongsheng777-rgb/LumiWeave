@@ -37,10 +37,16 @@ export function PvNodePalette({
   open,
   onToggle,
   onPick,
+  hideFab = false,
+  popupClassName,
 }: {
   open: boolean
   onToggle: () => void
   onPick: (tpl: PvNodeTemplate) => void
+  /** 只渲染弹层，不渲染自带的圆形 ➕ 按钮（挂在左侧工具栏里时用） */
+  hideFab?: boolean
+  /** 弹层定位 class（hideFab 模式下由调用方决定弹层锚点） */
+  popupClassName?: string
 }) {
   const groups = useMemo(() => templatesByGroup(), [])
   const [keyword, setKeyword] = useState('')
@@ -62,7 +68,7 @@ export function PvNodePalette({
     <div className="relative">
       {open && (
         <div
-          className="absolute bottom-14 left-0 z-20 w-[19rem] animate-fade-in overflow-hidden rounded-2xl border backdrop-blur-xl"
+          className={`${popupClassName ?? 'absolute bottom-14 left-0 z-20'} w-[19rem] animate-fade-in overflow-hidden rounded-2xl border backdrop-blur-xl`}
           style={{
             borderColor: 'var(--lw-glass-strong-edge)',
             background: 'var(--lw-glass-strong-bg)',
@@ -137,14 +143,16 @@ export function PvNodePalette({
         </div>
       )}
 
-      <button
-        onClick={onToggle}
-        title="添加节点"
-        className="flex h-11 w-11 items-center justify-center rounded-full text-white transition hover:brightness-110"
-        style={{ background: 'var(--brand)', boxShadow: 'var(--lw-node-shadow-hover)' }}
-      >
-        <Plus size={20} className={open ? 'rotate-45 transition' : 'transition'} />
-      </button>
+      {!hideFab && (
+        <button
+          onClick={onToggle}
+          title="添加节点"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-white transition hover:brightness-110"
+          style={{ background: 'var(--brand)', boxShadow: 'var(--lw-node-shadow-hover)' }}
+        >
+          <Plus size={20} className={open ? 'rotate-45 transition' : 'transition'} />
+        </button>
+      )}
     </div>
   )
 }
