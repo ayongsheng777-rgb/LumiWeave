@@ -252,9 +252,11 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
   }
 
   return (
+    // §69 拍板：节点对话框只能点 X / Esc 关闭，点画布其它区域不关（防误触丢输入）。
+    // 外层蒙层 pointer-events: none 不接收点击，弹窗本体保留点击。
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm animate-fade-in"
-      onClick={close}
+      style={{ pointerEvents: 'none' }}
     >
       <div
         className="flex max-h-[86vh] w-[min(94vw,34rem)] flex-col overflow-hidden rounded-2xl border shadow-2xl"
@@ -262,8 +264,8 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
           borderColor: 'var(--lw-glass-strong-edge)',
           background: 'var(--lw-node-bg)',
           boxShadow: 'var(--lw-node-shadow-hover)',
+          pointerEvents: 'auto',
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* ── 头部 ─────────────────────────────────────────── */}
         <div className="flex shrink-0 items-center gap-2 border-b border-edge px-4 py-3">

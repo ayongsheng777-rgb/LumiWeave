@@ -124,14 +124,18 @@ function CropInner({ nodeId }: { nodeId: string }) {
   }
 
   return (
+    // §69 拍板：节点对话框只能点 X / Esc 关闭，点画布其它区域不关（防误触丢输入）
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm animate-fade-in"
-      onClick={close}
+      style={{ pointerEvents: 'none' }}
     >
       <div
         className="flex max-h-[88vh] w-[min(94vw,40rem)] flex-col overflow-hidden rounded-2xl border shadow-2xl"
-        style={{ borderColor: 'var(--lw-glass-strong-edge)', background: 'var(--lw-node-bg)' }}
-        onClick={(e) => e.stopPropagation()}
+        style={{
+          borderColor: 'var(--lw-glass-strong-edge)',
+          background: 'var(--lw-node-bg)',
+          pointerEvents: 'auto',
+        }}
       >
         <div className="flex shrink-0 items-center gap-2 border-b border-edge px-4 py-3">
           <Scissors size={15} className="text-brand-400" />
