@@ -150,58 +150,11 @@ async def _act_generate_subtitle(scene_id: str, obj_ids: list[str], params: dict
 
 
 async def _act_compose_final(scene_id: str, obj_ids: list[str], params: dict) -> dict:
-    from app.config import DATA_DIR
-    # 1) 收集视频对象，按连线顺序排序（无连线按创建序兜底）
-    vids = [o for o in await service.list_objects(scene_id) if o["object_type"] == "video"
-            and (o["data"] or {}).get("url")]
-    if obj_ids:
-        wanted = set(obj_ids)
-        vids = [o for o in vids if o["id"] in wanted]
-    if len(vids) < 2:
-        return {"ok": False, "error": "成片合成需要至少 2 个带视频地址的对象（云端视频会自动下载）"}
-    # 连线顺序：edges 里 source->target 的链，排在前的视频先出镜
-    edges = await service.list_edges(scene_id)
-    ordered: list[str] = []
-    for e in edges:
-        s, t = e.get("source_id"), e.get("target_id")
-        if s and s not in ordered and any(o["id"] == s for o in vids):
-            ordered.append(str(s))
-        if t and t not in ordered and any(o["id"] == t for o in vids):
-            ordered.append(str(t))
-    tail = [o["id"] for o in vids if o["id"] not in ordered]
-    seq = [next(o for o in vids if o["id"] == i) for i in (ordered + tail)]
+    """§69 成片合成入口：转发到 compose.py 的新管道（含字幕烧录 + 失败重试）。
 
-    # 2) 统一落本地（相对路径直连 / 远程 URL 下载）
-    local: list[str] = []
-    for o in seq:
-        u = (o["data"] or {}).get("url", "")
-        p = await _download_to_uploads(u, DATA_DIR)
-        if p:
-            local.append(p)
-
-    if len(local) < 2:
-        return {"ok": False, "error": "成片合成需要至少 2 段可用的本地视频（云端视频下载失败请检查网络）"}
-    up = DATA_DIR / "uploads"
-    up.mkdir(parents=True, exist_ok=True)
-    name = f"final_{uuid.uuid4().hex[:12]}.mp4"
-    listfile = up / f"concat_{uuid.uuid4().hex[:8]}.txt"
-    listfile.write_text("\n".join(f"file '{p}'" for p in local), encoding="utf-8")
-    out = up / name
-    r = subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
-                        "-c", "copy", str(out)], capture_output=True, text=True, timeout=300)
-    if not out.exists() or out.stat().st_size < 1000:
-        return {"ok": False, "error": f"ffmpeg 合成失败：{r.stderr[-200:] if r and r.stderr else '未知'}"}
-    # 3) 抽首帧做成片封面
-    cover_url = ""
-    cover_name = f"final_{uuid.uuid4().hex[:12]}.jpg"
-    cover_path = up / cover_name
-    cr = subprocess.run(["ffmpeg", "-y", "-i", str(out), "-vframes", "1", "-q:v", "2", str(cover_path)],
-                        capture_output=True, text=True, timeout=120)
-    if cover_path.exists() and cover_path.stat().st_size > 1000:
-        cover_url = f"/uploads/{cover_name}"
-    url = f"/uploads/{name}"
-    nid = await service.create_object(scene_id, "video", x=500, y=400, width=340, height=240,
-                                      data={"url": url, "prompt": "", "model": "ffmpeg", "composed": True,
-                                            "cover_url": cover_url})
-    await _register_asset(scene_id, "video", url, name="成片", meta={"composed": True})
-    return {"ok": True, "created": [nid], "message": f"合成成片（{len(local)} 段按连线顺序拼接）"}
+    向后兼容：保持原签名，返回结构兼容旧调用方。
+    """
+    from app.scene.actions.compose import compose_final
+    with_subtitle = bool(params.get("with_subtitle", True))
+    with_audio = bool(params.get("with_audio", False))  # 默认关，等 TTS Provider 拍板后开
+    return await compose_final(scene_id, obj_ids, with_subtitle=with_subtitle, with_audio=with_audio)
