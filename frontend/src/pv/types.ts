@@ -62,6 +62,8 @@ export interface PvGenParams {
   seed?: number
   /** 一次生成几份产物（参考站 create_count；云端真实多份，ComfyUI 本地按 1 份） */
   create_count?: number
+  /** AI 完善专用模型（V2.9q）：与生成模型解耦，独立持久化 */
+  craft_profile_id?: string
 }
 
 /** 提示词里的 @image1 引用了哪个节点的素材 */

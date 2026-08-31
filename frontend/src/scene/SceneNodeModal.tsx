@@ -1,7 +1,8 @@
-// SceneNodeModal —— 场景对象编辑弹窗（V2.8 UI 重构）
-// 节点内容优先后，编辑收敛到本弹窗：居中悬浮、可拖拽、点外/Esc 关闭、
-// 状态与节点实时双向绑定（patchObject 即时生效，无需手动保存）。
-import { useCallback, useEffect, useRef, useState } from 'react'
+// SceneNodeModal —— 场景对象编辑弹窗（V2.8 UI 重构 / V2.9q 关闭行为收严）
+// 节点内容优先后，编辑收敛到本弹窗：居中悬浮、可拖拽、点 X / Esc 关闭。
+// ⚠️ 拍板：点击画布其它区域不再关闭弹窗（防误触丢输入），输入的内容已实时 patchObject 落库，
+//   即使关闭重开也不会丢（除非用户显式清除）。
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Lock, LockOpen } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
@@ -57,6 +58,13 @@ function useDrag(ref: React.RefObject<HTMLDivElement | null>, enabled: boolean) 
 
 export default function SceneNodeModal() {
   const modalNodeId = useSceneStore((s) => s.modalNodeId)
+  // V2.9q：切换节点时整棵子树重建，避免状态/输入被旧节点残留污染。
+  // 同时 SceneNodeEditPanel 的 useState 初始化能拿到新节点的 payload（关闭再开不丢输入的前提）。
+  if (!modalNodeId) return null
+  return <SceneNodeModalInner key={modalNodeId} modalNodeId={modalNodeId} />
+}
+
+function SceneNodeModalInner({ modalNodeId }: { modalNodeId: string }) {
   const closeNodeModal = useSceneStore((s) => s.closeNodeModal)
   const toggleLock = useSceneStore((s) => s.toggleLock)
   const objects = useSceneStore((s) => s.objects)
@@ -71,34 +79,26 @@ export default function SceneNodeModal() {
   const locked = (obj?.data as Payload)?.locked === true
   const meta = metaOf(objectType)
 
-  // Esc 关闭
+  // Esc 关闭（仅 Esc / X 触发，点画布其它区域不关）
   useEffect(() => {
-    if (!modalNodeId) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeNodeModal()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [modalNodeId, closeNodeModal])
+  }, [closeNodeModal])
 
   // 打开时定位（高度自适应交给 CSS：height auto + maxHeight 封顶，内容超高时内容区内部滚动）
   useEffect(() => {
-    if (modalNodeId) {
-      setPos({
-        left: Math.max(16, Math.round(window.innerWidth / 2 - 300)),
-        top: Math.max(16, Math.round(window.innerHeight * 0.06)),
-      })
-    }
-  }, [modalNodeId])
+    setPos({
+      left: Math.max(16, Math.round(window.innerWidth / 2 - 300)),
+      top: Math.max(16, Math.round(window.innerHeight * 0.06)),
+    })
+  }, [])
 
-  useDrag(boxRef, !!modalNodeId)
+  useDrag(boxRef, true)
 
-  // 点外部关闭
-  const onBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) closeNodeModal()
-  }, [closeNodeModal])
-
-  if (!modalNodeId || !obj) return null
+  if (!obj) return null
 
   const title =
     String(payload.title || payload.name || '') ||
@@ -106,10 +106,11 @@ export default function SceneNodeModal() {
     meta.label
 
   return createPortal(
+    // V2.9q：拍板——弹窗只能 X / Esc 关闭，点画布其它区域不关（防止误触丢输入）。
+    // 去掉 backdrop 关闭逻辑：外层不再处理点击事件，只承载半透明蒙层。
     <div
       className="fixed inset-0 z-[100] flex items-start justify-center bg-black/20 backdrop-blur-sm"
-      style={{ paddingTop: '6vh' }}
-      onMouseDown={onBackdrop}
+      style={{ paddingTop: '6vh', pointerEvents: 'none' }}
     >
       <div
         ref={boxRef}
@@ -121,15 +122,12 @@ export default function SceneNodeModal() {
           width: '640px',
           minWidth: 420,
           minHeight: 320,
-          // V2.9g：高度自适应——不写死 height，内容多少长多高；超高时被 maxHeight 封顶，
-          // 由内容区（flex-1 overflow-y-auto）内部滚动，彻底解决底部按钮被裁切
           maxHeight: 'calc(100vh - 48px)',
           maxWidth: 'calc(100vw - 48px)',
-          // V2.9f：可拖右下角调整大小（CSS resize），内容超高时内部滚动
           resize: 'both',
           overflow: 'hidden',
+          pointerEvents: 'auto',
         }}
-        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* 头部（拖拽柄） */}
         <div

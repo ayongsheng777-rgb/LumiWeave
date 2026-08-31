@@ -92,8 +92,9 @@ async def optimize_prompt(
     *,
     kind: str = "image",
     model: str = "",
+    profile_id: str | None = None,
 ) -> dict[str, Any]:
-    """优化提示词。kind: image|video|character。"""
+    """优化提示词。kind: image|video|character。profile_id 优先（AI 完善独立模型），未指定则走 model+scenario。"""
     prompt = (prompt or "").strip()
     if not prompt:
         return {"ok": False, "error": "提示词为空"}
@@ -109,6 +110,9 @@ async def optimize_prompt(
 
     from app.ai import client
 
+    # AI 完善专用模型：profile_id → 取该配置（强制使用，无视激活项）；未传则走 scenario 选路
+    profile = config.get_profile(profile_id) if profile_id else None
+
     if refs:
         best = refs[0]
         source = best["source"]
@@ -122,7 +126,7 @@ async def optimize_prompt(
             f"只输出优化后的提示词正文，不要任何解释、不要引号包裹、不要前缀。{model_hint}"
         )
         user = f"检索到的专业参考：\n{reference_text}\n\n用户原始提示词：\n{prompt}"
-        optimized = await client.chat(system, user, scenario="prompt_optimize", temperature=0.4, max_tokens=800)
+        optimized = await client.chat(system, user, model_profile=profile, scenario="prompt_optimize", temperature=0.4, max_tokens=800)
     else:
         source = "ai"
         system = (
@@ -130,7 +134,7 @@ async def optimize_prompt(
             f"补充镜头、光照、风格、细节、构图等要素，并保持与原文语种一致。"
             f"只输出优化后的提示词正文，不要任何解释、不要引号包裹、不要前缀。{model_hint}"
         )
-        optimized = await client.chat(system, f"原始提示词：\n{prompt}", scenario="prompt_optimize", temperature=0.4, max_tokens=800)
+        optimized = await client.chat(system, f"原始提示词：\n{prompt}", model_profile=profile, scenario="prompt_optimize", temperature=0.4, max_tokens=800)
 
     if not optimized or not optimized.strip():
         # AI 不可用：有检索命中就退回最佳命中内容，否则退回原文
@@ -174,10 +178,12 @@ async def craft_prompt(
     *,
     kind: str = "image",
     model: str = "",
+    profile_id: str | None = None,
 ) -> dict[str, Any]:
     """上级 AI 分析：初始需求 →（技能库+内容库检索）→ 最终提示词 + 反向提示词。
 
     种子按拍板不在此生成（前端留空=随机）。
+    profile_id 优先（AI 完善专用模型，与生成模型解耦），未传则按 scenario 路由。
     返回 {ok, prompt, negative, source, matched, logs}。
     """
     requirement = (requirement or "").strip()
@@ -193,7 +199,7 @@ async def craft_prompt(
     refs = kb_hits + skill_hits
     refs.sort(key=lambda x: -x["score"])
 
-    from app.ai import client
+    from app.ai import client, config
 
     reference_text = ""
     if refs:
@@ -204,11 +210,21 @@ async def craft_prompt(
     system = _CRAFT_SYSTEM.format(kind_label=kind_label, model_hint=model_hint)
     user = f"用户初始需求：\n{requirement}{reference_text}"
 
-    parsed = await client.chat_json(system, user, scenario="prompt_craft", temperature=0.5, max_tokens=1200, cache_ttl=0)
+    # AI 完善专用模型：profile_id → 锁定该配置；未传走 scenario 路由
+    profile = config.get_profile(profile_id) if profile_id else None
+    parsed = await client.chat_json(
+        system,
+        user,
+        model_profile=profile,
+        scenario="prompt_craft",
+        temperature=0.5,
+        max_tokens=1200,
+        cache_ttl=0,
+    )
 
     if not parsed or not str(parsed.get("prompt") or "").strip():
-        # 兜底：退回旧 optimize 单件 + 通用反向词
-        fallback = await optimize_prompt(requirement, kind=kind, model=model)
+        # 兜底：退回旧 optimize 单件 + 通用反向词（继续沿用同一 profile）
+        fallback = await optimize_prompt(requirement, kind=kind, model=model, profile_id=profile_id)
         if not fallback.get("ok"):
             return {"ok": False, "error": fallback.get("error") or "AI 调用失败", "matched": fallback.get("matched", [])}
         generic_neg = "low quality, blurry, deformed, watermark, text, oversaturated" if kind != "video" \

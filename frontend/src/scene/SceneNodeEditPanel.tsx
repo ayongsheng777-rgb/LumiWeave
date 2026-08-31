@@ -251,6 +251,9 @@ function SceneStoryEditor({ id, payload, locked }: { id: string; payload: Payloa
   const combined = [String(payload.summary ?? '').trim(), String(payload.text ?? '').trim()]
     .filter(Boolean)
     .join('\n\n')
+  // V2.9q：拍板——节点输入内容「永不消失」，只初始化一次拿 store 当前值，
+  // 之后即便外部 patchObject 改了其它字段也绝不覆盖用户未提交内容。
+  // 关闭弹窗后再开，SceneNodeModal 用 key={modalNodeId} 重建子树，会重新读最新 payload。
   const [value, setValue] = useState(combined)
   const [view, setView] = useState<'edit' | 'board'>('edit')
   const board = payload.board as Payload | undefined
@@ -267,9 +270,6 @@ function SceneStoryEditor({ id, payload, locked }: { id: string; payload: Payloa
       .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  useEffect(() => {
-    setValue(combined)
-  }, [combined])
   return (
     <div className="flex min-h-[120px] flex-col gap-2">
       {/* 工具栏：视图切换 + 生成视觉规划板（仅电商物料场景） */}

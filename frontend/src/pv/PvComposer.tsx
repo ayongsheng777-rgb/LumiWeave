@@ -4,14 +4,14 @@
 // 底部条（模型选择[候选池含 ComfyUI] / 参数 / 字数 / 提交）。
 // 确认后才真正跑节点 —— 改完再生成，不浪费积分。
 // =====================================================================
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Sparkles, Wand2, X } from 'lucide-react'
 import { usePvStore } from './store'
 import { usePvDialogs } from './dialogStore'
 import { useNodeInputs } from './useNodeInputs'
 import { useScenePools, type ScenePools } from './pools'
 import { useProfiles, type Profile } from './useProfiles'
-import { promptCraft } from '../api'
+import { getProfiles, promptCraft } from '../api'
 import type { ContentType, PvNodeData } from './types'
 import { ASPECT_RATIOS, CREATE_COUNT_OPTIONS, DURATION_OPTIONS, QUALITY_OPTIONS } from './types'
 import { GEN_TYPE_META } from './registry'
@@ -92,6 +92,10 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
   const [crafting, setCrafting] = useState(false)
   const [craftNote, setCraftNote] = useState('')
   const [craftErr, setCraftErr] = useState('')
+  // AI 完善专用模型（V2.9q）：与生成模型解耦，独立选择 + 持久化到节点 payload
+  const [craftProfiles, setCraftProfiles] = useState<Profile[]>([])
+  const initialCraftId = (d?.params?.craft_profile_id as string | undefined) || (d?.profile_id as string | undefined) || ''
+  const [craftProfileId, setCraftProfileId] = useState(initialCraftId)
 
   // 候选池异步拉到后，若节点还没选过模型则默认选中池默认项
   const effectiveSel = useMemo(() => {
@@ -99,6 +103,32 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
     if (pool.default) return `pool::${pool.default}`
     return ''
   }, [sel, pool.default])
+
+  // 加载 AI 完善模型库（一次性）
+  useEffect(() => {
+    let alive = true
+    getProfiles()
+      .then((r) => {
+        if (!alive) return
+        const list = ((r.data as { profiles?: Profile[] })?.profiles as Profile[]) || []
+        setCraftProfiles(list)
+        // 节点上没存过且当前也没选过 → 默认第一个
+        if (!craftProfileId && list.length > 0) setCraftProfileId(list[0].id)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** AI 完善当前选中的模型名（输出语言自判的依据），与生成模型完全独立 */
+  const craftProfileModel = (() => {
+    const p = craftProfiles.find((x) => x.id === craftProfileId)
+    if (!p) return ''
+    const override = p.scene_models?.prompt
+    return override || p.model || ''
+  })()
 
   if (!node || !d || !params) return null
 
@@ -126,7 +156,13 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
     setCraftErr('')
     setCraftNote('')
     try {
-      const res = await promptCraft({ requirement: reqText, kind: isVideo ? 'video' : 'image', model: craftModelName })
+      const res = await promptCraft({
+        requirement: reqText,
+        kind: isVideo ? 'video' : 'image',
+        // AI 完善专用模型：profile_id 优先，未指定则按生成模型名兜底（语言自判）
+        profile_id: craftProfileId || undefined,
+        model: craftProfileModel || craftModelName || undefined,
+      })
       const data = res.data as Record<string, unknown> | undefined
       if (res.ok && data?.ok && typeof data.prompt === 'string' && data.prompt) {
         setPrompt(data.prompt)
@@ -135,10 +171,20 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
           setShowAdvanced(true) // 反向词在高级区，展开让用户看见
         }
         const matched = (data.matched as { title: string; source: string }[] | undefined) || []
+        const usedLabel = (() => {
+          const p = craftProfiles.find((x) => x.id === craftProfileId)
+          if (!p) return ''
+          return `${p.name || p.id}${p.model ? ` · ${p.model}` : ''}`
+        })()
         setCraftNote(
-          matched.length > 0
-            ? `已结合：${matched.slice(0, 2).map((m) => m.title).join('、')}${matched.length > 2 ? ` 等 ${matched.length} 条` : ''}`
-            : '技能库/内容库无匹配，AI 按专业知识生成',
+          [
+            matched.length > 0
+              ? `已结合：${matched.slice(0, 2).map((m) => m.title).join('、')}${matched.length > 2 ? ` 等 ${matched.length} 条` : ''}`
+              : '技能库/内容库无匹配，AI 按专业知识生成',
+            usedLabel ? `使用模型：${usedLabel}` : '',
+          ]
+            .filter(Boolean)
+            .join('  ·  '),
         )
       } else {
         setCraftErr(String(data?.error || 'AI 完善失败，请稍后再试'))
@@ -162,6 +208,8 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
         quality,
         create_count: count,
         seed: seed === '' ? undefined : Number(seed),
+        // AI 完善专用模型（V2.9q）：与生成模型解耦，独立持久化
+        craft_profile_id: craftProfileId || undefined,
       },
     }
     if (parsed?.kind === 'pool') {
@@ -255,7 +303,24 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
           <label className="block">
             <span className="mb-1 flex items-center justify-between text-[11px] text-ink-2">
               <span>提示词{inputs.chips.length > 0 && '（用 @image1 @video1 指代上方素材）'}</span>
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5">
+                <select
+                  className="nodrag nowheel h-6 rounded-md border border-edge bg-input px-1.5 text-[10px] text-ink-2 outline-none focus:border-brand-500"
+                  value={craftProfileId}
+                  disabled={crafting}
+                  onChange={(e) => setCraftProfileId(e.target.value)}
+                  title="AI 完善专用模型（与下方生成模型独立；不选=按生成模型走）"
+                >
+                  <option value="">默认（按生成模型）</option>
+                  {craftProfiles.map((p) =>
+                    p && p.id ? (
+                      <option key={p.id} value={p.id}>
+                        {p.name || p.id}
+                        {p.model ? ` · ${p.model}` : ''}
+                      </option>
+                    ) : null,
+                  )}
+                </select>
                 <button
                   type="button"
                   className="nodrag flex items-center gap-1 rounded-md border border-brand-500/40 bg-brand-500/10 px-1.5 py-0.5 text-[10px] text-brand-400 transition hover:bg-brand-500/20 disabled:opacity-50"

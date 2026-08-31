@@ -285,12 +285,12 @@ export async function uploadImage(file: File, sceneId?: string) {
 }
 
 // 提示词优化：知识库+技能库优先，AI 兜底
-export async function promptOptimize(payload: { prompt: string; kind?: string; model?: string }) {
+export async function promptOptimize(payload: { prompt: string; kind?: string; model?: string; profile_id?: string }) {
   return request('POST', '/ai/prompt-optimize', payload)
 }
 
 // 上级 AI 分析（composer「AI 完善」）：初始需求 → 提示词+反向提示词（种子留空随机）
-export async function promptCraft(payload: { requirement: string; kind?: string; model?: string }) {
+export async function promptCraft(payload: { requirement: string; kind?: string; model?: string; profile_id?: string }) {
   return request('POST', '/ai/prompt-craft', payload)
 }
 

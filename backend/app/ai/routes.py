@@ -66,10 +66,12 @@ async def ai_prompt_optimize(request: Request):
     prompt = str(data.get("prompt") or "")
     kind = str(data.get("kind") or "image")
     model = str(data.get("model") or "")
+    # AI 完善专用模型（与生成模型分离）：profile_id 优先，model 兜底只传模型名
+    profile_id = str(data.get("profile_id") or "").strip()
     if not prompt:
         return JSONResponse(status_code=400, content={"error": "prompt 必填"})
     from app.ai.prompt_optimizer import optimize_prompt
-    return await optimize_prompt(prompt, kind=kind, model=model)
+    return await optimize_prompt(prompt, kind=kind, model=model, profile_id=profile_id or None)
 
 
 @router.post("/prompt-craft")
@@ -77,15 +79,17 @@ async def ai_prompt_craft(request: Request):
     """上级 AI 分析（composer「AI 完善」）：初始需求 →（技能库+内容库）→ 提示词+反向提示词。
 
     种子按拍板留空随机，不由 AI 生成；输出语言由 AI 按目标模型特性自判。
+    AI 完善可指定独立模型（profile_id / model），与生成模型解耦。
     """
     data = await request.json() or {}
     requirement = str(data.get("requirement") or data.get("prompt") or "")
     kind = str(data.get("kind") or "image")
     model = str(data.get("model") or "")
+    profile_id = str(data.get("profile_id") or "").strip()
     if not requirement:
         return JSONResponse(status_code=400, content={"error": "requirement 必填"})
     from app.ai.prompt_optimizer import craft_prompt
-    return await craft_prompt(requirement, kind=kind, model=model)
+    return await craft_prompt(requirement, kind=kind, model=model, profile_id=profile_id or None)
 
 
 @router.get("/stats")
