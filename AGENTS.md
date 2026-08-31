@@ -745,3 +745,31 @@ docker compose exec -T postgres psql -U lumiweave -d lumiweave \
 - `scene/SceneBottomBar.tsx` 加「导演台」页签；`sceneStore.ts` ACTION_LABELS 加 director_start；`api.ts` 加 directorCreate/directorTaskGet/directorTasks/directorTaskVideo
 
 **验收**：backend import/健康全过；容器内跑通 create→run_director→状态机→失败兜底（无 LLM key 时正确 FAILED + 日志）；director_start 分发返回 task_id；前端 tsc+vite 通过。真实 LLM 输出需配 AI key。
+
+## 一·三十二、通用画布（PixVerse 形态）合并重构 + V2 深挖升级（2026-08-31）
+
+**两轮提交**：`1dc1c32`（workflow+无限画布合并为通用画布 + 清死码 40 文件）、`a9fe9c2`（V2 深挖升级，对标 PixVerse 真实接口数据）。
+
+### 通用画布底座（src/pv/，唯一事实源）
+- workflow + infinite 两套旧画布已合并为 `frontend/src/pv/` 通用画布；**专业场景 `src/scene/` 独立不动**
+- `types.ts`：`NodeKind(asset|generate|text)` × `ContentType(image|video|audio|text)` × `GenType(文生图/图生图/文生视频/图生视频/参考生视频/配音)`。节点不绑业务语义，能力由「生成节点选了什么模型」决定——后端模型库加一条，前端多一种能力
+- `registry.ts` 10 个节点模板 + `GEN_TYPE_META`（每种生成方式声明 needs 输入 / output / 提示词占位）
+- `store.ts`：拓扑排序执行（Kahn）、撤销重做（50 步快照）、`workflows.graph` 单 JSONB 持久化
+- `useProfiles.ts`：模型档位从 `GET /api/ai/profiles` 动态取，按 content_type 过滤；`bumpProfiles()` 模型库改后手动刷新
+- 旧文件（WorkflowCanvas/FloatingToolbar/CanvasCore/Dashboard 等 40 个）移到 `D:/WorkBuddy/tmp/lumiweave_deadcode_20260831/`，可还原；`src/canvas/` 只留 `layout.ts`（dagLayout 还在用）
+
+### V2 升级八项（a9fe9c2，依据 tmp/pv_out/detail.json 实数据）
+1. **语义连线**：`EdgeConnType = manual|firstFrame|lastFrame`，存 `edge.data.connectionType`；图生视频节点出首帧(ff,绿)/尾帧(lf,红)双专用输入点，连线虚线+标签；`collectInputs` 把首尾帧单独装配（不进 reference_images），runNode 传 `image_url`/`last_frame_url`
+2. **素材节点媒体优先**：PvNodeShell 新增 `variant='media'`——浮动标签在卡片上方、媒体铺满、悬浮才出操作按钮、右下角时长/分辨率角标
+3. **节点尺寸随媒体走**：媒体加载后 `onImageLoad/onVideoMeta` 把真实 width/height/duration 写回节点，媒体区 `aspect-ratio` 撑开
+4. **生成参数补齐**：`audio`（配音开关）/`multi_shot`（多镜头）/`create_count`（批量 1/2/4），runNode 装配 `audio:1`/`multi_shot:1`/`create_count`（不支持的模型后端忽略）
+5. **引用素材节点**：生成产物点「另存为引用素材」→ `addReferenceNode` 物化成 `action='reference'` 的素材节点，继续喂下游（对标 action_type=reference）
+6. **@mention 芯片条**：GenerateNode 顶部显示已连入素材缩略图芯片（首帧绿/尾帧红/按素材形态分色）；**mention 编号只数普通连线**（首尾帧不进 reference_images，数进去 UI 与后端装配顺序会错开）
+7. **左侧窄工具栏**：添加/选择/平移/撤销重做/整理/运行/保存/清空；选择=拖空白框选、平移=拖空白移画布（selectionOnDrag/panOnDrag 切换）
+8. **视口+自动编号落库**：`viewport{x,y,zoom}` + `titleCounters`（图片 1/视频 2 自动编号）随 graph 落库，刷新回原地、编号不重号（旧数据用 `backfillCounters` 从标题反推）；改动停手 2.5s 自动保存；底部对数缩放滑杆（0.2x~2x）
+
+### 冒烟与回滚
+- 冒烟脚本：`D:/WorkBuddy/tmp/lw_canvas_check_v2_3010.js`（TOTP 自动登录，全量绿）
+- 🔴 冒烟三坑：①连线落点用**手柄正中心**（ff/lf 专用点用 tb.x-2 会落空）②加完节点先点「适应视图」（落点网格会把节点放到可视区外，屏外手柄连线必失败）③`/api/auth/setup` 403 是正常探活（已初始化），不是错误
+- React Flow 三坑（08-31 上午踩的）：节点卡片别加 overflow-hidden（裁掉连接点）/ 连续添加落点步长按节点实际宽度算（`size.width+90`）/ 空画布 fitView 限 `maxZoom:1`
+- 回滚点镜像：`lumiweave-frontend:pre-pv-20260831`（重构前）、`lumiweave-frontend:pre-v2-20260831`（V2 前）
