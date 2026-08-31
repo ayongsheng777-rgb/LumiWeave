@@ -468,3 +468,87 @@ def _shot_bgm(script: str, shot_no: int) -> str:
     block = script[start:start + (nxt.start() if nxt else len(script))]
     g = re.search(r"-?\s*背景音乐[：:]\s*([^\n]+)", block)
     return g.group(1).strip() if g else ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §42 Skill 兜底：动作执行 AI 失败 → 自动查 skills 表选最相关 1 个 → executeSkill
+#
+# 策略（严格兜底，避免抢戏）：
+#   - 只有当调用方明确传 fallback_topic/fallback_requirement 时才参与
+#   - 关键词命中：扫描 skills.name + tags + description，含动作相关关键词才选用
+#   - 超时：3 秒拿不到结果直接放弃（不让用户等）
+#   - 失败：返回 (None, "")，调用方按原失败路径走
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 动作 → 关键词表（命中即选用）
+_SKILL_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "generate_story": ("剧本", "短剧", "故事", "脚本", "story", "script", "编剧"),
+    "generate_characters": ("角色", "人物", "character", "设定"),
+    "generate_scenes": ("场景", "场景设计", "scene", "分镜"),
+    "generate_storyboard": ("分镜", "storyboard", "镜头", "拍摄"),
+    "generate_visual_board": ("营销", "广告", "物料", "marketing", "宣传"),
+    "generate_story_from_text": ("剧本", "故事", "三幕式", "编剧"),
+}
+
+
+async def _skill_fallback(
+    action: str,
+    topic: str,
+    requirement: str = "",
+    *,
+    timeout_s: float = 3.0,
+) -> tuple[str | None, str]:
+    """动作失败兜底：选最相关 1 个 skill → 执行 → 返回文本结果 + skill_id。
+
+    返回 (None, "") 表示兜底失败，调用方按原失败处理。
+    """
+    import asyncio
+
+    kws = _SKILL_KEYWORDS.get(action, ())
+    if not kws:
+        return None, ""
+
+    try:
+        from app.skills import skill_manager
+    except Exception:  # noqa: BLE001
+        return None, ""
+
+    try:
+        candidates = skill_manager.list() or []
+    except Exception:  # noqa: BLE001
+        return None, ""
+
+    # 命中关键词打分：name + tags + description 任一命中关键词即入选
+    def score(meta: dict) -> tuple[int, str]:
+        text = " ".join(
+            [
+                str(meta.get("name", "")),
+                " ".join(str(t) for t in (meta.get("tags") or [])),
+                str(meta.get("description", "")),
+            ]
+        ).lower()
+        hit = sum(1 for k in kws if k.lower() in text)
+        return hit, str(meta.get("id", ""))
+
+    matched = [m for m in candidates if score(m)[0] > 0]
+    if not matched:
+        return None, ""
+    matched.sort(key=score, reverse=True)
+    best = matched[0]
+    skill_id = str(best.get("id", ""))
+    if not skill_id:
+        return None, ""
+
+    args = {"topic": (topic or "")[:500], "requirement": (requirement or "")[:300]}
+    try:
+        res = await asyncio.wait_for(
+            skill_manager.execute(skill_id, args, {}),
+            timeout=timeout_s,
+        )
+    except (asyncio.TimeoutError, Exception):  # noqa: BLE001
+        return None, skill_id  # 即使兜底超时也告诉调用方尝试过哪个 skill
+
+    if res and res.ok and (res.result or "").strip():
+        return res.result.strip(), skill_id
+    return None, skill_id
+

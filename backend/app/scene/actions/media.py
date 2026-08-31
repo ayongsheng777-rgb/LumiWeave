@@ -12,6 +12,7 @@ from app.scene.actions.shared import (
     _image_provider,
     _label,
     _llm_text,
+    _rag_retrieve,
     _register_asset,
     _video_provider,
 )
@@ -139,11 +140,21 @@ async def _gen_image(scene_id: str, obj_ids: list[str], params: dict, kind: str)
         from app.providers.cloud_gen import cloud_image_generate
         rounds = count if (kind == "scene" and obj["object_type"] == "product") else 1
         first_url = ""
+        # §43 RAG 注入：出图前检索 prompt_knowledge 范例，拼到 prompt 头部（限长 600 字符，避免挤掉正经要求）
+        rag_query = (base_prompt or str(d.get("name", "") or d.get("description", "")) or kind)[:150]
+        rag_refs = await _rag_retrieve(rag_query, limit=3)
+        rag_block = ""
+        if rag_refs:
+            joined = " ".join(rag_refs)
+            if len(joined) > 600:
+                joined = joined[:600] + "…"
+            rag_block = f"【参考范例】{joined}\n\n"
         for round_i in range(rounds):
             p = base_prompt
             if rounds > 1:
                 p = f"{base_prompt}，{_SCENE_VARIANTS[round_i % len(_SCENE_VARIANTS)]}"
-            res = await cloud_image_generate(prov["id"], p, size=params.get("size", "1024x1024"),
+            final_prompt = f"{rag_block}{p}" if rag_block else p
+            res = await cloud_image_generate(prov["id"], final_prompt, size=params.get("size", "1024x1024"),
                                              reference_images=refs or None)
             if not res.get("ok"):
                 return {"ok": False, "error": res.get("error", "出图失败"), "logs": res.get("logs")}

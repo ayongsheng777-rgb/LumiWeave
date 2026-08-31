@@ -20,6 +20,7 @@ from app.scene.actions.shared import (
     _rag_retrieve,
     _record_usage,
     _siliconflow_profile,
+    _skill_fallback,
     _story_quality_context,
 )
 
@@ -91,7 +92,24 @@ async def _act_llm_scene(scene_id: str, obj_ids: list[str], params: dict, action
         prompt += "\n\n参考资料（RAG）：\n" + "\n".join(refs)
     r = await _llm_json(sys, prompt)
     if not r:
-        return {"ok": False, "error": "AI 生成失败（检查 AI 配置）"}
+        # §42 Skill 兜底：AI 真失败时查 skills 表挑最相关 1 个，用其结果回填
+        topic = (ctx or params.get("prompt", "") or action)[:300]
+        skill_text, skill_id = await _skill_fallback(action, topic, str(params.get("prompt", "")))
+        if skill_text:
+            text_obj = await service.create_object(
+                scene_id, "text",
+                x=0, y=(max([float(o.get("y") or 0) + float(o.get("height") or 0)
+                             for o in await service.list_objects(scene_id)] or [0])) + 80,
+                width=320, height=160,
+                data={"text": skill_text[:1500], "summary": (skill_text[:120] + "…") if len(skill_text) > 120 else skill_text},
+            )
+            return {
+                "ok": True,
+                "created": [text_obj],
+                "message": f"AI 失败，已用技能兜底（{skill_id}）生成 1 段文本",
+                "fallback": "skill",
+            }
+        return {"ok": False, "error": "AI 生成失败（已尝试 skills 兜底，无匹配技能）"}
     # 新对象自动错开排布，避免全部堆在 (0,0)
     existing = await service.list_objects(scene_id)
     base_y = max([float(o.get("y") or 0) + float(o.get("height") or 0) for o in existing] or [0]) + 80
