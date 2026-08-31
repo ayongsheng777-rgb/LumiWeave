@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import { ShoppingBag, Clapperboard, Film, Plus, Trash2, ChevronLeft, ChevronRight, Save, History, RotateCcw } from 'lucide-react'
 import { useSceneStore } from '../store/sceneStore'
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout'
 
 const SCENE_ICONS: Record<string, React.ReactNode> = {
   'ecommerce-material': <ShoppingBag size={16} />,
@@ -21,8 +22,15 @@ const SCENE_ACCENT: Record<string, string> = {
 }
 
 export default function SceneSidebar() {
-  // 窄屏初始收起（深度增强 #6：响应式全量）
-  const [collapsed, setCollapsed] = useState(() => window.innerWidth < 1100)
+  // §49 响应式（替代旧实现 window.innerWidth < 1100 一次判定）：
+  //   < 1024px（desktop 阈值）默认收起为浮动汉堡；用户可手动展开。
+  // 用 hook 拿 SSR 安全初值 + 实时 resize 监听。
+  const responsive = useResponsiveLayout()
+  const [collapsed, setCollapsed] = useState(true)
+  useEffect(() => {
+    // 仅在窄屏/平板默认收起；桌面端保持展开
+    setCollapsed(!responsive.isDesktop)
+  }, [responsive.isDesktop])
   const types = useSceneStore((s) => s.types)
   const scenes = useSceneStore((s) => s.scenes)
   const currentSceneId = useSceneStore((s) => s.currentSceneId)

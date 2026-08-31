@@ -30,6 +30,7 @@ import { pvNodeTypes } from './nodes'
 import { nodeColor } from './registry'
 import type { PvNodeData, PvNodeTemplate } from './types'
 import { PvNodePalette } from './PvNodePalette'
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout'
 import { PvBottomBar } from './PvBottomBar'
 import { PvComposer } from './PvComposer'
 import { PvCropDialog } from './PvCropDialog'
@@ -70,6 +71,8 @@ function PvCanvasInner() {
   const [dragOver, setDragOver] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [tool, setTool] = useState<ToolMode>('select')
+  // §49 响应式：小屏自动收起节点库，弹层改底部抽屉
+  const responsive = useResponsiveLayout()
 
   // ── 视口还原：加载到旧画布时回到上次的位置，没存过就 fitView ──
   useEffect(() => {
@@ -209,13 +212,17 @@ function PvCanvasInner() {
           >
             <Plus size={16} className={paletteOpen ? 'rotate-45 transition' : 'transition'} />
           </button>
-          {/* 节点库弹层（挂在工具栏右侧） */}
+          {/* 节点库弹层（§49：小屏改成底部抽屉浮层，桌面端仍是右侧浮卡） */}
           <PvNodePalette
             open={paletteOpen}
             onToggle={() => setPaletteOpen((v) => !v)}
             onPick={addAtCenter}
             hideFab
-            popupClassName="absolute left-12 top-0 z-20"
+            popupClassName={
+              responsive.isMobile
+                ? 'fixed inset-x-2 bottom-2 z-50 max-h-[70vh]'
+                : 'absolute left-12 top-0 z-20'
+            }
           />
         </div>
         <button
