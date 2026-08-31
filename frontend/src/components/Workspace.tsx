@@ -1,11 +1,9 @@
 import { useUiStore } from '../store/uiStore'
 import TopHeader from './TopHeader'
-import FloatingToolbar from './FloatingToolbar'
-import WorkflowCanvas from './WorkflowCanvas'
 import ChatPanel from './ChatPanel'
 import Lightbox from './Lightbox'
 import SettingsModal from './SettingsModal'
-import CanvasCore from '../canvas/CanvasCore'
+import PvCanvas from '../pv/PvCanvas'
 import SceneCanvas from '../scene/SceneCanvas'
 import { LogPanel } from './LogPanel'
 import { ShotChainPanel } from './ShotChainPanel'
@@ -26,17 +24,9 @@ export default function Workspace() {
       {/* 100% 占满的主画布区（顶栏悬浮其上） */}
       <div className="absolute inset-0 top-14">
         <div className="relative flex h-full">
-          {/* 节点库浮层：工作流与无限画布共用悬浮节点菜单（V2.8：无限画布移除固定 NodePalette 后同款设计）。
-              专业场景画布有自己的动态工具条（SceneToolbar），避免两套工具条打架。 */}
-          {mode !== 'scene' && <FloatingToolbar />}
+          {/* 通用画布自带左下角节点库；专业场景有自己的动态工具条，两套工具条不混用 */}
           <div className="relative min-w-0 flex-1">
-            {mode === 'workflow' ? (
-              <WorkflowCanvas />
-            ) : mode === 'scene' ? (
-              <SceneCanvas />
-            ) : (
-              <CanvasCore />
-            )}
+            {mode === 'scene' ? <SceneCanvas /> : <PvCanvas />}
           </div>
           {chatOpen && (
             <aside className="w-[400px] shrink-0 border-l border-white/30 bg-white/50 backdrop-blur-lg dark:border-white/10 dark:bg-slate-900/50">

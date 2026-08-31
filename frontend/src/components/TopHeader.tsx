@@ -1,6 +1,6 @@
 import { useUiStore } from '../store/uiStore'
 import { logout } from '../api'
-import { Sun, Moon, Network, LayoutGrid, LogOut, Settings, Clapperboard, Sparkles } from 'lucide-react'
+import { Sun, Moon, Network, LogOut, Settings, Clapperboard, Sparkles } from 'lucide-react'
 
 export default function TopHeader() {
   const projectName = useUiStore((s) => s.projectName)
@@ -31,20 +31,13 @@ export default function TopHeader() {
 
       <div className="flex items-center rounded-xl border border-edge bg-soft p-0.5 text-xs">
         <button
-          onClick={() => setMode('workflow')}
+          onClick={() => setMode('canvas')}
+          title="PixVerse 风格通用画布：素材节点 + 生成节点，连线即输入"
           className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
-            mode === 'workflow' ? 'bg-brand-600 text-white' : 'text-ink-2 hover:text-ink'
+            mode === 'canvas' ? 'bg-brand-600 text-white' : 'text-ink-2 hover:text-ink'
           }`}
         >
-          <Network size={14} /> 工作流
-        </button>
-        <button
-          onClick={() => setMode('infinite')}
-          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
-            mode === 'infinite' ? 'bg-brand-600 text-white' : 'text-ink-2 hover:text-ink'
-          }`}
-        >
-          <LayoutGrid size={14} /> 无限画布
+          <Network size={14} /> 通用画布
         </button>
         <button
           onClick={() => setMode('scene')}

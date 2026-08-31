@@ -1,7 +1,16 @@
 import { create } from 'zustand'
 
-/** scene = V2.5 专业场景画布（电商物料 / 电商短剧 / 影视拉片） */
-export type CanvasMode = 'workflow' | 'infinite' | 'scene'
+/**
+ * canvas = PixVerse 风格通用画布（原「工作流」+「无限画布」已合并成这一块，
+ *          既能自由摆放，也能连线按依赖执行）
+ * scene  = V2.5 专业场景画布（电商物料 / 电商短剧 / 影视拉片），保持原样不动
+ */
+export type CanvasMode = 'canvas' | 'scene'
+
+/** 老版本存过 workflow / infinite，统一归并到 canvas */
+function normalizeMode(m: unknown): CanvasMode {
+  return m === 'scene' ? 'scene' : 'canvas'
+}
 
 interface UiState {
   mode: CanvasMode
@@ -51,7 +60,7 @@ function load(): Partial<UiState> {
 const saved = load()
 
 export const useUiStore = create<UiState>((set, get) => ({
-  mode: (saved.mode as CanvasMode) || 'workflow',
+  mode: normalizeMode(saved.mode),
   theme: (saved.theme as 'dark' | 'light') || 'dark',
   projectName: saved.projectName || '未命名作品',
   drawerOpen: saved.drawerOpen ?? true,
@@ -65,9 +74,8 @@ export const useUiStore = create<UiState>((set, get) => ({
     persist(set, get, { mode: m })
   },
   toggleMode: () => {
-    // 三态循环：工作流 → 无限画布 → 专业场景 → 工作流
-    const order: CanvasMode[] = ['workflow', 'infinite', 'scene']
-    const next = order[(order.indexOf(get().mode) + 1) % order.length]
+    // 两态切换：通用画布 ⇄ 专业场景
+    const next: CanvasMode = get().mode === 'scene' ? 'canvas' : 'scene'
     persist(set, get, { mode: next })
   },
   setTheme: (t) => {

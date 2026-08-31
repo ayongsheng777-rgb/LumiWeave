@@ -3,12 +3,12 @@ import { checkAuth } from './api'
 import Login from './components/Login'
 import Workspace from './components/Workspace'
 import { useUiStore } from './store/uiStore'
-import { useWorkflowStore } from './store/workflowStore'
+import { usePvStore } from './pv/store'
 
 function App() {
   const [authed, setAuthed] = useState<boolean | null>(null)
   const initTheme = useUiStore((s) => s.initTheme)
-  const loadLastWorkflow = useWorkflowStore((s) => s.loadLastWorkflow)
+  const loadLastWorkflow = usePvStore((s) => s.loadLastWorkflow)
 
   useEffect(() => {
     initTheme()

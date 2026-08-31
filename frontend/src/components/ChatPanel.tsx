@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Bot, Send, X, ShoppingBag, Clapperboard, Film } from 'lucide-react'
 import { aiChat } from '../api'
-import { useCanvasStore } from '../store/canvasStore'
-import { useLayoutStore } from '../store/layoutStore'
 import { useUiStore } from '../store/uiStore'
 import { useSceneStore } from '../store/sceneStore'
+import { usePvStore } from '../pv/store'
+import { PV_NODE_TEMPLATES } from '../pv/registry'
+import type { PvNodeData } from '../pv/types'
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -27,21 +28,24 @@ export default function ChatPanel() {
   }, [messages])
 
   const nextCanvasPos = () => {
-    const n = useCanvasStore.getState().objects.length
+    const n = usePvStore.getState().nodes.length
     return { x: 80 + (n % 5) * 40, y: 80 + (n % 6) * 40 }
   }
 
+  /** 往通用画布丢一个文本便签（AI 回答落盘，方便用户拖去当提示词） */
+  const addTextNode = (text: string) => {
+    const tpl = PV_NODE_TEMPLATES.find((t) => t.kind === 'text')
+    if (!tpl) return
+    const id = usePvStore.getState().addFromTemplate(tpl, nextCanvasPos())
+    usePvStore.getState().updateNodeData(id, { text } as Partial<PvNodeData>)
+  }
+
   const dropToCanvas = (text: string) => {
-    const store = useCanvasStore.getState()
-    const node = store.addObject('ai_result', nextCanvasPos())
-    store.updateObject(node.id, { text, kind: 'text' })
+    addTextNode(text)
   }
 
   const ejectToCanvas = (text: string) => {
-    const store = useCanvasStore.getState()
-    const node = store.addObject('prompt', nextCanvasPos())
-    store.updateObject(node.id, { text })
-    useLayoutStore.getState().setCanvasOpen(true)
+    addTextNode(text)
   }
 
   const send = async () => {
