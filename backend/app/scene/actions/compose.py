@@ -127,6 +127,152 @@ class StubTTSProvider(TTSProvider):
         return str(out)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# §69 TTS Provider 实现（主选火山 / 备选硅基）
+# 配置（环境变量或 .env）：
+#   VOLCANO_APPID / VOLCANO_ACCESS_TOKEN / VOLCANO_CLUSTER（默认 volcano_tts）
+#   SILICONFLOW_API_KEY（与 LLM 共用 key）
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class VolcanoTTSProvider(TTSProvider):
+    """火山引擎 TTS（字节跳动 · 主选）
+    - 文档：https://www.volcengine.com/docs/6561/79817
+    - 端点：https://openspeech.bytedance.com/api/v1/tts
+    - 鉴权：Authorization: Bearer; {token} + X-APP-ID: {appid}
+    - 免费：每月 30 万字符（适合测试 + 轻度生产）
+    """
+    name = "volcano"
+
+    def __init__(self) -> None:
+        import os
+        self.appid = os.environ.get("VOLCANO_APPID", "").strip()
+        self.token = os.environ.get("VOLCANO_ACCESS_TOKEN", "").strip()
+        self.cluster = os.environ.get("VOLCANO_CLUSTER", "volcano_tts").strip()
+        self.endpoint = "https://openspeech.bytedance.com/api/v1/tts"
+
+    def is_configured(self) -> bool:
+        return bool(self.appid and self.token)
+
+    async def text_to_audio(self, text: str, voice_id: str = "BV001_streaming") -> str | None:
+        if not self.is_configured():
+            return None
+        if not text or not text.strip():
+            return None
+        import base64
+        import httpx
+
+        # voice_id 默认 BV001_streaming（女声·普通话）；其它常用：BV002_streaming（男声）、BV005_streaming（儿童）
+        payload = {
+            "app": {"appid": self.appid, "token": "ignored", "cluster": self.cluster},
+            "user": {"uid": "lumiweave"},
+            "audio": {
+                "voice_type": voice_id or "BV001_streaming",
+                "encoding": "mp3",
+                "speed_ratio": 1.0,
+                "volume_ratio": 1.0,
+                "pitch_ratio": 1.0,
+            },
+            "request": {
+                "reqid": uuid.uuid4().hex,
+                "text": text[:1000],  # 火山单次限制
+                "text_type": "plain",
+                "operation": "query",
+                "with_frontend": 1,
+                "frontend_type": "unitTson",
+            },
+        }
+        headers = {
+            "Authorization": f"Bearer; {self.token}",
+            "X-APP-ID": self.appid,
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as c:
+                r = await c.post(self.endpoint, json=payload, headers=headers)
+        except Exception:  # noqa: BLE001
+            return None
+        if r.status_code != 200:
+            return None
+        try:
+            data = r.json()
+        except Exception:  # noqa: BLE001
+            return None
+        # 火山成功响应：{"code": 0, "message": "Success", "data": "<base64 audio>"}
+        if str(data.get("code", "")) not in ("0", "10000", 0, 10000):
+            return None
+        audio_b64 = data.get("data")
+        if not audio_b64:
+            return None
+        try:
+            audio_bytes = base64.b64decode(audio_b64)
+        except Exception:  # noqa: BLE001
+            return None
+        if len(audio_bytes) < 100:
+            return None
+        from app.config import DATA_DIR
+        up = DATA_DIR / "uploads" / "tts_volcano"
+        up.mkdir(parents=True, exist_ok=True)
+        out = up / f"volcano_{uuid.uuid4().hex[:12]}.mp3"
+        out.write_bytes(audio_bytes)
+        return str(out)
+
+
+class SiliconFlowTTSProvider(TTSProvider):
+    """硅基流动 TTS（OpenAI 兼容 · 备选）
+    - 文档：https://docs.siliconflow.cn/cn/api-reference/audio/create-speech
+    - 端点：https://api.siliconflow.cn/v1/audio/speech
+    - 鉴权：Authorization: Bearer {api_key}
+    - 免费层：每月额度（与 LLM 共池）
+    """
+    name = "siliconflow"
+
+    def __init__(self) -> None:
+        import os
+        # 与项目 LLM 共用 key（用户已有）
+        self.api_key = os.environ.get("SILICONFLOW_API_KEY", "").strip()
+        if not self.api_key:
+            # 退到 AI_API_KEY（兼容旧配置）
+            self.api_key = os.environ.get("AI_API_KEY", "").strip()
+        self.endpoint = "https://api.siliconflow.cn/v1/audio/speech"
+        self.model = os.environ.get("SILICONFLOW_TTS_MODEL", "FunAudioLLM/CosyVoice2-0.5B").strip()
+
+    def is_configured(self) -> bool:
+        return bool(self.api_key)
+
+    async def text_to_audio(self, text: str, voice_id: str = "FunAudioLLM/CosyVoice2-0.5B:alex") -> str | None:
+        if not self.is_configured():
+            return None
+        if not text or not text.strip():
+            return None
+        import httpx
+
+        # OpenAI Speech 兼容格式
+        payload = {
+            "model": self.model,
+            "input": text[:2000],
+            "voice": voice_id or "FunAudioLLM/CosyVoice2-0.5B:alex",
+            "response_format": "mp3",
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as c:
+                r = await c.post(self.endpoint, json=payload, headers=headers)
+        except Exception:  # noqa: BLE001
+            return None
+        if r.status_code != 200 or len(r.content) < 100:
+            return None
+        from app.config import DATA_DIR
+        up = DATA_DIR / "uploads" / "tts_siliconflow"
+        up.mkdir(parents=True, exist_ok=True)
+        out = up / f"silicon_{uuid.uuid4().hex[:12]}.mp3"
+        out.write_bytes(r.content)
+        return str(out)
+
+
 _TTS_PROVIDERS: dict[str, TTSProvider] = {}
 
 
@@ -140,10 +286,29 @@ def get_tts_provider(name: str = "stub") -> TTSProvider | None:
 
 # 默认注册 Stub（Provider 拍板后用真实实现注册同名覆盖即可）
 register_tts_provider("stub", StubTTSProvider())
+# §69 默认 Provider：主选火山 + 备选硅基（未配置 key 时 is_configured()=False 自动跳过）
+register_tts_provider("volcano", VolcanoTTSProvider())
+register_tts_provider("siliconflow", SiliconFlowTTSProvider())
 
 
-async def synthesize_voiceover(text: str, voice_id: str = "default", *, provider: str = "stub") -> str | None:
-    """对外 TTS 入口。Provider 拍板前默认走 stub（落静音占位）。"""
+async def synthesize_voiceover(text: str, voice_id: str = "default", *, provider: str = "auto") -> str | None:
+    """对外 TTS 入口。
+
+    provider="auto"（默认）：
+      主选 volcano（火山，免费 30 万字/月） → 失败自动试 siliconflow（硅基，备选）→ 都失败 → stub 静音占位
+    provider="stub"/"volcano"/"siliconflow"：走指定 provider；未配置时返回 None
+    """
+    if provider == "auto":
+        chain = ["volcano", "siliconflow"]
+        for name in chain:
+            p = get_tts_provider(name)
+            if p and getattr(p, "is_configured", lambda: True)():
+                result = await p.text_to_audio(text, voice_id)
+                if result:
+                    return result
+        # 主备都失败或未配置 → 落静音占位（不让用户卡死）
+        p = get_tts_provider("stub")
+        return await p.text_to_audio(text, voice_id) if p else None
     p = get_tts_provider(provider)
     if not p:
         return None
@@ -240,6 +405,9 @@ async def compose_final(
         return {"ok": False, "error": f"ffmpeg 视频拼接失败：{err}", "logs": logs}
     logs.append(f"视频拼接完成 {tmp.stat().st_size // 1024} KB")
 
+    # 3.5) TTS 配音占位：实际生成在 # 5 之前做（统一进 audio_locals）
+    tts_audio_path: str | None = None
+
     # 4) 烧字幕（可选）
     if with_subtitle:
         boards = [o for o in await service.list_objects(scene_id) if o["object_type"] == "storyboard"]
@@ -271,37 +439,62 @@ async def compose_final(
 
     # 5) 音频混合（可选，默认关等 TTS 拍板）
     if with_audio:
+        # 5a) TTS 配音：每个分镜的 dialogue/description → 主选火山/备选硅基/stub
+        boards_audio = [o for o in await service.list_objects(scene_id) if o["object_type"] == "storyboard"]
+        edges_audio = await service.list_edges(scene_id)
+        ordered_b_audio: list[str] = []
+        for e in edges_audio:
+            s, t = e.get("source_id"), e.get("target_id")
+            if s and s not in ordered_b_audio and any(o["id"] == s for o in boards_audio):
+                ordered_b_audio.append(str(s))
+            if t and t not in ordered_b_audio and any(o["id"] == t for o in boards_audio):
+                ordered_b_audio.append(str(t))
+        tail_ba = [o["id"] for o in boards_audio if o["id"] not in ordered_b_audio]
+        seq_ba = [next(o for o in boards_audio if o["id"] == i) for i in (ordered_b_audio + tail_ba)]
+        tts_files: list[str] = []
+        for b in seq_ba:
+            txt = (b.get("data") or {}).get("dialogue") or (b.get("data") or {}).get("description") or ""
+            if not txt.strip():
+                continue
+            af = await synthesize_voiceover(txt.strip()[:200], provider="auto")
+            if af:
+                tts_files.append(af)
+                logs.append(f"TTS 配音 → {Path(af).name} 「{txt[:30]}…」")
+        if tts_files:
+            tts_audio_path = await _concat_audios(tts_files, DATA_DIR, prefix="tts_track")
+            if tts_audio_path:
+                logs.append(f"TTS 总轨 {Path(tts_audio_path).stat().st_size // 1024} KB")
+        # 5b) 用户已有的音频对象（背景音乐/音效等）
         audios = [o for o in await service.list_objects(scene_id)
                   if o["object_type"] == "audio" and (o["data"] or {}).get("url")]
-        if audios:
-            audio_locals = []
-            for a in audios:
-                p = await _download_to_uploads((a["data"] or {}).get("url", ""), DATA_DIR)
-                if p:
-                    audio_locals.append(p)
-            if audio_locals:
-                mixed = up / f"final_mix_{uuid.uuid4().hex[:12]}.mp4"
-                # 多音频混音：concat demuxer
-                alist = up / f"alist_{uuid.uuid4().hex[:8]}.txt"
-                alist.write_text("\n".join(f"file '{a}'" for a in audio_locals), encoding="utf-8")
-                ok_a, err_a = await _run_ffmpeg(
-                    ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(alist),
-                     "-c", "copy", str(up / f"merged_audio_{uuid.uuid4().hex[:8]}.m4a")],
+        audio_locals: list[str] = []
+        if tts_audio_path:
+            audio_locals.append(tts_audio_path)
+        for a in audios:
+            p = await _download_to_uploads((a["data"] or {}).get("url", ""), DATA_DIR)
+            if p:
+                audio_locals.append(p)
+        if audio_locals:
+            alist = up / f"alist_{uuid.uuid4().hex[:8]}.txt"
+            alist.write_text("\n".join(f"file '{a}'" for a in audio_locals), encoding="utf-8")
+            ok_a, err_a = await _run_ffmpeg(
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(alist),
+                 "-c", "copy", str(up / f"merged_audio_{uuid.uuid4().hex[:8]}.m4a")],
+                timeout=180,
+            )
+            merged_audio = up / f"merged_audio_{uuid.uuid4().hex[:8]}.m4a"
+            if ok_a and merged_audio.exists() and merged_audio.stat().st_size > 1000:
+                final_with_audio = up / f"final_audio_{uuid.uuid4().hex[:12]}.mp4"
+                ok_mix, err_mix = await _run_ffmpeg(
+                    ["ffmpeg", "-y", "-i", str(tmp), "-i", str(merged_audio),
+                     "-c:v", "copy", "-c:a", "aac", "-shortest", str(final_with_audio)],
                     timeout=180,
                 )
-                merged_audio = up / f"merged_audio_{uuid.uuid4().hex[:8]}.m4a"
-                if ok_a and merged_audio.exists() and merged_audio.stat().st_size > 1000:
-                    final_with_audio = up / f"final_audio_{uuid.uuid4().hex[:12]}.mp4"
-                    ok_mix, err_mix = await _run_ffmpeg(
-                        ["ffmpeg", "-y", "-i", str(tmp), "-i", str(merged_audio),
-                         "-c:v", "copy", "-c:a", "aac", "-shortest", str(final_with_audio)],
-                        timeout=180,
-                    )
-                    if ok_mix and final_with_audio.exists():
-                        tmp = final_with_audio
-                        logs.append(f"音频混合完成 {len(audio_locals)} 段")
-                    else:
-                        logs.append(f"音频混合失败（继续无音频输出）：{err_mix[-120:]}")
+                if ok_mix and final_with_audio.exists():
+                    tmp = final_with_audio
+                    logs.append(f"音频混合完成 {len(audio_locals)} 段（含 TTS={bool(tts_audio_path)}）")
+                else:
+                    logs.append(f"音频混合失败（继续无音频输出）：{err_mix[-120:]}")
 
     # 6) 抽首帧做封面
     cover_url = ""

@@ -50,6 +50,57 @@ async def _download_to_uploads(url: str, data_dir: Path) -> str | None:
         return None
 
 
+async def _concat_audios(audio_files: list[str], data_dir: Path, *, prefix: str = "concat") -> str | None:
+    """§69 把多段 TTS 片段拼成一条音频轨（ffmpeg concat demuxer）。
+
+    输入可以是 wav/mp3/m4a 不同格式——concat demuxer 要求格式一致，
+    不一致时先用 lavfi 强制统一为 wav 再拼，最后输出 m4a 给视频混音用。
+    """
+    import asyncio
+
+    files = [p for p in (audio_files or []) if p and Path(p).exists()]
+    if not files:
+        return None
+    up = data_dir / "uploads"
+    up.mkdir(parents=True, exist_ok=True)
+    out = up / f"{prefix}_{uuid.uuid4().hex[:12]}.m4a"
+    # 先把所有片段统一转 wav 到临时文件，避免 demuxer 格式不一致
+    tmpdir = up / f"audnorm_{uuid.uuid4().hex[:8]}"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    normed: list[str] = []
+    for i, src in enumerate(files):
+        dst = tmpdir / f"seg_{i:03d}.wav"
+        r = await asyncio.to_thread(
+            subprocess.run,
+            ["ffmpeg", "-y", "-i", src, "-ar", "24000", "-ac", "1", "-f", "wav", str(dst)],
+            capture_output=True, text=True, timeout=60,
+        )
+        if r.returncode == 0 and dst.exists() and dst.stat().st_size > 100:
+            normed.append(str(dst))
+    if not normed:
+        return None
+    # concat
+    listfile = up / f"{prefix}_list_{uuid.uuid4().hex[:8]}.txt"
+    listfile.write_text("\n".join(f"file '{p}'" for p in normed), encoding="utf-8")
+    r = await asyncio.to_thread(
+        subprocess.run,
+        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
+         "-c", "aac", "-b:a", "128k", str(out)],
+        capture_output=True, text=True, timeout=180,
+    )
+    # 清理临时
+    try:
+        for p in normed:
+            Path(p).unlink(missing_ok=True)
+        tmpdir.rmdir()
+        listfile.unlink(missing_ok=True)
+    except Exception:  # noqa: BLE001
+        pass
+    if r.returncode == 0 and out.exists() and out.stat().st_size > 1000:
+        return str(out)
+    return None
+
+
 async def _act_generate_music(scene_id: str, obj_ids: list[str], params: dict) -> dict:
     """音频节点（BGM）：AI 识别分镜背景音乐 → 生成音乐风格/乐器/完整提示词，写回节点。
 
@@ -156,5 +207,5 @@ async def _act_compose_final(scene_id: str, obj_ids: list[str], params: dict) ->
     """
     from app.scene.actions.compose import compose_final
     with_subtitle = bool(params.get("with_subtitle", True))
-    with_audio = bool(params.get("with_audio", False))  # 默认关，等 TTS Provider 拍板后开
+    with_audio = bool(params.get("with_audio", True))  # §69 TTS Provider 接入后默认开（未配 key 时自动落静音占位）
     return await compose_final(scene_id, obj_ids, with_subtitle=with_subtitle, with_audio=with_audio)
