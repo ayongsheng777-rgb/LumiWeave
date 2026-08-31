@@ -773,3 +773,28 @@ docker compose exec -T postgres psql -U lumiweave -d lumiweave \
 - 🔴 冒烟三坑：①连线落点用**手柄正中心**（ff/lf 专用点用 tb.x-2 会落空）②加完节点先点「适应视图」（落点网格会把节点放到可视区外，屏外手柄连线必失败）③`/api/auth/setup` 403 是正常探活（已初始化），不是错误
 - React Flow 三坑（08-31 上午踩的）：节点卡片别加 overflow-hidden（裁掉连接点）/ 连续添加落点步长按节点实际宽度算（`size.width+90`）/ 空画布 fitView 限 `maxZoom:1`
 - 回滚点镜像：`lumiweave-frontend:pre-pv-20260831`（重构前）、`lumiweave-frontend:pre-v2-20260831`（V2 前）
+
+## 一·三十三、通用画布 V3：悬浮工具栏 + 弹出式 composer + 场景模型候选池（2026-08-31，f869ab1）
+
+**起因**：阿勇对照 PixVerse 截图提三点——①缺节点悬浮工具栏与智能生成菜单 ②缺弹出式提示词对话框 ③画布模型单一、ComfyUI 进不来、要按场景配多模型+拉模型列表自选。拍板：能真做的全做、做不到的剔除不留代码尾巴；动作先弹 composer 改完再生成；每场景多候选+默认项+ComfyUI 进池。
+
+### 后端
+- `backend/app/ai/pools.py`（新）：`SCENE_POOLS`/`PV_ACTIONS` 存 app_kv（键 `scene_pools`/`pv_actions`），lifespan 加载；候选 = `{id:"<profile_id>::<model>", profile_id, model, label, renderer}`，`profile_id='comfyui'` 即本地渲染器（model=checkpoint）；11 个默认图片动作各带中文 `prompt_template`（含 `{prompt}` 占位）
+- `routes.py` 新增 4 个接口：`GET/PUT /api/ai/scene-pools`、`GET/PUT /api/ai/pv-actions`（normalize→原地更新→落库）
+- `cloud_gen.py`：MiniMax H3 补 `last_frame_url`（content role=last_frame，有帧则省略 ratio）；`create_count>1` 顺序自递归合并结果；`cloud_image_generate` 补 `batch_size`（t2i 原生传参，i2i 顺序循环）
+- **剔除**：MiniMax H3 V2 无 audio/multi_shot/create_count 参数（那是 Seedance 的）→ PvGenParams 删掉 audio/multi_shot，UI 开关全清，不留死代码；多参考模式+尾帧互斥，只记日志
+
+### 前端（src/pv/）
+- `PvMediaToolbar.tsx`（新）：选中且有媒体的节点上方浮工具栏。图片=[智能生成▾(全部启用动作)/多角度/打光/智能编辑/快速拆分▾(2×2,3×3,5×5)/裁剪/上传/下载/全屏]；视频=[截帧▾(首/尾/指定秒)/上传/下载/全屏]
+- `PvComposer.tsx`（新）：弹出式 composer——参考图芯片条 + 提示词(字数) + 高级(负面/种子) + 底部条（模型下拉[候选池 optgroup 含 ComfyUI + 模型库兜底]/比例/时长/清晰度/一次生成 + 提交）。确认才 patch 节点（候选→render_mode/profile_id/model 映射）并 runNode
+- `actions.ts`（新）：`runSmartAction`（建 i2i 节点+连线+预填模板+按动作/默认选模型+**弹 composer 不自动跑**）；`splitImageNode`（canvas 切格→逐格上传→素材节点矩阵）；`extractFrameToNode`；`downloadMedia`
+- `PvCropDialog.tsx`（新）：拖拽框裁剪，显示→原图比例换算，canvas 裁剪→上传→替换节点媒体
+- `pools.ts`（新）：候选池/动作共享缓存 hook（仿 useProfiles），`bumpPools()` 设置保存后全画布刷新
+- `GenerateNode` 重写为紧凑形态：芯片条 + 提示词摘要 + 「编辑并生成」按钮，内联表单全删；`useNodeInputs.ts` 抽成共享 hook
+- `CanvasModelPanel.tsx`（新）+ SettingsModal「画布」页签：①场景候选池编辑器（候选 chip 设默认/删除；添加支持云端 profile 下拉 + 拉取平台模型列表 datalist，或 ComfyUI checkpoint + 拉取列表）②智能动作编辑器（启用勾选/指定模型/提示词模板 textarea）
+- Lightbox：视频 URL 用 `<video controls>` 播放
+
+### 冒烟与回滚
+- 后端带 TOTP 登录全验：登录/GET/PUT/重启持久化全绿（`tmp/lw_verify_v3_endpoints.py` 等）
+- 前端冒烟 `tmp/lw_canvas_check_v3_3010.js` 全绿。**新四坑**：①点素材图会连带开灯箱，且 Escape 关灯箱会连带清掉 React Flow 选中态→点灯箱背板角落关（选中保留）②AI 助手面板会盖住顶栏齿轮→DOM `b.click()` 绕过命中检测（force click 无效，事件仍发给覆盖层）③设置弹窗里定位「画布」页签要用弹窗作用域+exact，否则会点中主界面画布页签 ④媒体形态节点没有标题栏 span（标题是 -top-7 浮动标签）
+- 回滚点镜像：`lumiweave-frontend:pre-v3-20260831`、`lumiweave-backend:pre-v3-20260831`
