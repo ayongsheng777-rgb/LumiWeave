@@ -4,7 +4,7 @@
 // 底部条（模型选择[候选池含 ComfyUI] / 参数 / 字数 / 提交）。
 // 确认后才真正跑节点 —— 改完再生成，不浪费积分。
 // =====================================================================
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Sparkles, Wand2, X } from 'lucide-react'
 import { usePvStore } from './store'
 import { usePvDialogs } from './dialogStore'
@@ -96,6 +96,37 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
   const [craftProfiles, setCraftProfiles] = useState<Profile[]>([])
   const initialCraftId = (d?.params?.craft_profile_id as string | undefined) || (d?.profile_id as string | undefined) || ''
   const [craftProfileId, setCraftProfileId] = useState(initialCraftId)
+
+  // ── @ 自动补全：输入 @ 弹出素材候选，点击在光标处插入 @imageN ──
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // null=关闭；字符串=@ 后面已输入的过滤词（可能是空串）
+  const [mention, setMention] = useState<string | null>(null)
+  const mentionChips = useMemo(() => {
+    if (mention === null) return []
+    const q = mention.toLowerCase()
+    return inputs.chips.filter(
+      (c) => !q || c.token.toLowerCase().includes(q) || c.title.toLowerCase().includes(q),
+    )
+  }, [mention, inputs.chips])
+  const onPromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const v = e.target.value
+    setPrompt(v)
+    const pos = e.target.selectionStart ?? v.length
+    const m = v.slice(0, pos).match(/@([\w-]*)$/)
+    setMention(m ? m[1] : null)
+  }
+  const insertMention = (token: string) => {
+    const ta = textareaRef.current
+    const pos = ta?.selectionStart ?? prompt.length
+    const before = prompt.slice(0, pos).replace(/@[\w-]*$/, `${token} `)
+    const after = prompt.slice(pos)
+    setPrompt(before + after)
+    setMention(null)
+    requestAnimationFrame(() => {
+      ta?.focus()
+      ta?.setSelectionRange(before.length, before.length)
+    })
+  }
 
   // 候选池异步拉到后，若节点还没选过模型则默认选中池默认项
   const effectiveSel = useMemo(() => {
@@ -336,13 +367,48 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
                 <span className="text-[10px] text-ink-3">{prompt.length} 字</span>
               </span>
             </span>
-            <textarea
-              className={`${inputCls} min-h-[110px] resize-y`}
-              placeholder={meta?.hint || '描述你想要的效果'}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              autoFocus
-            />
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                className={`${inputCls} min-h-[110px] resize-y`}
+                placeholder={meta?.hint || '描述你想要的效果'}
+                value={prompt}
+                onChange={onPromptChange}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape' && mention !== null) {
+                    e.stopPropagation()
+                    setMention(null)
+                  }
+                }}
+                onBlur={() => setMention(null)}
+                autoFocus
+              />
+              {mention !== null && mentionChips.length > 0 && (
+                <div className="absolute left-0 top-full z-20 mt-1 max-h-44 w-64 overflow-y-auto rounded-md border border-edge bg-panel-2 shadow-xl">
+                  {mentionChips.map((c) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[11px] text-ink-2 transition hover:bg-soft"
+                      onMouseDown={(e) => {
+                        e.preventDefault() // 抢在 blur 之前插入
+                        insertMention(c.token)
+                      }}
+                    >
+                      {c.thumb && c.ctype === 'image' ? (
+                        <img src={c.thumb} alt="" className="h-6 w-6 rounded object-cover" loading="lazy" />
+                      ) : (
+                        <span className="flex h-6 w-6 items-center justify-center rounded bg-soft text-[10px]">
+                          {c.ctype === 'video' ? '🎬' : c.ctype === 'audio' ? '🎵' : '🖼'}
+                        </span>
+                      )}
+                      <b className="text-brand-400">{c.token}</b>
+                      <span className="truncate text-ink-3">{c.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {(craftNote || craftErr) && (
               <span className={`mt-1 block text-[10px] ${craftErr ? 'text-red-400' : 'text-teal-400'}`}>
                 {craftErr || `✓ ${craftNote}（可继续手动修改，种子留空=随机）`}

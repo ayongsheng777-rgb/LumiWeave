@@ -397,6 +397,13 @@ export const usePvStore = create<PvState>((set, get) => ({
 
   // ── 执行：单节点 ──────────────────────────────────────────────────
   runNode: async (nodeId) => {
+    // @imageN/@videoN/@audioN 只是画布上的指代记号，模型看不懂；
+    // 提交前翻成自然语言（参考图1/参考视频1/参考音频1），节点上存的 prompt 保留原始 @ 语法
+    const resolveMentions = (text: string) =>
+      text
+        .replace(/@image(\d+)/gi, '参考图$1')
+        .replace(/@video(\d+)/gi, '参考视频$1')
+        .replace(/@audio(\d+)/gi, '参考音频$1')
     const { nodes, collectInputs, setNodeStatus, updateNodeData, setRunError } = get()
     const node = nodes.find((n) => n.id === nodeId)
     if (!node) return
@@ -445,7 +452,7 @@ export const usePvStore = create<PvState>((set, get) => ({
         model: data.model || undefined,
         profile_id: data.profile_id || undefined,
         params: {
-          prompt: params.prompt || '',
+          prompt: resolveMentions(params.prompt || ''),
           negative: params.negative || '',
           ratio: params.aspect_ratio || '16:9',
           quality: params.quality || '1080p',
@@ -602,6 +609,27 @@ export const usePvStore = create<PvState>((set, get) => ({
     try {
       const res = await workflowLoad(workflowId)
       if (!res.ok) {
+        // 画布已不存在（典型场景：数据库重置后浏览器还存着旧 workflow id）：
+        // 清掉过期缓存、按初始状态开新画布，而不是弹错把用户卡在登录后第一步
+        if (res.status === 404) {
+          try {
+            localStorage.removeItem(STORE_KEY)
+          } catch {
+            /* ignore */
+          }
+          set({
+            nodes: [],
+            edges: [],
+            workflowId: '',
+            runError: null,
+            runningIds: [],
+            viewport: null,
+            titleCounters: {},
+            undoStack: [],
+            redoStack: [],
+          })
+          return
+        }
         set({ runError: '加载画布失败' })
         return
       }
