@@ -240,6 +240,7 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
 
   return (
     <>
+    <div className="relative h-full w-full">
       <NodeResizer
         isVisible={!!selected && !locked}
         minWidth={200}
@@ -247,8 +248,8 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
         lineClassName="!border-brand-500"
         handleClassName="!h-2 !w-2 !rounded-sm !border-brand-500 !bg-white"
       />
-      <Handle type="target" position={Position.Left} className="!h-3 !w-3 !rounded-full !border-2 !border-white !bg-brand-500 dark:!border-white/30" isConnectableStart={false} />
-      <Handle type="source" position={Position.Right} className="!h-3 !w-3 !rounded-full !border-2 !border-white !bg-brand-500 dark:!border-white/30" isConnectableEnd={false} />
+      <Handle type="target" position={Position.Left} className="!z-10 !h-4 !w-4 !rounded-full !border-2 !border-white !bg-brand-500 dark:!border-white/30" isConnectableStart={false} />
+      <Handle type="source" position={Position.Right} className="!z-10 !h-4 !w-4 !rounded-full !border-2 !border-white !bg-brand-500 dark:!border-white/30" isConnectableEnd={false} />
 
       <div
         className={`canvas-node jelly group flex h-full flex-col overflow-hidden rounded-2xl text-[11px] transition ${
@@ -439,41 +440,42 @@ const SceneObjectNode = memo(({ id, data, selected }: NodeProps) => {
           )}
         </div>
       </div>
+    </div>
 
-      {/* 右键菜单 */}
-      {ctx && (
-        <div
-          className="absolute z-50 min-w-[140px] overflow-hidden rounded-lg border border-edge bg-panel py-1 shadow-node-dark"
-          style={{ left: ctx.x, top: ctx.y }}
-          onContextMenu={(e) => e.preventDefault()}
-          onClick={() => setCtx(null)}
+    {/* 右键菜单（移出外壳层，保持绝对定位参照 React Flow 节点容器） */}
+    {ctx && (
+      <div
+        className="absolute z-50 min-w-[140px] overflow-hidden rounded-lg border border-edge bg-panel py-1 shadow-node-dark"
+        style={{ left: ctx.x, top: ctx.y }}
+        onContextMenu={(e) => e.preventDefault()}
+        onClick={() => setCtx(null)}
+      >
+        <button
+          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-ink transition hover:bg-hover"
+          onClick={() => void duplicateObjects([id])}
         >
-          <button
-            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-ink transition hover:bg-hover"
-            onClick={() => void duplicateObjects([id])}
-          >
-            <Copy size={11} /> 复制为新对象
-          </button>
-          <button
-            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-ink transition hover:bg-hover"
-            onClick={() => openNodeModal(id)}
-          >
-            <Play size={11} /> 打开编辑面板
-          </button>
-          <button
-            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-ink transition hover:bg-hover"
-            onClick={() => toggleLock(id)}
-          >
-            {locked ? <LockOpen size={11} /> : <Lock size={11} />} {locked ? '解锁' : '锁定'}
-          </button>
-          <button
-            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-red-400 transition hover:bg-hover"
-            onClick={() => void deleteObjects([id])}
-          >
-            <Trash2 size={11} /> 删除
-          </button>
-        </div>
-      )}
+          <Copy size={11} /> 复制为新对象
+        </button>
+        <button
+          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-ink transition hover:bg-hover"
+          onClick={() => openNodeModal(id)}
+        >
+          <Play size={11} /> 打开编辑面板
+        </button>
+        <button
+          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-ink transition hover:bg-hover"
+          onClick={() => toggleLock(id)}
+        >
+          {locked ? <LockOpen size={11} /> : <Lock size={11} />} {locked ? '解锁' : '锁定'}
+        </button>
+        <button
+          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-red-400 transition hover:bg-hover"
+          onClick={() => void deleteObjects([id])}
+        >
+          <Trash2 size={11} /> 删除
+        </button>
+      </div>
+    )}
     </>
   )
 })

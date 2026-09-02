@@ -30,8 +30,8 @@ import {
 type Category = '人物' | '道具' | '场景'
 
 // ── 分辨率 / 宽高比 ────────────────────────────────────────
-const RES_SHORT: Record<string, number> = { '480P': 480, '720P': 720, '1K': 1024, '2K': 1440 }
-const RES_OPTS_IMG = ['480P', '720P', '1K', '2K']
+const RES_SHORT: Record<string, number> = { '480P': 480, '720P': 720, '1K': 1024, '2K': 1440, '4K': 2160 }
+const RES_OPTS_IMG = ['480P', '720P', '1K', '2K', '4K']
 const RATIO_OPTS_IMG = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9']
 
 /** 按 短边(分辨率) × 宽高比 计算生成尺寸（取 8 的倍数） */

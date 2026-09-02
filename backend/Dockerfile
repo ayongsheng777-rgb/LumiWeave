@@ -2,7 +2,9 @@ FROM python:3.12.5-slim-bookworm AS builder
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    TZ=Asia/Shanghai
 
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -16,7 +18,9 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/root/.local/bin:$PATH \
-    DATA_DIR=/app/data
+    DATA_DIR=/app/data \
+    DEBIAN_FRONTEND=noninteractive \
+    TZ=Asia/Shanghai
 
 RUN apt-get update && apt-get install -y --no-install-recommends libpq5 ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
