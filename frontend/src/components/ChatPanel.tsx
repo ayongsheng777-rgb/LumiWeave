@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Bot, Send, X, ShoppingBag, Clapperboard, Film } from 'lucide-react'
+import { Bot, Send, X } from 'lucide-react'
 import { aiChat } from '../api'
 import { useUiStore } from '../store/uiStore'
-import { useSceneStore } from '../store/sceneStore'
 import { usePvStore } from '../pv/store'
 import { PV_NODE_TEMPLATES } from '../pv/registry'
 import type { PvNodeData } from '../pv/types'
@@ -20,8 +19,6 @@ export default function ChatPanel() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const setChatOpen = useUiStore((s) => s.setChatOpen)
-  const setMode = useUiStore((s) => s.setMode)
-  const createScene = useSceneStore((s) => s.createScene)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -103,37 +100,6 @@ export default function ChatPanel() {
               <Bot size={28} className="mx-auto mb-2 text-ink-3" />
               <p>向 AI 提问，开启你的创作</p>
               <p className="mt-1 text-[11px] text-ink-3">回答会自动落到画布，也可手动「展开到画布」</p>
-              {/* 快速创作入口：替代顶部菜单 */}
-              <div className="mt-4 flex flex-col gap-1.5 px-4">
-                <div className="text-left text-[11px] text-ink-3">快速创作</div>
-                <button
-                  className="flex w-full items-center gap-2 rounded-lg border border-edge bg-soft px-3 py-2 text-left text-[11px] text-ink-2 transition hover:border-brand-500 hover:text-ink"
-                  onClick={() => {
-                    setMode('scene')
-                    void createScene('ecommerce-material')
-                  }}
-                >
-                  <ShoppingBag size={13} /> 电商商品营销物料
-                </button>
-                <button
-                  className="flex w-full items-center gap-2 rounded-lg border border-edge bg-soft px-3 py-2 text-left text-[11px] text-ink-2 transition hover:border-brand-500 hover:text-ink"
-                  onClick={() => {
-                    setMode('scene')
-                    void createScene('ecommerce-drama')
-                  }}
-                >
-                  <Clapperboard size={13} /> 电商短剧带货
-                </button>
-                <button
-                  className="flex w-full items-center gap-2 rounded-lg border border-edge bg-soft px-3 py-2 text-left text-[11px] text-ink-2 transition hover:border-brand-500 hover:text-ink"
-                  onClick={() => {
-                    setMode('scene')
-                    void createScene('film-analysis')
-                  }}
-                >
-                  <Film size={13} /> 影视拉片
-                </button>
-              </div>
             </div>
           )}
           {messages.map((m, i) => (

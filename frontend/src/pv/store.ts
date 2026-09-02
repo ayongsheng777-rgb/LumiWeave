@@ -397,13 +397,13 @@ export const usePvStore = create<PvState>((set, get) => ({
 
   // ── 执行：单节点 ──────────────────────────────────────────────────
   runNode: async (nodeId) => {
-    // @imageN/@videoN/@audioN 只是画布上的指代记号，模型看不懂；
-    // 提交前翻成自然语言（参考图1/参考视频1/参考音频1），节点上存的 prompt 保留原始 @ 语法
+    // 图片N/视频N/音频N 只是画布上的指代记号，模型看不懂；
+    // 提交前翻成自然语言（参考图N/参考视频N/参考音频N），节点上存的 prompt 保留原始引用文字
     const resolveMentions = (text: string) =>
       text
-        .replace(/@image(\d+)/gi, '参考图$1')
-        .replace(/@video(\d+)/gi, '参考视频$1')
-        .replace(/@audio(\d+)/gi, '参考音频$1')
+        .replace(/图片(\d+)/g, '参考图$1')
+        .replace(/视频(\d+)/g, '参考视频$1')
+        .replace(/音频(\d+)/g, '参考音频$1')
     const { nodes, collectInputs, setNodeStatus, updateNodeData, setRunError } = get()
     const node = nodes.find((n) => n.id === nodeId)
     if (!node) return

@@ -97,7 +97,7 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
   const initialCraftId = (d?.params?.craft_profile_id as string | undefined) || (d?.profile_id as string | undefined) || ''
   const [craftProfileId, setCraftProfileId] = useState(initialCraftId)
 
-  // ── @ 自动补全：输入 @ 弹出素材候选，点击在光标处插入 @imageN ──
+  // ── @ 自动补全：输入 @ 弹出素材候选，点击在光标处插入「图片N/视频N/音频N」 ──
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   // null=关闭；字符串=@ 后面已输入的过滤词（可能是空串）
   const [mention, setMention] = useState<string | null>(null)
@@ -112,13 +112,13 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
     const v = e.target.value
     setPrompt(v)
     const pos = e.target.selectionStart ?? v.length
-    const m = v.slice(0, pos).match(/@([\w-]*)$/)
+    const m = v.slice(0, pos).match(/@([^\s@]*)$/)
     setMention(m ? m[1] : null)
   }
   const insertMention = (token: string) => {
     const ta = textareaRef.current
     const pos = ta?.selectionStart ?? prompt.length
-    const before = prompt.slice(0, pos).replace(/@[\w-]*$/, `${token} `)
+    const before = prompt.slice(0, pos).replace(/@[^\s@]*$/, `${token} `)
     const after = prompt.slice(pos)
     setPrompt(before + after)
     setMention(null)
@@ -335,7 +335,7 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
           {/* ── 提示词 ─────────────────────────────────────── */}
           <label className="block">
             <span className="mb-1 flex items-center justify-between text-[11px] text-ink-2">
-              <span>提示词{inputs.chips.length > 0 && '（用 @image1 @video1 指代上方素材）'}</span>
+              <span>提示词{inputs.chips.length > 0 && '（用 图片1 视频1 指代上方素材）'}</span>
               <span className="flex items-center gap-1.5">
                 <select
                   className="nodrag nowheel h-6 rounded-md border border-edge bg-input px-1.5 text-[10px] text-ink-2 outline-none focus:border-brand-500"

@@ -48,16 +48,17 @@ export function useNodeInputs(nodeId: string): {
         else if (sd.content_type === 'video') acc.videos += 1
         else if (sd.content_type === 'audio') acc.audios += 1
       }
+      // token 即提示词里的引用文字，全面中文化：图片1/视频1/音频1（首尾帧专线保留语义名）
       const token =
         conn === 'firstFrame'
           ? '首帧'
           : conn === 'lastFrame'
             ? '尾帧'
             : sd.content_type === 'image'
-              ? `@image${acc.images}`
+              ? `图片${acc.images}`
               : sd.content_type === 'video'
-                ? `@video${acc.videos}`
-                : `@audio${acc.audios}`
+                ? `视频${acc.videos}`
+                : `音频${acc.audios}`
       chips.push({
         key: e.id,
         token,

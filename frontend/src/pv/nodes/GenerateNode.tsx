@@ -90,7 +90,7 @@ export function GenerateNode({ id, data, selected }: NodeProps) {
         color={color}
         icon={<Sparkles size={14} />}
         preview={d.url ? <PvPreview data={d} /> : undefined}
-        // 图生视频：首帧/尾帧两个专用输入点（对标 PixVerse firstFrame/lastFrame 连线语义）
+        // 图生视频：首帧/尾帧两个专用输入点 + 一个普通参考图点（对标 PixVerse firstFrame/lastFrame + 多参考图）
         customTargetHandles={
           isI2V ? (
             <>
@@ -99,7 +99,7 @@ export function GenerateNode({ id, data, selected }: NodeProps) {
                 type="target"
                 position={Position.Left}
                 className="!z-10 !h-3.5 !w-3.5 !border-2"
-                style={{ top: '32%', borderColor: '#22c55e', background: '#22c55e' }}
+                style={{ top: '24%', borderColor: '#22c55e', background: '#22c55e' }}
                 isConnectableStart={false}
               />
               <Handle
@@ -107,20 +107,34 @@ export function GenerateNode({ id, data, selected }: NodeProps) {
                 type="target"
                 position={Position.Left}
                 className="!z-10 !h-3.5 !w-3.5 !border-2"
-                style={{ top: '68%', borderColor: '#fb7185', background: '#fb7185' }}
+                style={{ top: '78%', borderColor: '#fb7185', background: '#fb7185' }}
+                isConnectableStart={false}
+              />
+              {/* 普通参考图输入点（无 id = manual 语义，连进来的图正常编号 图片1/图片2） */}
+              <Handle
+                type="target"
+                position={Position.Left}
+                className="!z-10 !h-3.5 !w-3.5 !border-2 !bg-white"
+                style={{ top: '51%', borderColor: color, background: color }}
                 isConnectableStart={false}
               />
               <span
                 className="pointer-events-none absolute -left-9 z-10 rounded px-1 py-px text-[9px] text-white"
-                style={{ top: '32%', transform: 'translateY(-50%)', background: '#16a34a' }}
+                style={{ top: '24%', transform: 'translateY(-50%)', background: '#16a34a' }}
               >
                 首帧
               </span>
               <span
                 className="pointer-events-none absolute -left-9 z-10 rounded px-1 py-px text-[9px] text-white"
-                style={{ top: '68%', transform: 'translateY(-50%)', background: '#e11d48' }}
+                style={{ top: '78%', transform: 'translateY(-50%)', background: '#e11d48' }}
               >
                 尾帧
+              </span>
+              <span
+                className="pointer-events-none absolute -left-9 z-10 rounded px-1 py-px text-[9px] text-white"
+                style={{ top: '51%', transform: 'translateY(-50%)', background: '#64748b' }}
+              >
+                参考图
               </span>
             </>
           ) : undefined

@@ -29,7 +29,7 @@ export const GEN_TYPE_META: Record<GenType, GenTypeMeta> = {
     label: '图生图',
     needs: [{ type: 'image', min: 1 }],
     output: 'image',
-    hint: '用 @image1 @image2 指代连进来的参考图，例如：把 @image1 的风格换成 @image2',
+    hint: '用 图片1 图片2 指代连进来的参考图，例如：把 图片1 的风格换成 图片2',
   },
   text_to_video: {
     label: '文生视频',
@@ -41,13 +41,13 @@ export const GEN_TYPE_META: Record<GenType, GenTypeMeta> = {
     label: '图生视频',
     needs: [{ type: 'image', min: 1 }],
     output: 'video',
-    hint: '用 @image1 指代首帧图，描述它要怎么动起来',
+    hint: '用 图片1 指代首帧图，描述它要怎么动起来',
   },
   reference_to_video: {
     label: '参考生视频',
     needs: [{ type: 'video', min: 1 }],
     output: 'video',
-    hint: '连一段原视频做参考，用 @video1 指代它，描述要改成什么样',
+    hint: '连一段原视频做参考，用 视频1 指代它，描述要改成什么样',
   },
   text_to_audio: {
     label: '配音 / 音频',
