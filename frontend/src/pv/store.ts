@@ -397,14 +397,41 @@ export const usePvStore = create<PvState>((set, get) => ({
 
   // ── 执行：单节点 ──────────────────────────────────────────────────
   runNode: async (nodeId) => {
-    // 图片N/视频N/音频N 只是画布上的指代记号，模型看不懂；
-    // 提交前翻成自然语言（参考图N/参考视频N/参考音频N），节点上存的 prompt 保留原始引用文字
-    const resolveMentions = (text: string) =>
-      text
-        .replace(/图片(\d+)/g, '参考图$1')
-        .replace(/视频(\d+)/g, '参考视频$1')
-        .replace(/音频(\d+)/g, '参考音频$1')
-    const { nodes, collectInputs, setNodeStatus, updateNodeData, setRunError } = get()
+    // 引用文字用的是「节点标题」（角色图/场景图…），模型看到标题未必知道它对应哪张参考图；
+    // 提交前把标题翻成「参考图N/参考视频N/参考音频N」，N 按连入顺序编号，和 reference_images 数组对齐。
+    const { nodes, edges, collectInputs, setNodeStatus, updateNodeData, setRunError } = get()
+    const buildMentionMap = () => {
+      const byId = new Map(nodes.map((n) => [n.id, n]))
+      const map: Record<string, string> = {}
+      const acc = { image: 0, video: 0, audio: 0 }
+      for (const e of edges) {
+        if (e.target !== nodeId) continue
+        const src = byId.get(e.source)
+        const sd = src?.data as PvNodeData | undefined
+        if (!sd) continue
+        const p = mediaPath(sd)
+        if (!p) continue
+        const ct = edgeConnType(e)
+        if (ct === 'firstFrame' || ct === 'lastFrame') continue // 首尾帧专线不进普通列表
+        const title = String(sd.title || '').trim()
+        if (!title) continue
+        const kind = sd.content_type === 'image' ? '参考图' : sd.content_type === 'video' ? '参考视频' : '参考音频'
+        const key = sd.content_type === 'image' ? 'image' : sd.content_type === 'video' ? 'video' : 'audio'
+        acc[key] += 1
+        map[title] = `${kind}${acc[key]}`
+      }
+      return map
+    }
+    const mentionMap = buildMentionMap()
+    const resolveMentions = (text: string) => {
+      let out = text
+      // 标题长的先替换，避免「角色图A」被「角色图」提前截断
+      const titles = Object.keys(mentionMap).sort((a, b) => b.length - a.length)
+      for (const t of titles) {
+        out = out.split(t).join(mentionMap[t])
+      }
+      return out
+    }
     const node = nodes.find((n) => n.id === nodeId)
     if (!node) return
     const data = node.data as unknown as PvNodeData

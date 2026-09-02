@@ -110,8 +110,10 @@ export function GenerateNode({ id, data, selected }: NodeProps) {
                 style={{ top: '78%', borderColor: '#fb7185', background: '#fb7185' }}
                 isConnectableStart={false}
               />
-              {/* 普通参考图输入点（无 id = manual 语义，连进来的图正常编号 图片1/图片2） */}
+              {/* 普通参考图输入点（id="ref" = manual 语义，连进来的图进 reference_images 列表）
+                  注意：同类型多 handle 时 id 必须显式且唯一，否则 React Flow 无法注册连线 */}
               <Handle
+                id="ref"
                 type="target"
                 position={Position.Left}
                 className="!z-10 !h-3.5 !w-3.5 !border-2 !bg-white"

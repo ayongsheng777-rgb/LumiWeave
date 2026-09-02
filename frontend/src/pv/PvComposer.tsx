@@ -335,7 +335,7 @@ function ComposerDialog({ nodeId }: { nodeId: string }) {
           {/* ── 提示词 ─────────────────────────────────────── */}
           <label className="block">
             <span className="mb-1 flex items-center justify-between text-[11px] text-ink-2">
-              <span>提示词{inputs.chips.length > 0 && '（用 图片1 视频1 指代上方素材）'}</span>
+              <span>提示词{inputs.chips.length > 0 && '（用 @ 引用上方素材，按节点标题指代）'}</span>
               <span className="flex items-center gap-1.5">
                 <select
                   className="nodrag nowheel h-6 rounded-md border border-edge bg-input px-1.5 text-[10px] text-ink-2 outline-none focus:border-brand-500"

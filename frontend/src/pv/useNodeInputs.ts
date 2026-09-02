@@ -48,17 +48,14 @@ export function useNodeInputs(nodeId: string): {
         else if (sd.content_type === 'video') acc.videos += 1
         else if (sd.content_type === 'audio') acc.audios += 1
       }
-      // token 即提示词里的引用文字，全面中文化：图片1/视频1/音频1（首尾帧专线保留语义名）
+      // token 即提示词里的引用文字：统一按「导入节点的标题」索引（阿勇要求），
+      // 首尾帧专线保留语义名「首帧」「尾帧」
       const token =
         conn === 'firstFrame'
           ? '首帧'
           : conn === 'lastFrame'
             ? '尾帧'
-            : sd.content_type === 'image'
-              ? `图片${acc.images}`
-              : sd.content_type === 'video'
-                ? `视频${acc.videos}`
-                : `音频${acc.audios}`
+            : String(sd.title || (sd.content_type === 'image' ? '图片' : sd.content_type === 'video' ? '视频' : '音频'))
       chips.push({
         key: e.id,
         token,
